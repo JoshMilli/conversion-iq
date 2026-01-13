@@ -1,0 +1,799 @@
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+
+type Suggestion = {
+  text: string;
+  section?: string; // Page section (e.g., "Hero Section", "Features")
+};
+
+type Audit = {
+  insert_id?: number;
+  clarity_score?: number;
+  emotional_score?: number;
+  cta_strength?: number;
+  readability_score?: number;
+  engagement_score?: number;
+  trust_score?: number;
+  suggestions?: Suggestion[] | string[]; // Support both old and new format
+  rewrites?: Record<string, string>;
+  page_id?: number;
+  page_title?: string;
+  page_url?: string;
+  ai_used?: boolean;
+  created_at?: string;
+  insights?: {
+    strengths?: string[];
+    weaknesses?: string[];
+    opportunities?: string[];
+    audience_alignment?: string;
+    tone_analysis?: string;
+  };
+  recommendations?: {
+    quick_wins?: string[];
+    long_term?: string[];
+    priority?: string;
+  };
+};
+
+type Page = { id: number; title: string; permalink: string };
+
+const api = (path: string) => {
+  // @ts-ignore
+  const base = window.ConversionIQData?.restUrl || '/wp-json/conversioniq/v1/';
+  return base + path;
+};
+const nonce = (window as any).ConversionIQData?.nonce;
+
+export default function App() {
+  const [settings, setSettings] = useState<any>({});
+  const [pages, setPages] = useState<Page[]>([]);
+  const [selectedPages, setSelectedPages] = useState<number[]>([]);
+  const [audits, setAudits] = useState<Audit[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [modal, setModal] = useState<{ audit?: Audit; open: boolean; tab?: string }>({ open: false, tab: 'overview' });
+  const [expandedSuggestions, setExpandedSuggestions] = useState<Set<number>>(new Set([0])); // First suggestion expanded by default
+  const [activeTab, setActiveTab] = useState<'settings' | 'automated' | 'audits'>('settings');
+  const [automatedReporting, setAutomatedReporting] = useState({
+    enabled: false,
+    frequency: 'weekly',
+    email: '',
+    defaultPages: [] as number[]
+  });
+
+  // Load settings, pages, audits
+  useEffect(() => {
+    axios.get(api('settings'), { headers: { 'X-WP-Nonce': nonce } }).then(r => setSettings(r.data));
+    axios.get(api('pages'), { headers: { 'X-WP-Nonce': nonce } }).then(r => setPages(r.data));
+    axios.get(api('audits'), { headers: { 'X-WP-Nonce': nonce } }).then(r => setAudits(r.data.map((row: any) => row.data || row)));
+    axios.get(api('automated-settings'), { headers: { 'X-WP-Nonce': nonce } }).then(r => setAutomatedReporting(r.data));
+  }, []);
+
+  // Handlers
+  const handleSettingsChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setSettings({ ...settings, [e.target.name]: e.target.value });
+  };
+  const handleSaveSettings = () => {
+    setLoading(true);
+    axios.post(api('settings'), settings, { headers: { 'X-WP-Nonce': nonce } })
+      .then(() => setNotice('Settings saved!'))
+      .catch(() => setNotice('Failed to save settings'))
+      .finally(() => setLoading(false));
+  };
+  const handlePageSelect = (id: number) => {
+    setSelectedPages(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
+  };
+  const handleRunAudit = async () => {
+    if (!selectedPages.length) { setNotice('Select at least one page'); return; }
+    setLoading(true);
+    setProgress(0);
+    setNotice('Analyzing page content with AI...');
+    try {
+      console.log(`🔍 Running audit for ${selectedPages.length} page(s)`);
+      
+      // Call backend audit endpoint - AI is handled on the server
+      const response = await axios.post(
+        api('audit'), 
+        { pages: selectedPages }, 
+        { headers: { 'X-WP-Nonce': nonce } }
+      );
+      
+      if (response.data.success && response.data.results) {
+        console.log('✅ Audit completed successfully');
+        const results = response.data.results;
+        
+        setProgress(75);
+        setNotice('✨ Finalizing audit results...');
+        
+        setAudits(audits => [...results, ...audits]);
+        setProgress(100);
+        setNotice('🎉 Audit complete!');
+        
+        // Clear notice after 3 seconds
+        setTimeout(() => {
+          setNotice(null);
+          setProgress(0);
+        }, 3000);
+        
+        setSelectedPages([]); // Clear selected pages after audit completes
+      } else {
+        throw new Error('Invalid audit response');
+      }
+    } catch (err) {
+      console.error('❌ Audit failed:', err);
+      setNotice('Audit failed - check server logs for details');
+    } finally {
+      setLoading(false);
+    }
+  };
+  const handleExportReport = (insert_id?: number) => {
+    if (!insert_id) {
+      console.error('❌ Cannot export: No audit ID provided');
+      setNotice('Cannot export - no audit ID');
+      return;
+    }
+    console.log(`📄 Exporting report for audit #${insert_id}`);
+    setLoading(true);
+    setNotice('Generating report...');
+    axios.post(api('report'), { audit_id: insert_id }, { headers: { 'X-WP-Nonce': nonce } })
+      .then(r => {
+        console.log('Report export response:', r.data);
+        if (r.data.url) {
+          console.log('✅ Report generated:', r.data.url);
+          
+          // Trigger download instead of opening in new tab
+          const link = document.createElement('a');
+          link.href = r.data.url;
+          link.download = `conversion-iq-report-${insert_id}.html`;
+          link.target = '_blank';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          
+          setNotice('✅ Report downloaded successfully!');
+          setTimeout(() => setNotice(null), 3000);
+        } else {
+          console.error('⚠️ No URL in response:', r.data);
+          setNotice('Report generation failed - no URL returned');
+        }
+      })
+      .catch(err => {
+        console.error('❌ Report export error:', err);
+        setNotice('Report export failed - check console');
+      })
+      .finally(() => setLoading(false));
+  };
+
+  return (
+    <div className="ciq-frontend-root" style={{ minHeight: '100vh', background: '#f3f4f6', padding: 0, fontFamily: 'Inter,Arial,Helvetica,sans-serif' }}>
+      <header style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', color: '#fff', padding: '40px 0 36px 0', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', marginBottom: 40 }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 32px' }}>
+          <h1 style={{ margin: 0, fontWeight: 800, fontSize: 42, letterSpacing: -1.5 }}>Conversion IQ</h1>
+          <p style={{ margin: '10px 0 0 0', fontSize: 20, opacity: 0.95, lineHeight: 1.5 }}>AI-powered audits & actionable recommendations for your WordPress pages.</p>
+          <div style={{ marginTop: 20, padding: '16px 20px', background: 'rgba(255,255,255,0.12)', borderRadius: 12, fontSize: 14, lineHeight: 1.7, borderLeft: '4px solid rgba(255,255,255,0.3)' }}>
+            <p style={{ margin: 0, opacity: 0.95 }}>
+              <strong>Built by Webtec</strong> for conversion audits. Our audits are based on best practices and validated tests over thousands of customers.
+            </p>
+            <p style={{ margin: '8px 0 0 0', opacity: 0.9, fontSize: 13 }}>
+              Unsure about your results? <a href="mailto:support@trywebtec.com" style={{ color: '#fff', textDecoration: 'underline', fontWeight: 500 }}>Contact our support team</a> for assistance.
+            </p>
+          </div>
+        </div>
+      </header>
+
+      <main style={{ maxWidth: 1200, margin: '0 auto', padding: '0 32px 60px 32px' }}>
+        {notice && (
+          <div style={{ background: '#7c3aed', border: 'none', color: '#fff', borderRadius: 12, padding: 16, marginBottom: 24, fontWeight: 500, boxShadow: '0 4px 12px rgba(124, 58, 237, 0.2)' }}>
+            {notice}
+          </div>
+        )}
+        {loading && (
+          <div style={{ marginBottom: 24, background: '#fff', padding: 20, borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+            <div style={{ fontSize: 14, color: '#374151', marginBottom: 8, fontWeight: 500 }}>
+              {notice || 'Processing...'} {progress > 0 && `${progress}%`}
+            </div>
+            <div style={{ height: 10, background: '#e9d5ff', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ 
+                width: `${progress}%`, 
+                height: 10, 
+                background: 'linear-gradient(90deg, #7c3aed 0%, #5b21b6 100%)', 
+                transition: 'width 0.5s ease-out', 
+                borderRadius: 8 
+              }} />
+            </div>
+            {progress > 0 && (
+              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 8, fontStyle: 'italic' }}>
+                {progress < 75 && '🤖 AI is analyzing your page content and generating insights...'}
+                {progress >= 75 && progress < 100 && '✨ Almost done! Finalizing your comprehensive audit report...'}
+                {progress === 100 && '✅ Success! Your audit is ready to view.'}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab Navigation */}
+        <div style={{ background: '#fff', borderRadius: 12, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', borderBottom: '2px solid #f3f4f6' }}>
+            <button
+              onClick={() => setActiveTab('settings')}
+              style={{
+                flex: 1,
+                padding: '16px 24px',
+                background: activeTab === 'settings' ? '#7c3aed' : '#fff',
+                color: activeTab === 'settings' ? '#fff' : '#6b7280',
+                border: 'none',
+                borderBottom: activeTab === 'settings' ? '3px solid #5b21b6' : '3px solid transparent',
+                cursor: 'pointer',
+                fontSize: 16,
+                fontWeight: 600,
+                transition: 'all 0.2s'
+              }}
+            >
+              Business Information
+            </button>
+            <button
+              onClick={() => setActiveTab('automated')}
+              style={{
+                flex: 1,
+                padding: '16px 24px',
+                background: activeTab === 'automated' ? '#7c3aed' : '#fff',
+                color: activeTab === 'automated' ? '#fff' : '#6b7280',
+                border: 'none',
+                borderBottom: activeTab === 'automated' ? '3px solid #5b21b6' : '3px solid transparent',
+                cursor: 'pointer',
+                fontSize: 16,
+                fontWeight: 600,
+                transition: 'all 0.2s'
+              }}
+            >
+              Automated Reports
+            </button>
+            <button
+              onClick={() => setActiveTab('audits')}
+              style={{
+                flex: 1,
+                padding: '16px 24px',
+                background: activeTab === 'audits' ? '#7c3aed' : '#fff',
+                color: activeTab === 'audits' ? '#fff' : '#6b7280',
+                border: 'none',
+                borderBottom: activeTab === 'audits' ? '3px solid #5b21b6' : '3px solid transparent',
+                cursor: 'pointer',
+                fontSize: 16,
+                fontWeight: 600,
+                transition: 'all 0.2s'
+              }}
+            >
+              Audits
+            </button>
+          </div>
+        </div>
+
+        {/* Settings Tab */}
+        {activeTab === 'settings' && (
+          <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
+            <h2 style={{ margin: '0 0 8px 0', fontSize: 24, fontWeight: 700, color: '#111827' }}>Business Information</h2>
+            <p style={{ color: '#6b7280', marginBottom: 24, fontSize: 15 }}>
+              Provide details about your business to help our AI deliver personalized audit recommendations.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+              <input name="industry" placeholder="Industry/Niche" value={settings.industry || ''} onChange={handleSettingsChange} style={{ padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }} onFocus={(e) => e.target.style.borderColor = '#7c3aed'} onBlur={(e) => e.target.style.borderColor = '#d1d5db'} />
+              <input name="product" placeholder="What do you sell?" value={settings.product || ''} onChange={handleSettingsChange} style={{ padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }} onFocus={(e) => e.target.style.borderColor = '#7c3aed'} onBlur={(e) => e.target.style.borderColor = '#d1d5db'} />
+              <input name="audience" placeholder="Who do you sell to?" value={settings.audience || ''} onChange={handleSettingsChange} style={{ padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }} onFocus={(e) => e.target.style.borderColor = '#7c3aed'} onBlur={(e) => e.target.style.borderColor = '#d1d5db'} />
+              <input name="pain_points" placeholder="Main customer pain points (comma separated)" value={settings.pain_points || ''} onChange={handleSettingsChange} style={{ padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }} onFocus={(e) => e.target.style.borderColor = '#7c3aed'} onBlur={(e) => e.target.style.borderColor = '#d1d5db'} />
+              <input name="competitors" placeholder="Key competitors (comma separated)" value={settings.competitors || ''} onChange={handleSettingsChange} style={{ padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }} onFocus={(e) => e.target.style.borderColor = '#7c3aed'} onBlur={(e) => e.target.style.borderColor = '#d1d5db'} />
+              <input name="goal" placeholder="Primary conversion goal" value={settings.goal || ''} onChange={handleSettingsChange} style={{ padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }} onFocus={(e) => e.target.style.borderColor = '#7c3aed'} onBlur={(e) => e.target.style.borderColor = '#d1d5db'} />
+            </div>
+            <button className="ciq-btn primary" onClick={handleSaveSettings} disabled={loading} style={{ marginTop: 20, padding: '12px 24px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, transition: 'all 0.2s' }} onMouseEnter={(e) => !loading && (e.currentTarget.style.background = '#6d28d9')} onMouseLeave={(e) => !loading && (e.currentTarget.style.background = '#7c3aed')}>
+              Save Settings
+            </button>
+          </section>
+        )}
+
+        {/* Automated Reports Tab */}
+        {activeTab === 'automated' && (
+          <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
+            <h2 style={{ margin: '0 0 8px 0', fontSize: 24, fontWeight: 700, color: '#111827' }}>Automated Reports</h2>
+            <p style={{ color: '#6b7280', marginBottom: 24, fontSize: 15 }}>
+              Set up automated audits that run on a schedule and email you the results. Perfect for monitoring your key pages over time.
+            </p>
+
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: 'flex', alignItems: 'center', padding: 16, background: '#f3e8ff', borderRadius: 8, cursor: 'pointer', border: `2px solid ${automatedReporting.enabled ? '#a78bfa' : '#e9d5ff'}` }}>
+                <input
+                  type="checkbox"
+                  checked={automatedReporting.enabled}
+                  onChange={(e) => setAutomatedReporting({ ...automatedReporting, enabled: e.target.checked })}
+                  style={{ width: 20, height: 20, cursor: 'pointer', marginRight: 12 }}
+                />
+                <div>
+                  <div style={{ fontWeight: 600, color: '#5b21b6', marginBottom: 4 }}>Enable Automated Audits</div>
+                  <div style={{ fontSize: 13, color: '#6b21a8' }}>Automatically run audits and receive email reports</div>
+                </div>
+              </label>
+            </div>
+
+            {automatedReporting.enabled && (
+              <>
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827' }}>Email Address</label>
+                  <input
+                    type="email"
+                    placeholder="your@email.com"
+                    value={automatedReporting.email}
+                    onChange={(e) => setAutomatedReporting({ ...automatedReporting, email: e.target.value })}
+                    style={{ width: '100%', padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }}
+                    onFocus={(e) => e.target.style.borderColor = '#7c3aed'}
+                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                  />
+                  <p style={{ fontSize: 13, color: '#6b7280', marginTop: 6 }}>Report PDFs will be sent to this email address</p>
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827' }}>Frequency</label>
+                  <select
+                    value={automatedReporting.frequency}
+                    onChange={(e) => setAutomatedReporting({ ...automatedReporting, frequency: e.target.value })}
+                    style={{ width: '100%', padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', cursor: 'pointer', background: '#fff', color: '#111827' }}
+                  >
+                    <option value="weekly">Weekly (Every Monday)</option>
+                    <option value="monthly">Monthly (1st of each month)</option>
+                    <option value="bimonthly">Every 2 Months</option>
+                  </select>
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827' }}>Default Pages to Audit</label>
+                  <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>Select which pages should be automatically audited on the scheduled frequency.</p>
+                  <div style={{ maxHeight: 200, overflow: 'auto', border: '1px solid #d1d5db', borderRadius: 8, padding: 12, background: '#f9fafb' }}>
+                    {pages.length === 0 ? (
+                      <div style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>No pages available</div>
+                    ) : (
+                      pages.map(p => (
+                        <label key={p.id} style={{ display: 'flex', alignItems: 'center', padding: '8px 10px', marginBottom: 6, background: automatedReporting.defaultPages.includes(p.id) ? '#f3e8ff' : '#fff', borderRadius: 6, cursor: 'pointer', transition: 'all 0.2s' }}>
+                          <input
+                            type="checkbox"
+                            checked={automatedReporting.defaultPages.includes(p.id)}
+                            onChange={() => {
+                              const isSelected = automatedReporting.defaultPages.includes(p.id);
+                              setAutomatedReporting({
+                                ...automatedReporting,
+                                defaultPages: isSelected
+                                  ? automatedReporting.defaultPages.filter(id => id !== p.id)
+                                  : [...automatedReporting.defaultPages, p.id]
+                              });
+                            }}
+                            style={{ marginRight: 10, width: 16, height: 16, cursor: 'pointer' }}
+                          />
+                          <span style={{ flex: 1, fontWeight: 500, color: '#374151', fontSize: 14 }}>{p.title}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ padding: 16, background: '#ede9fe', borderRadius: 8, marginBottom: 20 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#5b21b6', marginBottom: 8 }}>Summary</div>
+                  <div style={{ fontSize: 13, color: '#6b21a8' }}>
+                    • <strong>{automatedReporting.frequency === 'weekly' ? 'Weekly' : automatedReporting.frequency === 'monthly' ? 'Monthly' : 'Bi-monthly'}</strong> audits will run automatically<br />
+                    • <strong>{automatedReporting.defaultPages.length} page{automatedReporting.defaultPages.length !== 1 ? 's' : ''}</strong> will be audited<br />
+                    • Results will be emailed to <strong>{automatedReporting.email || 'your email'}</strong>
+                  </div>
+                </div>
+
+                <button
+                  className="ciq-btn primary"
+                  onClick={async () => {
+                    setLoading(true);
+                    try {
+                      await axios.post(
+                        api('automated-settings'),
+                        automatedReporting,
+                        { headers: { 'X-WP-Nonce': nonce } }
+                      );
+                      setNotice('Automated reporting settings saved! Audits will run automatically.');
+                      setTimeout(() => setNotice(null), 3000);
+                    } catch (error) {
+                      setNotice('Failed to save automated settings');
+                      setTimeout(() => setNotice(null), 3000);
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  disabled={loading || automatedReporting.defaultPages.length === 0 || !automatedReporting.email}
+                  style={{
+                    padding: '12px 24px',
+                    background: (automatedReporting.defaultPages.length === 0 || !automatedReporting.email) ? '#d1d5db' : '#7c3aed',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    fontSize: 15,
+                    fontWeight: 600,
+                    cursor: (loading || automatedReporting.defaultPages.length === 0 || !automatedReporting.email) ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => !loading && automatedReporting.defaultPages.length > 0 && automatedReporting.email && (e.currentTarget.style.background = '#6d28d9')}
+                  onMouseLeave={(e) => !loading && automatedReporting.defaultPages.length > 0 && automatedReporting.email && (e.currentTarget.style.background = '#7c3aed')}
+                >
+                  Save Automated Settings
+                </button>
+              </>
+            )}
+          </section>
+        )}
+
+        {/* Audits Tab */}
+        {activeTab === 'audits' && (
+          <>
+            {/* Pages to Analyze Section */}
+            <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32, marginBottom: 24 }}>
+              <h2 style={{ margin: '0 0 8px 0', fontSize: 24, fontWeight: 700, color: '#111827' }}>Select Pages to Analyze</h2>
+              <p style={{ color: '#6b7280', marginBottom: 20, fontSize: 15 }}>Choose which pages you want to audit now.</p>
+              <div style={{ maxHeight: 240, overflow: 'auto', border: '1px solid #d1d5db', borderRadius: 8, padding: 16, background: '#f9fafb' }}>
+                {pages.length === 0 ? (
+                  <div style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>No pages found. Please publish some pages first.</div>
+                ) : (
+                  pages.map(p => (
+                    <label key={p.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', marginBottom: 8, background: selectedPages.includes(p.id) ? '#f3e8ff' : '#fff', borderRadius: 6, cursor: 'pointer', transition: 'all 0.2s', border: '1px solid transparent' }} onMouseEnter={(e) => e.currentTarget.style.borderColor = '#a78bfa'} onMouseLeave={(e) => !selectedPages.includes(p.id) && (e.currentTarget.style.borderColor = 'transparent')}>
+                      <input type="checkbox" checked={selectedPages.includes(p.id)} onChange={() => handlePageSelect(p.id)} style={{ marginRight: 12, width: 18, height: 18, cursor: 'pointer', accentColor: '#7c3aed' }} />
+                      <span style={{ flex: 1, fontWeight: 500, color: '#111827' }}>{p.title}</span>
+                      <span style={{ color: '#9ca3af', fontSize: 13 }}>ID: {p.id}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+
+              {/* Selected Pages List */}
+              {selectedPages.length > 0 && (
+                <div style={{ marginTop: 16, padding: 16, background: '#f3e8ff', borderRadius: 8, border: '1px solid #c4b5fd' }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#5b21b6', marginBottom: 8 }}>
+                    ✓ {selectedPages.length} page{selectedPages.length !== 1 ? 's' : ''} selected for audit:
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {selectedPages.map(pageId => {
+                      const page = pages.find(p => p.id === pageId);
+                      return page ? (
+                        <div key={pageId} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: '#fff', borderRadius: 6, fontSize: 13, fontWeight: 500, color: '#5b21b6', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', border: '1px solid #e9d5ff' }}>
+                          {page.title}
+                          <button
+                            onClick={() => handlePageSelect(pageId)}
+                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0, marginLeft: 4, fontSize: 16, lineHeight: 1 }}
+                            title="Remove"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ) : null;
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <button className="ciq-btn primary" style={{ marginTop: 20, padding: '14px 32px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, fontSize: 16, fontWeight: 600, cursor: loading || selectedPages.length === 0 ? 'not-allowed' : 'pointer', opacity: loading || selectedPages.length === 0 ? 0.6 : 1, transition: 'all 0.2s' }} onClick={handleRunAudit} disabled={loading || selectedPages.length === 0} onMouseEnter={(e) => !loading && selectedPages.length > 0 && (e.currentTarget.style.background = '#6d28d9')} onMouseLeave={(e) => !loading && selectedPages.length > 0 && (e.currentTarget.style.background = '#7c3aed')}>
+                {loading ? 'Running Audit...' : `Run Audit${selectedPages.length > 0 ? ` (${selectedPages.length} page${selectedPages.length !== 1 ? 's' : ''})` : ''}`}
+              </button>
+            </section>
+
+            {/* Audit Results Section */}
+            <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
+              <h2 style={{ margin: '0 0 20px 0', fontSize: 24, fontWeight: 700, color: '#111827' }}>Audit Results</h2>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 24 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                  <span style={{ fontSize: 20 }}>📊</span>
+                </div>
+                <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#1f2937' }}>Audit Results</h2>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: 20 }}>
+                {audits.length === 0 && <div style={{ gridColumn: '1 / -1', color: '#9ca3af', textAlign: 'center', padding: 40, background: '#f9fafb', borderRadius: 12 }}>No audits yet. Select pages above and run your first audit!</div>}
+                {audits.map((a, i) => (
+                  <div key={i} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, background: '#fff', transition: 'all 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#a78bfa'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(124, 58, 237, 0.15)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#111827' }}>{a.page_title || 'Unknown Page'}</h3>
+                  {a.created_at && (
+                    <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
+                      {new Date(a.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600, padding: '6px 12px', borderRadius: 8, background: a.ai_used === false ? '#fef3c7' : '#f3e8ff', color: a.ai_used === false ? '#92400e' : '#7c3aed' }}>
+                  <span>{a.ai_used === false ? '⚠' : '✓'}</span>
+                  <span>{a.ai_used === false ? 'Fallback' : 'AI Powered'}</span>
+                </div>
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 12, marginBottom: 16 }}>
+                <div style={{ textAlign: 'center', padding: 12, background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', borderRadius: 10 }}>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4, fontWeight: 500 }}>Clarity</div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: '#2563eb' }}>{a.clarity_score || 0}</div>
+                </div>
+                <div style={{ textAlign: 'center', padding: 12, background: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)', borderRadius: 10 }}>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4, fontWeight: 500 }}>Emotional</div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: '#f59e0b' }}>{a.emotional_score || 0}</div>
+                </div>
+                <div style={{ textAlign: 'center', padding: 12, background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)', borderRadius: 10 }}>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4, fontWeight: 500 }}>CTA</div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: '#10b981' }}>{a.cta_strength || 0}</div>
+                </div>
+                <div style={{ textAlign: 'center', padding: 12, background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)', borderRadius: 10 }}>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4, fontWeight: 500 }}>Readability</div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: '#9333ea' }}>{a.readability_score || 0}</div>
+                </div>
+                <div style={{ textAlign: 'center', padding: 12, background: 'linear-gradient(135deg, #fefce8 0%, #fef3c7 100%)', borderRadius: 10 }}>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4, fontWeight: 500 }}>Engagement</div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: '#d97706' }}>{a.engagement_score || 0}</div>
+                </div>
+                <div style={{ textAlign: 'center', padding: 12, background: 'linear-gradient(135deg, #ecfeff 0%, #cffafe 100%)', borderRadius: 10 }}>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4, fontWeight: 500 }}>Trust</div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: '#0891b2' }}>{a.trust_score || 0}</div>
+                </div>
+              </div>
+              
+              {a.recommendations?.priority && (
+                <div style={{ marginBottom: 16, padding: 16, background: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)', borderRadius: 10, borderLeft: '4px solid #f59e0b' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>🔥 Priority Recommendation</div>
+                  <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.6, fontWeight: 500 }}>
+                    {a.recommendations.priority}
+                  </div>
+                </div>
+              )}
+              
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button className="ciq-btn primary" onClick={() => setModal({ audit: a, open: true, tab: 'overview' })} style={{ flex: 1, padding: '12px 20px', background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 12px rgba(124, 58, 237, 0.3)', transition: 'transform 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
+                  View Full Report
+                </button>
+                <button className="ciq-btn" onClick={() => handleExportReport(a.insert_id)} style={{ padding: '12px 20px', background: '#fff', color: '#7c3aed', border: '1px solid #7c3aed', borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={(e) => { e.currentTarget.style.background = '#7c3aed'; e.currentTarget.style.color = '#fff'; }} onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#7c3aed'; }}>
+                  Export PDF
+                </button>
+              </div>
+            </div>
+          ))}
+              </div>
+            </section>
+          </>
+        )}
+      </main>
+
+        {modal.open && modal.audit && (
+          <div style={{ position: 'fixed', left: 0, top: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setModal({ open: false })}>
+            <div style={{ background: '#fff', borderRadius: 12, padding: 0, maxWidth: 900, width: '100%', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
+              {/* Header */}
+              <div style={{ padding: '20px 24px', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Audit Report: {modal.audit.page_title}</h3>
+                  <div style={{ fontSize: 13, color: '#666', marginTop: 4 }}>
+                    AI Powered: {modal.audit.ai_used === false ? '✗ Fallback Mode' : '✓ Active'}
+                    {modal.audit.created_at && (
+                      <span style={{ marginLeft: 12 }}>
+                        • Run on {new Date(modal.audit.created_at).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button onClick={() => setModal({ open: false })} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#999' }}>×</button>
+              </div>
+
+              {/* Tabs */}
+              <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #eee', padding: '0 24px', background: '#fafafa' }}>
+                {['overview', 'insights', 'suggestions', 'rewrites'].map(tab => (
+                  <button 
+                    key={tab} 
+                    onClick={() => setModal({ ...modal, tab })}
+                    style={{ 
+                      padding: '12px 20px', 
+                      background: modal.tab === tab ? '#fff' : 'transparent',
+                      border: 'none',
+                      borderBottom: modal.tab === tab ? '2px solid #7c3aed' : '2px solid transparent',
+                      cursor: 'pointer',
+                      fontWeight: modal.tab === tab ? 600 : 400,
+                      color: modal.tab === tab ? '#7c3aed' : '#666',
+                      textTransform: 'capitalize'
+                    }}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+
+              {/* Content */}
+              <div style={{ padding: 24, overflowY: 'auto', flex: 1 }}>
+                {modal.tab === 'overview' && (
+                  <div>
+                    <h4 style={{ marginTop: 0, marginBottom: 16 }}>Performance Scores</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
+                      {[
+                        { label: 'Clarity', value: modal.audit.clarity_score, color: '#2b9af3' },
+                        { label: 'Emotional', value: modal.audit.emotional_score, color: '#f39c12' },
+                        { label: 'CTA Strength', value: modal.audit.cta_strength, color: '#27ae60' },
+                        { label: 'Readability', value: modal.audit.readability_score, color: '#9333ea' },
+                        { label: 'Engagement', value: modal.audit.engagement_score, color: '#d97706' },
+                        { label: 'Trust', value: modal.audit.trust_score, color: '#0284c7' },
+                      ].map((metric, idx) => metric.value ? (
+                        <div key={idx} style={{ padding: 16, background: '#f9fafb', borderRadius: 8, textAlign: 'center' }}>
+                          <div style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>{metric.label}</div>
+                          <div style={{ fontSize: 32, fontWeight: 700, color: metric.color }}>{metric.value}</div>
+                          <div style={{ marginTop: 8, height: 6, background: '#e5e7eb', borderRadius: 3, overflow: 'hidden' }}>
+                            <div style={{ width: `${metric.value}%`, height: 6, background: metric.color, transition: 'width 0.3s' }}></div>
+                          </div>
+                        </div>
+                      ) : null)}
+                    </div>
+                    
+                    {modal.audit.insights?.audience_alignment && (
+                      <div style={{ marginTop: 20 }}>
+                        <h4>Audience Alignment</h4>
+                        <p style={{ background: '#f0f6ff', padding: 12, borderRadius: 6, margin: 0 }}>{modal.audit.insights.audience_alignment}</p>
+                      </div>
+                    )}
+
+                    {modal.audit.insights?.tone_analysis && (
+                      <div style={{ marginTop: 20 }}>
+                        <h4>Tone Analysis</h4>
+                        <p style={{ background: '#f0fdf4', padding: 12, borderRadius: 6, margin: 0 }}>{modal.audit.insights.tone_analysis}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {modal.tab === 'insights' && (
+                  <div>
+                    {modal.audit.insights?.strengths && modal.audit.insights.strengths.length > 0 && (
+                      <div style={{ marginBottom: 24 }}>
+                        <h4 style={{ color: '#27ae60', marginBottom: 12 }}>💪 Strengths</h4>
+                        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                          {modal.audit.insights.strengths.map((s, i) => (
+                            <li key={i} style={{ background: '#f0fdf4', padding: 12, borderRadius: 6, marginBottom: 8, borderLeft: '3px solid #27ae60' }}>{s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {modal.audit.insights?.weaknesses && modal.audit.insights.weaknesses.length > 0 && (
+                      <div style={{ marginBottom: 24 }}>
+                        <h4 style={{ color: '#dc2626', marginBottom: 12 }}>⚠️ Weaknesses</h4>
+                        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                          {modal.audit.insights.weaknesses.map((w, i) => (
+                            <li key={i} style={{ background: '#fef2f2', padding: 12, borderRadius: 6, marginBottom: 8, borderLeft: '3px solid #dc2626' }}>{w}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {modal.audit.insights?.opportunities && modal.audit.insights.opportunities.length > 0 && (
+                      <div>
+                        <h4 style={{ color: '#0284c7', marginBottom: 12 }}>🚀 Opportunities</h4>
+                        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                          {modal.audit.insights.opportunities.map((o, i) => (
+                            <li key={i} style={{ background: '#e0f2fe', padding: 12, borderRadius: 6, marginBottom: 8, borderLeft: '3px solid #0284c7' }}>{o}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {modal.tab === 'suggestions' && (
+                  <div>
+                    <h4 style={{ marginTop: 0, marginBottom: 16 }}>Improvement Suggestions</h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {(modal.audit.suggestions || []).map((s, i) => {
+                        const suggestion = typeof s === 'string' ? { text: s } : s;
+                        const isExpanded = expandedSuggestions.has(i);
+                        const hasSection = suggestion.section && suggestion.section.trim() !== '';
+                        
+                        return (
+                          <div key={i} style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
+                            <button
+                              onClick={() => {
+                                const newExpanded = new Set(expandedSuggestions);
+                                if (isExpanded) {
+                                  newExpanded.delete(i);
+                                } else {
+                                  newExpanded.add(i);
+                                }
+                                setExpandedSuggestions(newExpanded);
+                              }}
+                              style={{
+                                width: '100%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '14px 16px',
+                                background: isExpanded ? '#f0f6ff' : '#fff',
+                                border: 'none',
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                                transition: 'background 0.2s'
+                              }}
+                              onMouseEnter={(e) => !isExpanded && (e.currentTarget.style.background = '#f9fafb')}
+                              onMouseLeave={(e) => !isExpanded && (e.currentTarget.style.background = '#fff')}
+                            >
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 15, fontWeight: 600, color: '#111827', marginBottom: hasSection ? 4 : 0 }}>
+                                  Suggestion #{i + 1}
+                                </div>
+                                {hasSection && (
+                                  <div style={{ fontSize: 12, color: '#7c3aed', fontWeight: 500 }}>
+                                    {suggestion.section}
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ fontSize: 18, color: '#9ca3af', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                                ▼
+                              </div>
+                            </button>
+                            {isExpanded && (
+                              <div style={{ padding: '16px', background: '#f0f6ff', borderTop: '1px solid #e5e7eb' }}>
+                                <p style={{ margin: 0, color: '#374151', lineHeight: 1.6, fontSize: 14 }}>
+                                  {suggestion.text}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {modal.audit.recommendations?.quick_wins && modal.audit.recommendations.quick_wins.length > 0 && (
+                      <div style={{ marginTop: 24 }}>
+                        <h4 style={{ color: '#27ae60' }}>⚡ Quick Wins</h4>
+                        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                          {modal.audit.recommendations.quick_wins.map((q, i) => (
+                            <li key={i} style={{ background: '#f0fdf4', padding: 12, borderRadius: 6, marginBottom: 8 }}>✓ {q}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {modal.audit.recommendations?.long_term && modal.audit.recommendations.long_term.length > 0 && (
+                      <div style={{ marginTop: 24 }}>
+                        <h4 style={{ color: '#9333ea' }}>🎯 Long-term Improvements</h4>
+                        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                          {modal.audit.recommendations.long_term.map((l, i) => (
+                            <li key={i} style={{ background: '#faf5ff', padding: 12, borderRadius: 6, marginBottom: 8 }}>→ {l}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {modal.audit.recommendations?.priority && (
+                      <div style={{ marginTop: 24, padding: 16, background: '#fff7ed', borderRadius: 8, borderLeft: '4px solid #f39c12' }}>
+                        <h4 style={{ marginTop: 0, color: '#f39c12' }}>🔥 Priority Recommendation</h4>
+                        <p style={{ margin: 0 }}>{modal.audit.recommendations.priority}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {modal.tab === 'rewrites' && (
+                  <div>
+                    <h4 style={{ marginTop: 0 }}>Suggested Rewrites</h4>
+                    {modal.audit.rewrites && Object.keys(modal.audit.rewrites).length > 0 ? (
+                      <div>
+                        {Object.entries(modal.audit.rewrites).map(([key, value]) => (
+                          <div key={key} style={{ marginBottom: 20 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: '#666', marginBottom: 6, textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</div>
+                            <div style={{ background: '#f0f6ff', padding: 12, borderRadius: 6, fontFamily: 'Georgia, serif', fontSize: 15, lineHeight: 1.6 }}>
+                              "{value}"
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={{ color: '#999', fontStyle: 'italic' }}>No rewrites available for this audit.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding: '16px 24px', borderTop: '1px solid #eee', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button className="ciq-btn" onClick={() => handleExportReport(modal.audit?.insert_id)}>Export PDF</button>
+                <button className="ciq-btn primary" onClick={() => setModal({ open: false })}>Close</button>
+              </div>
+            </div>
+          </div>
+        )}
+    </div>
+  );
+}
