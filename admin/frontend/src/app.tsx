@@ -2270,48 +2270,6 @@ export default function App() {
               {auditProgress.message}
             </p>
             
-            {auditProgress.currentPage && (
-              <div style={{
-                padding: 16,
-                background: '#f3f4f6',
-                borderRadius: 12,
-                marginBottom: 20
-              }}>
-                <div style={{
-                  fontSize: 13,
-                  color: '#6b7280',
-                  marginBottom: 8,
-                  fontWeight: 600
-                }}>
-                  Current Page
-                </div>
-                <div style={{
-                  fontSize: 15,
-                  color: '#111827',
-                  fontWeight: 600
-                }}>
-                  {auditProgress.currentPage}
-                </div>
-              </div>
-            )}
-            
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '12px 16px',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              borderRadius: 12,
-              color: '#fff'
-            }}>
-              <span style={{ fontSize: 14, fontWeight: 600 }}>
-                Progress: {Math.round((auditProgress.currentIndex / auditProgress.totalPages) * 100)}%
-              </span>
-              <span style={{ fontSize: 14, fontWeight: 600 }}>
-                {auditProgress.totalPages > 0 ? Math.round((auditProgress.currentIndex / auditProgress.totalPages) * 100) : 0}%
-              </span>
-            </div>
-            
             <p style={{
               marginTop: 20,
               fontSize: 13,
