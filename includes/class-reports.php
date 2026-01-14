@@ -60,6 +60,7 @@ class ConversionIQ_Reports {
             
             $report_date = date('F j, Y');
             $page_name = esc_html($audit['page_title']);
+            $page_url = isset($audit['page_url']) ? esc_url($audit['page_url']) : '';
 
         // Get saved business settings if available
         $business = json_decode( get_option( 'conversion_iq_settings', '{}' ), true );
@@ -496,6 +497,7 @@ class ConversionIQ_Reports {
                 <div class="cover-page-name">
                     <strong>Page Analyzed:</strong> '.$page_name.'
                 </div>
+                '.($page_url ? '<div class="cover-page-url" style="margin-top: 8px; font-size: 14px; color: #2563eb;">'.$page_url.'</div>' : '').'
             </div>
             <div class="cover-meta">
                 <p><strong>Prepared by:</strong> Webtec</p>
