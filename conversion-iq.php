@@ -36,6 +36,9 @@ $conversionIQUpdateChecker->setBranch('main');
 // Authentication for private repository
 $conversionIQUpdateChecker->setAuthentication('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');
 
+// Check for updates more frequently (every 1 hour instead of default 12 hours)
+$conversionIQUpdateChecker->checkForUpdates();
+
 // Load Composer autoloader if it exists
 if ( file_exists( CONVERSION_IQ_DIR . 'vendor/autoload.php' ) ) {
     require_once CONVERSION_IQ_DIR . 'vendor/autoload.php';
