@@ -1207,8 +1207,8 @@ export default function App() {
                   <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                     <div style={{ flex: 1 }}>
                       <input
-                        type="email"
-                        placeholder={automatedReporting.email || "Enter email address..."}
+                        type="text"
+                        placeholder={automatedReporting.email || "Enter email address(es)..."}
                         value={manualReportEmail}
                         onChange={(e) => setManualReportEmail(e.target.value)}
                         style={{ 
@@ -1225,7 +1225,7 @@ export default function App() {
                         onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
                       />
                       <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 6 }}>
-                        Leave blank to use: {automatedReporting.email || 'no email configured'}
+                        Multiple emails separated by commas. Leave blank to use: {automatedReporting.email || 'no email configured'}
                       </p>
                     </div>
                     <button

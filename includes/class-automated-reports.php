@@ -141,8 +141,18 @@ class ConversionIQ_Automated_Reports {
     
     /**
      * Send email report with audit results
+     * @param string $email Comma-separated email addresses
      */
     private static function send_email_report( $email, $results, $business ) {
+        // Parse comma-separated emails
+        $email_list = array_map( 'trim', explode( ',', $email ) );
+        $valid_emails = array_filter( $email_list, 'is_email' );
+        
+        if ( empty( $valid_emails ) ) {
+            error_log( '❌ No valid email addresses provided' );
+            return false;
+        }
+        
         $site_name = get_bloginfo( 'name' );
         $site_url = get_home_url();
         $total_pages = count( $results );
@@ -498,16 +508,16 @@ class ConversionIQ_Automated_Reports {
             'Reply-To: Webtec Support <support@trywebtec.com>'
         );
         
-        error_log( '📧 Attempting to send email to: ' . $email );
+        error_log( '📧 Attempting to send email to: ' . implode( ', ', $valid_emails ) );
         error_log( '📎 Attachments: ' . count( $attachments ) . ' PDF file(s)' );
         
-        // Send email with PDF attachments
-        $sent = wp_mail( $email, $subject, $message, $headers, $attachments );
+        // Send email with PDF attachments to all recipients
+        $sent = wp_mail( $valid_emails, $subject, $message, $headers, $attachments );
         
         if ( $sent ) {
-            error_log( '✅ Automated report email sent to: ' . $email . ' with ' . count( $attachments ) . ' PDF attachments' );
+            error_log( '✅ Automated report email sent to ' . count( $valid_emails ) . ' recipient(s): ' . implode( ', ', $valid_emails ) . ' with ' . count( $attachments ) . ' PDF attachments' );
         } else {
-            error_log( '❌ Failed to send automated report email to: ' . $email );
+            error_log( '❌ Failed to send automated report email to: ' . implode( ', ', $valid_emails ) );
             global $phpmailer;
             if ( isset( $phpmailer ) && is_object( $phpmailer ) ) {
                 error_log( '❌ PHPMailer Error: ' . $phpmailer->ErrorInfo );

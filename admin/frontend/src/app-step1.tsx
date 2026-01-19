@@ -316,17 +316,17 @@ export default function App() {
             {automatedReporting.enabled && (
               <>
                 <div style={{ marginBottom: 20 }}>
-                  <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827' }}>Email Address</label>
+                  <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827' }}>Email Address(es)</label>
                   <input
-                    type="email"
-                    placeholder="your@email.com"
+                    type="text"
+                    placeholder="email1@example.com, email2@example.com"
                     value={automatedReporting.email}
                     onChange={(e) => setAutomatedReporting({ ...automatedReporting, email: e.target.value })}
                     style={{ width: '100%', padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }}
                     onFocus={(e) => e.target.style.borderColor = '#7c3aed'}
                     onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
                   />
-                  <p style={{ fontSize: 13, color: '#6b7280', marginTop: 6 }}>Report PDFs will be sent to this email address</p>
+                  <p style={{ fontSize: 13, color: '#6b7280', marginTop: 6 }}>Enter one or more email addresses separated by commas</p>
                 </div>
 
                 <div style={{ marginBottom: 20 }}>

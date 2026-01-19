@@ -188,25 +188,31 @@ function conversioniq_get_automated_settings() {
 function conversioniq_save_automated_settings( WP_REST_Request $request ) {
     $body = $request->get_json_params();
     
+    // Process and validate emails (comma-separated)
+    $email_input = isset( $body['email'] ) ? sanitize_text_field( $body['email'] ) : '';
+    $emails = array_map( 'trim', explode( ',', $email_input ) );
+    $valid_emails = array_filter( $emails, 'is_email' );
+    
     $settings = array(
         'enabled' => isset( $body['enabled'] ) ? (bool) $body['enabled'] : false,
         'frequency' => isset( $body['frequency'] ) ? sanitize_text_field( $body['frequency'] ) : 'weekly',
-        'email' => isset( $body['email'] ) ? sanitize_email( $body['email'] ) : '',
+        'email' => implode( ', ', $valid_emails ),
         'defaultPages' => isset( $body['defaultPages'] ) ? array_map( 'intval', $body['defaultPages'] ) : array()
     );
     
-    // Validate email
-    if ( $settings['enabled'] && empty( $settings['email'] ) ) {
+    // Validate emails
+    if ( $settings['enabled'] && empty( $valid_emails ) ) {
         return new WP_REST_Response( array(
             'success' => false,
-            'message' => 'Email address is required when automated reports are enabled'
+            'message' => 'At least one valid email address is required when automated reports are enabled'
         ), 400 );
     }
     
-    if ( $settings['enabled'] && ! is_email( $settings['email'] ) ) {
+    if ( $settings['enabled'] && count( $valid_emails ) < count( $emails ) ) {
+        $invalid_count = count( $emails ) - count( $valid_emails );
         return new WP_REST_Response( array(
             'success' => false,
-            'message' => 'Invalid email address'
+            'message' => "Found {$invalid_count} invalid email address(es). Please check your email list."
         ), 400 );
     }
     
@@ -972,7 +978,7 @@ function conversioniq_test_email( WP_REST_Request $request ) {
  */
 function conversioniq_send_manual_report( WP_REST_Request $request ) {
     $params = $request->get_json_params();
-    $email = sanitize_email( $params['email'] ?? '' );
+    $email_input = sanitize_text_field( $params['email'] ?? '' );
     $page_ids = isset( $params['page_ids'] ) ? array_map( 'intval', $params['page_ids'] ) : array();
     
     $log = array();
@@ -980,16 +986,21 @@ function conversioniq_send_manual_report( WP_REST_Request $request ) {
     
     // Get settings to use configured email or fallback
     $settings = get_option( 'conversion_iq_automated_reports', array() );
-    if ( empty( $email ) ) {
-        $email = $settings['email'] ?? get_option( 'admin_email' );
+    if ( empty( $email_input ) ) {
+        $email_input = $settings['email'] ?? get_option( 'admin_email' );
     }
     
-    $log[] = '📧 Target email: ' . $email;
+    // Process comma-separated emails
+    $emails = array_map( 'trim', explode( ',', $email_input ) );
+    $valid_emails = array_filter( $emails, 'is_email' );
+    $email = implode( ', ', $valid_emails );
     
-    if ( ! is_email( $email ) ) {
+    $log[] = '📧 Target email(s): ' . $email;
+    
+    if ( empty( $valid_emails ) ) {
         return new WP_REST_Response( array(
             'success' => false,
-            'message' => 'Invalid email address',
+            'message' => 'At least one valid email address is required',
             'log' => $log
         ), 400 );
     }
