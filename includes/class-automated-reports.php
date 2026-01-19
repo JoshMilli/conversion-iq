@@ -234,8 +234,8 @@ class ConversionIQ_Automated_Reports {
             $avg_scores[$key] = round( $val / $total_pages );
         }
         arsort( $avg_scores );
-        $weakest_areas = array_slice( array_keys( $avg_scores ), -2, 2, true );
-        $strongest_areas = array_slice( array_keys( $avg_scores ), 0, 2, true );
+        $weakest_areas = array_values( array_slice( array_keys( $avg_scores ), -2, 2 ) );
+        $strongest_areas = array_values( array_slice( array_keys( $avg_scores ), 0, 2 ) );
         
         // Build email subject
         $subject = sprintf( '[%s] Conversion Audit Report - Score: %d/100', $site_name, $overall_score );
