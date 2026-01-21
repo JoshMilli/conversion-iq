@@ -13,12 +13,13 @@ CREATE TABLE organizations (
     plan TEXT DEFAULT 'free',
     api_key TEXT UNIQUE NOT NULL,
     max_audits_per_month INTEGER DEFAULT 10,
-    -- User/Account Fields (NEW)
+    -- User/Account Fields
     user_full_name TEXT,
     user_email TEXT,
     company_name TEXT,
     company_id TEXT,
-    username TEXT,
+    username TEXT UNIQUE,
+    password_hash TEXT,
     -- Timestamps
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()

@@ -155,6 +155,156 @@ class ConversionIQ_Supabase_Sync {
     }
     
     /**
+     * Check if an account with the given email or username exists in Supabase
+     *
+     * @param string $email Email address to check
+     * @param string $username Username to check
+     * @return array|false Organization data if exists, false otherwise
+     */
+    public function check_account_exists($email = null, $username = null) {
+        if (!$this->supabase_anon_key) {
+            error_log('ConversionIQ: Cannot check account - Supabase not configured');
+            return false;
+        }
+        
+        $filters = [];
+        if ($email) {
+            $filters[] = 'user_email=eq.' . urlencode($email);
+        }
+        if ($username) {
+            $filters[] = 'username=eq.' . urlencode($username);
+        }
+        
+        if (empty($filters)) {
+            return false;
+        }
+        
+        $query = implode(',', $filters);
+        $url = $this->supabase_url . '/rest/v1/organizations?or=(' . $query . ')&select=*';
+        
+        $response = wp_remote_get($url, [
+            'headers' => [
+                'apikey' => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key
+            ],
+            'timeout' => 30
+        ]);
+        
+        if (is_wp_error($response)) {
+            error_log('ConversionIQ: Failed to check account - ' . $response->get_error_message());
+            return false;
+        }
+        
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        if (!empty($body) && is_array($body)) {
+            return $body[0]; // Return first match
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Validate login credentials against Supabase
+     *
+     * @param string $username Username
+     * @param string $password Password
+     * @return array|false Organization data if valid, false otherwise
+     */
+    public function validate_login($username, $password) {
+        if (!$this->supabase_anon_key) {
+            error_log('ConversionIQ: Cannot validate login - Supabase not configured');
+            return false;
+        }
+        
+        $url = $this->supabase_url . '/rest/v1/organizations?username=eq.' . urlencode($username) . '&select=*';
+        
+        $response = wp_remote_get($url, [
+            'headers' => [
+                'apikey' => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key
+            ],
+            'timeout' => 30
+        ]);
+        
+        if (is_wp_error($response)) {
+            error_log('ConversionIQ: Failed to validate login - ' . $response->get_error_message());
+            return false;
+        }
+        
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        if (!empty($body) && is_array($body)) {
+            $org = $body[0];
+            
+            // Verify password if password_hash exists
+            if (isset($org['password_hash']) && password_verify($password, $org['password_hash'])) {
+                return $org;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Create a new account in Supabase
+     *
+     * @param array $account_data Account data (full_name, email, company, username, password_hash, etc.)
+     * @return array|false Created organization data if successful, false otherwise
+     */
+    public function create_account($account_data) {
+        if (!$this->supabase_anon_key) {
+            error_log('ConversionIQ: Cannot create account - Supabase not configured');
+            return false;
+        }
+        
+        $site_url = get_site_url();
+        $site_name = get_bloginfo('name');
+        
+        // Prepare organization data
+        $org_data = [
+            'name' => $site_name ?: 'WordPress Site',
+            'domain' => parse_url($site_url, PHP_URL_HOST),
+            'api_key' => $account_data['api_key'],
+            'plan' => 'free',
+            'max_audits_per_month' => 10,
+            'user_full_name' => $account_data['full_name'],
+            'user_email' => $account_data['email'],
+            'company_name' => $account_data['company'],
+            'company_id' => $account_data['company_id'],
+            'username' => $account_data['username'],
+            'password_hash' => $account_data['password_hash']
+        ];
+        
+        $response = wp_remote_post($this->supabase_url . '/rest/v1/organizations', [
+            'headers' => [
+                'apikey' => $this->supabase_anon_key,
+                'Content-Type' => 'application/json',
+                'Prefer' => 'return=representation'
+            ],
+            'body' => json_encode($org_data),
+            'timeout' => 30
+        ]);
+        
+        if (is_wp_error($response)) {
+            error_log('ConversionIQ: Failed to create account - ' . $response->get_error_message());
+            return false;
+        }
+        
+        $status_code = wp_remote_retrieve_response_code($response);
+        if ($status_code !== 201) {
+            error_log('ConversionIQ: Create account failed: Status ' . $status_code);
+            error_log('Response: ' . wp_remote_retrieve_body($response));
+            return false;
+        }
+        
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        if (isset($body[0])) {
+            return $body[0];
+        }
+        
+        return false;
+    }
+    
+    /**
      * Update organization data in Supabase (e.g., when account info changes)
      *
      * @param array $data Data to update

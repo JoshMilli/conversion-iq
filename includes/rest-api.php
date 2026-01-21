@@ -793,29 +793,56 @@ function conversioniq_auth_login( WP_REST_Request $request ) {
         ), 400 );
     }
     
-    $account = get_option( 'conversioniq_account', null );
-    
-    if ( ! $account || $account['username'] !== $username ) {
+    // Validate credentials against Supabase
+    try {
+        $supabase_sync = new ConversionIQ_Supabase_Sync();
+        $org_data = $supabase_sync->validate_login( $username, $password );
+        
+        if ( ! $org_data ) {
+            return new WP_REST_Response( array(
+                'success' => false,
+                'message' => 'Invalid username or password'
+            ), 401 );
+        }
+        
+        // Store/update local WordPress account data for caching
+        $account = array(
+            'full_name' => $org_data['user_full_name'] ?? '',
+            'email' => $org_data['user_email'] ?? '',
+            'company' => $org_data['company_name'] ?? '',
+            'company_id' => $org_data['company_id'] ?? '',
+            'username' => $org_data['username'] ?? $username,
+            'password_hash' => $org_data['password_hash'] ?? '',
+            'api_key' => $org_data['api_key'] ?? '',
+            'created_at' => $org_data['created_at'] ?? current_time( 'mysql' ),
+            'last_audit' => null
+        );
+        
+        // Store organization ID for future sync operations
+        if ( isset( $org_data['id'] ) ) {
+            update_option( 'conversioniq_organization_id', $org_data['id'] );
+        }
+        if ( isset( $org_data['api_key'] ) ) {
+            update_option( 'conversioniq_api_key', $org_data['api_key'] );
+        }
+        
+        update_option( 'conversioniq_account', $account );
+        
+        // Remove password hash before sending
+        unset( $account['password_hash'] );
+        
+        return rest_ensure_response( array(
+            'success' => true,
+            'account' => $account
+        ) );
+        
+    } catch ( Exception $e ) {
+        error_log( 'ConversionIQ Login Error: ' . $e->getMessage() );
         return new WP_REST_Response( array(
             'success' => false,
-            'message' => 'Invalid username or password'
-        ), 401 );
+            'message' => 'Login failed. Please try again.'
+        ), 500 );
     }
-    
-    if ( ! password_verify( $password, $account['password_hash'] ) ) {
-        return new WP_REST_Response( array(
-            'success' => false,
-            'message' => 'Invalid username or password'
-        ), 401 );
-    }
-    
-    // Remove password hash before sending
-    unset( $account['password_hash'] );
-    
-    return rest_ensure_response( array(
-        'success' => true,
-        'account' => $account
-    ) );
 }
 
 function conversioniq_auth_register( WP_REST_Request $request ) {
@@ -849,20 +876,26 @@ function conversioniq_auth_register( WP_REST_Request $request ) {
         ), 400 );
     }
     
-    // Check if account already exists
-    $existing_account = get_option( 'conversioniq_account', null );
-    if ( $existing_account ) {
-        return new WP_REST_Response( array(
-            'success' => false,
-            'message' => 'An account already exists. Please login or contact support.'
-        ), 400 );
+    // Check if account already exists in Supabase
+    try {
+        $supabase_sync = new ConversionIQ_Supabase_Sync();
+        $existing_account = $supabase_sync->check_account_exists( $email, $username );
+        
+        if ( $existing_account ) {
+            return new WP_REST_Response( array(
+                'success' => false,
+                'message' => 'An account with this email or username already exists. Please login or use different credentials.'
+            ), 400 );
+        }
+    } catch ( Exception $e ) {
+        error_log( 'ConversionIQ Registration Check Error: ' . $e->getMessage() );
     }
     
     // Generate unique API key and company identifier
     $api_key = bin2hex( random_bytes( 24 ) ); // 48 character hex string
     $company_id = sanitize_title( $company ) . '-' . substr( md5( $email . time() ), 0, 8 );
     
-    // Create account
+    // Create account data
     $account = array(
         'full_name' => $full_name,
         'email' => $email,
@@ -875,15 +908,37 @@ function conversioniq_auth_register( WP_REST_Request $request ) {
         'last_audit' => null
     );
     
-    update_option( 'conversioniq_account', $account );
-    
-    // Sync account data to Supabase organization
+    // Create account in Supabase
     try {
         $supabase_sync = new ConversionIQ_Supabase_Sync();
-        $supabase_sync->update_organization();
-        error_log('ConversionIQ: Account data synced to Supabase');
-    } catch (Exception $e) {
-        error_log('ConversionIQ: Failed to sync account to Supabase - ' . $e->getMessage());
+        $supabase_org = $supabase_sync->create_account( $account );
+        
+        if ( ! $supabase_org ) {
+            return new WP_REST_Response( array(
+                'success' => false,
+                'message' => 'Failed to create account. Please try again.'
+            ), 500 );
+        }
+        
+        // Store organization ID for future sync operations
+        if ( isset( $supabase_org['id'] ) ) {
+            update_option( 'conversioniq_organization_id', $supabase_org['id'] );
+        }
+        if ( isset( $supabase_org['api_key'] ) ) {
+            update_option( 'conversioniq_api_key', $supabase_org['api_key'] );
+        }
+        
+        // Store account locally as well
+        update_option( 'conversioniq_account', $account );
+        
+        error_log('ConversionIQ: Account created successfully in Supabase with ID: ' . $supabase_org['id']);
+        
+    } catch ( Exception $e ) {
+        error_log( 'ConversionIQ Registration Error: ' . $e->getMessage() );
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => 'Failed to create account. Please try again.'
+        ), 500 );
     }
     
     // Remove password hash before sending
