@@ -352,6 +352,38 @@ function conversioniq_run_audit( WP_REST_Request $request ) {
             );
             $results[] = $ai;
             
+            // Sync audit to Supabase cloud database
+            try {
+                $supabase_sync = new ConversionIQ_Supabase_Sync();
+                $business_data = isset($payload['business']) ? $payload['business'] : array();
+                $sync_success = $supabase_sync->send_audit(array(
+                    'page_url' => $page_url,
+                    'page_title' => $post->post_title,
+                    'industry' => isset($business_data['industry']) ? $business_data['industry'] : null,
+                    'clarity_score' => isset($ai['clarity_score']) ? $ai['clarity_score'] : null,
+                    'emotional_score' => isset($ai['emotional_score']) ? $ai['emotional_score'] : null,
+                    'cta_strength' => isset($ai['cta_strength']) ? $ai['cta_strength'] : null,
+                    'readability_score' => isset($ai['readability_score']) ? $ai['readability_score'] : null,
+                    'engagement_score' => isset($ai['engagement_score']) ? $ai['engagement_score'] : null,
+                    'trust_score' => isset($ai['trust_score']) ? $ai['trust_score'] : null,
+                    'overall_score' => isset($ai['overall_score']) ? $ai['overall_score'] : null,
+                    'suggestions' => isset($ai['suggestions']) ? $ai['suggestions'] : array(),
+                    'functionality_suggestions' => isset($ai['functionality_suggestions']) ? $ai['functionality_suggestions'] : array(),
+                    'rewrites' => isset($ai['rewrites']) ? $ai['rewrites'] : array(),
+                    'analysis_method' => isset($ai['analysis_method']) ? $ai['analysis_method'] : 'single',
+                    'sections_analyzed' => isset($ai['sections_analyzed']) ? $ai['sections_analyzed'] : 1
+                ));
+                
+                // Track usage for analytics
+                $supabase_sync->track_usage('analyze_page');
+                
+                if (!$sync_success) {
+                    error_log('ConversionIQ: Warning - Failed to sync audit to Supabase cloud');
+                }
+            } catch (Exception $e) {
+                error_log('ConversionIQ: Supabase sync exception - ' . $e->getMessage());
+            }
+            
             // Send to webhook if configured
             conversioniq_send_webhook( $ai );
             
@@ -845,6 +877,15 @@ function conversioniq_auth_register( WP_REST_Request $request ) {
     
     update_option( 'conversioniq_account', $account );
     
+    // Sync account data to Supabase organization
+    try {
+        $supabase_sync = new ConversionIQ_Supabase_Sync();
+        $supabase_sync->update_organization();
+        error_log('ConversionIQ: Account data synced to Supabase');
+    } catch (Exception $e) {
+        error_log('ConversionIQ: Failed to sync account to Supabase - ' . $e->getMessage());
+    }
+    
     // Remove password hash before sending
     unset( $account['password_hash'] );
     
@@ -1103,6 +1144,36 @@ function conversioniq_send_manual_report( WP_REST_Request $request ) {
                     
                     if ( $inserted ) {
                         $log[] = '    ✅ Audit completed and saved (ID: ' . $wpdb->insert_id . ')';
+                        
+                        // Sync to Supabase cloud database
+                        try {
+                            $supabase_sync = new ConversionIQ_Supabase_Sync();
+                            $sync_success = $supabase_sync->send_audit(array(
+                                'page_url' => $page_url,
+                                'page_title' => $page->post_title,
+                                'industry' => isset($business['industry']) ? $business['industry'] : null,
+                                'clarity_score' => isset($ai_result['clarity_score']) ? $ai_result['clarity_score'] : null,
+                                'emotional_score' => isset($ai_result['emotional_score']) ? $ai_result['emotional_score'] : null,
+                                'cta_strength' => isset($ai_result['cta_strength']) ? $ai_result['cta_strength'] : null,
+                                'readability_score' => isset($ai_result['readability_score']) ? $ai_result['readability_score'] : null,
+                                'engagement_score' => isset($ai_result['engagement_score']) ? $ai_result['engagement_score'] : null,
+                                'trust_score' => isset($ai_result['trust_score']) ? $ai_result['trust_score'] : null,
+                                'overall_score' => isset($ai_result['overall_score']) ? $ai_result['overall_score'] : null,
+                                'suggestions' => isset($ai_result['suggestions']) ? $ai_result['suggestions'] : array(),
+                                'functionality_suggestions' => isset($ai_result['functionality_suggestions']) ? $ai_result['functionality_suggestions'] : array(),
+                                'rewrites' => isset($ai_result['rewrites']) ? $ai_result['rewrites'] : array(),
+                                'analysis_method' => isset($ai_result['analysis_method']) ? $ai_result['analysis_method'] : 'single',
+                                'sections_analyzed' => isset($ai_result['sections_analyzed']) ? $ai_result['sections_analyzed'] : 1
+                            ));
+                            
+                            $supabase_sync->track_usage('analyze_page');
+                            
+                            if ($sync_success) {
+                                $log[] = '    ☁️ Synced to Supabase cloud';
+                            }
+                        } catch (Exception $e) {
+                            $log[] = '    ⚠️ Supabase sync skipped: ' . $e->getMessage();
+                        }
                     } else {
                         $log[] = '    ⚠️ Audit completed but failed to save: ' . $wpdb->last_error;
                     }

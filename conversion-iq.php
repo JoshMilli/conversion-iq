@@ -50,6 +50,7 @@ require_once CONVERSION_IQ_DIR . 'includes/rest-api.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-ai-engine.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-reports.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-automated-reports.php';
+require_once CONVERSION_IQ_DIR . 'includes/class-supabase-sync.php';
 
 // Initialize automated reports after WordPress loads
 add_action( 'init', function() {
