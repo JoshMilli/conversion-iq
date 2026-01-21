@@ -1,0 +1,7 @@
+:root{--primary:#2b9af3;--muted:#6b7280}
+body{font-family:Arial,Helvetica,sans-serif;color:#111}
+.ciq-hero{background:linear-gradient(90deg,#f5fbff,#fff);padding:18px;border-radius:8px;margin-bottom:12px}
+.ciq-main{display:flex;gap:16px}
+.ciq-left{flex:1}
+.ciq-right{width:220px}
+.ciq-btn{background:var(--primary);color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer}
