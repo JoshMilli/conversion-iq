@@ -49,10 +49,8 @@ class ConversionIQ_Supabase_Sync {
         $this->api_key = get_option('conversioniq_api_key');
         $this->organization_id = get_option('conversioniq_organization_id');
         
-        // Register this installation if not already registered
-        if (!$this->api_key || !$this->organization_id) {
-            $this->register_installation();
-        }
+        // NOTE: Auto-registration disabled - users must register through the UI
+        // This prevents duplicate organization records
     }
     
     /**
