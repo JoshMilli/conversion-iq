@@ -30,6 +30,12 @@ class ConversionIQ_AI {
         $html_structure = isset( $payload['page']['html_structure'] ) ? $payload['page']['html_structure'] : '';
         $business = isset( $payload['business'] ) ? $payload['business'] : array();
         
+        // Check if content is too long and needs chunking
+        if ( strlen( $page_content ) > 8000 ) {
+            error_log( '📚 Long content detected (' . strlen( $page_content ) . ' chars), using chunked analysis' );
+            return self::analyze_chunked( $payload );
+        }
+        
         // Build the AI prompt
         $prompt = self::build_prompt( $page_title, $page_content, $page_url, $word_count, $html_structure, $business );
         
@@ -65,15 +71,276 @@ class ConversionIQ_AI {
     }
     
     /**
+     * Analyze long pages by splitting into sections
+     */
+    private static function analyze_chunked( $payload ) {
+        $page_title = isset( $payload['page']['title'] ) ? $payload['page']['title'] : 'Unknown Page';
+        $content = isset( $payload['page']['content'] ) ? $payload['page']['content'] : '';
+        
+        error_log( '🔍 Starting chunked analysis for: ' . $page_title );
+        
+        $sections = self::split_into_sections( $content );
+        
+        if ( empty( $sections ) ) {
+            error_log( '⚠️ Failed to split content into sections, falling back to truncated analysis' );
+            $payload['page']['content'] = substr( $content, 0, 8000 );
+            return self::analyze( $payload );
+        }
+        
+        $all_scores = array();
+        $all_suggestions = array();
+        $all_functionality_suggestions = array();
+        
+        $section_count = count( $sections );
+        $current = 0;
+        
+        foreach ( $sections as $section_name => $section_content ) {
+            $current++;
+            error_log( "📄 Analyzing section {$current}/{$section_count}: {$section_name} (" . strlen( $section_content ) . " chars)" );
+            
+            // Compress content if still too long
+            $compressed = self::compress_content( $section_content );
+            
+            // Update payload with section content
+            $section_payload = $payload;
+            $section_payload['page']['content'] = $compressed;
+            $section_payload['page']['word_count'] = str_word_count( $compressed );
+            
+            $prompt = self::build_prompt(
+                $payload['page']['title'],
+                $compressed,
+                isset( $payload['page']['url'] ) ? $payload['page']['url'] : '',
+                str_word_count( $compressed ),
+                isset( $payload['page']['html_structure'] ) ? $payload['page']['html_structure'] : '',
+                isset( $payload['business'] ) ? $payload['business'] : array(),
+                $section_name
+            );
+            
+            $response = self::call_abacus_ai( $prompt );
+            
+            if ( $response && isset( $response['success'] ) && $response['success'] ) {
+                $data = $response['data'];
+                $all_scores[] = $data;
+                
+                // Collect suggestions with section context
+                if ( isset( $data['suggestions'] ) && is_array( $data['suggestions'] ) ) {
+                    foreach ( $data['suggestions'] as $suggestion ) {
+                        if ( is_array( $suggestion ) ) {
+                            $suggestion['analyzed_section'] = $section_name;
+                            $all_suggestions[] = $suggestion;
+                        }
+                    }
+                }
+                
+                // Collect functionality suggestions (only from first section to avoid duplicates)
+                if ( $current === 1 && isset( $data['functionality_suggestions'] ) && is_array( $data['functionality_suggestions'] ) ) {
+                    $all_functionality_suggestions = $data['functionality_suggestions'];
+                }
+                
+                error_log( "✅ Section '{$section_name}' analyzed successfully" );
+            } else {
+                error_log( "⚠️ Section '{$section_name}' analysis failed" );
+            }
+            
+            // Small delay to avoid rate limiting
+            if ( $current < $section_count ) {
+                sleep( 1 );
+            }
+        }
+        
+        // Aggregate results
+        return self::aggregate_section_results( $all_scores, $all_suggestions, $all_functionality_suggestions, $payload );
+    }
+    
+    /**
+     * Split content into logical sections
+     */
+    private static function split_into_sections( $content ) {
+        $sections = array();
+        
+        // Strategy 1: Split by HTML section tags
+        if ( preg_match_all( '/<section[^>]*>(.*?)<\/section>/is', $content, $matches ) ) {
+            foreach ( $matches[0] as $i => $section_html ) {
+                $section_name = "Section " . ($i + 1);
+                // Try to get section ID or class for better naming
+                if ( preg_match( '/id=["\']([^"\'\']+)["\']/', $section_html, $id_match ) ) {
+                    $section_name = ucfirst( str_replace( array('-', '_'), ' ', $id_match[1] ) );
+                } elseif ( preg_match( '/class=["\']([^"\'\']+)["\']/', $section_html, $class_match ) ) {
+                    $classes = explode( ' ', $class_match[1] );
+                    $section_name = ucfirst( str_replace( array('-', '_'), ' ', $classes[0] ) );
+                }
+                $sections[$section_name] = wp_strip_all_tags( $matches[1][$i] );
+            }
+        }
+        
+        // Strategy 2: If no sections, split by headers (H1-H3)
+        if ( empty( $sections ) ) {
+            $parts = preg_split( '/(<h[1-3][^>]*>.*?<\/h[1-3]>)/i', $content, -1, PREG_SPLIT_DELIM_CAPTURE );
+            $current_section = 'Introduction';
+            $current_content = '';
+            
+            foreach ( $parts as $part ) {
+                if ( preg_match( '/<h[1-3][^>]*>(.*?)<\/h[1-3]>/i', $part, $header ) ) {
+                    if ( !empty( trim( $current_content ) ) ) {
+                        $sections[$current_section] = trim( wp_strip_all_tags( $current_content ) );
+                    }
+                    $current_section = wp_strip_all_tags( $header[1] );
+                    $current_content = '';
+                } else {
+                    $current_content .= $part;
+                }
+            }
+            
+            if ( !empty( trim( $current_content ) ) ) {
+                $sections[$current_section] = trim( wp_strip_all_tags( $current_content ) );
+            }
+        }
+        
+        // Strategy 3: Fallback - split by character count into even chunks
+        if ( empty( $sections ) ) {
+            $chunk_size = 6000;
+            $chunks = str_split( $content, $chunk_size );
+            foreach ( $chunks as $i => $chunk ) {
+                $sections["Part " . ($i + 1)] = wp_strip_all_tags( $chunk );
+            }
+        }
+        
+        // Remove empty or very short sections (less than 100 chars)
+        $sections = array_filter( $sections, function( $content ) {
+            return strlen( trim( $content ) ) > 100;
+        });
+        
+        error_log( '📑 Split content into ' . count( $sections ) . ' sections: ' . implode( ', ', array_keys( $sections ) ) );
+        
+        return $sections;
+    }
+    
+    /**
+     * Intelligently compress content while preserving key conversion elements
+     */
+    private static function compress_content( $content ) {
+        if ( strlen( $content ) <= 7000 ) {
+            return $content;
+        }
+        
+        error_log( '🗜️ Compressing content from ' . strlen( $content ) . ' chars' );
+        
+        $key_elements = array();
+        
+        // 1. Extract Headlines (H1-H3)
+        if ( preg_match_all( '/<h[1-3][^>]*>(.*?)<\/h[1-3]>/is', $content, $headers ) ) {
+            $key_elements['headers'] = implode( "\n", array_slice( $headers[0], 0, 5 ) );
+        }
+        
+        // 2. Extract CTAs (buttons, links with CTA classes)
+        if ( preg_match_all( '/<(?:button|a)[^>]*class=["\'][^"\'\']*(?:cta|button|btn)[^"\'\']*["\'][^>]*>(.*?)<\/(?:button|a)>/is', $content, $ctas ) ) {
+            $key_elements['ctas'] = implode( "\n", array_slice( $ctas[0], 0, 5 ) );
+        }
+        
+        // 3. Extract first few paragraphs
+        if ( preg_match_all( '/<p[^>]*>(.*?)<\/p>/is', $content, $paragraphs, PREG_SET_ORDER ) ) {
+            $first_paras = array_slice( array_map( function($p) { return $p[0]; }, $paragraphs ), 0, 4 );
+            $key_elements['key_paragraphs'] = implode( "\n", $first_paras );
+        }
+        
+        // 4. Extract lists (features, benefits)
+        if ( preg_match_all( '/<(?:ul|ol)[^>]*>(.*?)<\/(?:ul|ol)>/is', $content, $lists ) ) {
+            $key_elements['lists'] = implode( "\n", array_slice( $lists[0], 0, 2 ) );
+        }
+        
+        // 5. Extract any pricing or value-related content
+        if ( preg_match_all( '/<[^>]*class=["\'][^"\'\']*(?:price|pricing|value|cost)[^"\'\']*["\'][^>]*>.*?<\/[^>]+>/is', $content, $pricing ) ) {
+            $key_elements['pricing'] = implode( "\n", array_slice( $pricing[0], 0, 3 ) );
+        }
+        
+        $compressed = "[CONTENT COMPRESSED - Key Elements Extracted]\n\n" . implode( "\n\n", array_filter( $key_elements ) );
+        
+        // If still too long, truncate
+        if ( strlen( $compressed ) > 7000 ) {
+            $compressed = substr( $compressed, 0, 7000 ) . '... [truncated]';
+        }
+        
+        error_log( '🗜️ Compressed to ' . strlen( $compressed ) . ' chars' );
+        
+        return $compressed;
+    }
+    
+    /**
+     * Aggregate results from multiple section analyses
+     */
+    private static function aggregate_section_results( $all_scores, $all_suggestions, $all_functionality_suggestions, $original_payload ) {
+        if ( empty( $all_scores ) ) {
+            error_log( '⚠️ No scores to aggregate, using mock response' );
+            return self::mock_response( isset( $original_payload['page']['title'] ) ? $original_payload['page']['title'] : 'Unknown Page' );
+        }
+        
+        error_log( '🔢 Aggregating results from ' . count( $all_scores ) . ' sections' );
+        
+        // Average all scores
+        $averaged = array(
+            'clarity_score' => 0,
+            'emotional_score' => 0,
+            'cta_strength' => 0,
+            'readability_score' => 0,
+            'engagement_score' => 0,
+            'trust_score' => 0,
+        );
+        
+        $count = count( $all_scores );
+        foreach ( $all_scores as $scores ) {
+            foreach ( $averaged as $key => $value ) {
+                if ( isset( $scores[$key] ) ) {
+                    $averaged[$key] += intval( $scores[$key] );
+                }
+            }
+        }
+        
+        foreach ( $averaged as $key => $value ) {
+            $averaged[$key] = round( $value / $count );
+        }
+        
+        error_log( '✅ Averaged scores calculated: clarity=' . $averaged['clarity_score'] . ', engagement=' . $averaged['engagement_score'] );
+        
+        // Combine suggestions (limit to top 15 most impactful)
+        $limited_suggestions = array_slice( $all_suggestions, 0, 15 );
+        error_log( '📝 Combined ' . count( $all_suggestions ) . ' suggestions, limited to ' . count( $limited_suggestions ) );
+        
+        // Use first section's rewrites and insights (or merge them)
+        $first_section = $all_scores[0];
+        
+        $result = array_merge( $averaged, array(
+            'suggestions' => $limited_suggestions,
+            'functionality_suggestions' => $all_functionality_suggestions,
+            'rewrites' => isset( $first_section['rewrites'] ) ? $first_section['rewrites'] : array(),
+            'insights' => isset( $first_section['insights'] ) ? $first_section['insights'] : array(),
+            'recommendations' => isset( $first_section['recommendations'] ) ? $first_section['recommendations'] : array(),
+            'ai_used' => true,
+            'analysis_method' => 'chunked',
+            'sections_analyzed' => count( $all_scores )
+        ));
+        
+        error_log( '✅ Aggregation complete - returning chunked analysis results' );
+        
+        return $result;
+    }
+    
+    /**
      * Build comprehensive prompt for AI analysis
      */
-    private static function build_prompt( $title, $content, $url, $word_count, $html_structure, $business ) {
+    private static function build_prompt( $title, $content, $url, $word_count, $html_structure, $business, $section_name = null ) {
         $industry = isset( $business['industry'] ) ? $business['industry'] : 'Not specified';
         $product = isset( $business['product'] ) ? $business['product'] : 'Not specified';
         $audience = isset( $business['audience'] ) ? $business['audience'] : 'Not specified';
         $pain_points = isset( $business['pain_points'] ) ? $business['pain_points'] : 'Not specified';
         $competitors = isset( $business['competitors'] ) ? $business['competitors'] : 'Not specified';
         $goal = isset( $business['goal'] ) ? $business['goal'] : 'Not specified';
+        
+        // Section context for chunked analysis
+        $section_context = '';
+        if ( $section_name ) {
+            $section_context = "\n**ANALYSIS CONTEXT:**\nThis is a SECTION of a larger page. You are analyzing the '{$section_name}' section specifically.\nFocus your analysis on this section's content and contribution to overall page conversion.\nProvide section-specific suggestions.\n";
+            error_log( '📍 Building prompt for section: ' . $section_name );
+        }
         
         // Limit content length to prevent token overflow (max ~8000 chars for quality analysis)
         if ( strlen( $content ) > 8000 ) {
@@ -86,7 +353,7 @@ class ConversionIQ_AI {
             $html_structure = substr( $html_structure, 0, 2000 ) . '... [structure truncated]';
         }
         
-        $prompt = "You are an expert conversion copywriter and UX analyst. Perform a comprehensive analysis of the following WordPress page.
+        $prompt = "You are an expert conversion copywriter and UX analyst. Perform a comprehensive analysis of the following WordPress page.{$section_context}
 
 **Business Context:**
 - Industry: {$industry}
