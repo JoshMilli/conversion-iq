@@ -163,7 +163,6 @@ class ConversionIQ_Supabase_Sync {
      */
     public function check_account_exists($email = null, $username = null) {
         if (!$this->supabase_anon_key) {
-            error_log('ConversionIQ: Cannot check account - Supabase not configured');
             return false;
         }
         
@@ -191,7 +190,7 @@ class ConversionIQ_Supabase_Sync {
         ]);
         
         if (is_wp_error($response)) {
-            error_log('ConversionIQ: Failed to check account - ' . $response->get_error_message());
+            // Silently fail for check - better to allow registration than block it
             return false;
         }
         
@@ -252,8 +251,10 @@ class ConversionIQ_Supabase_Sync {
      */
     public function create_account($account_data) {
         if (!$this->supabase_anon_key) {
-            error_log('ConversionIQ: Cannot create account - Supabase not configured');
-            return false;
+            return [
+                'error' => 'Supabase not configured',
+                'debug' => ['anon_key_missing' => true]
+            ];
         }
         
         $site_url = get_site_url();
@@ -274,11 +275,9 @@ class ConversionIQ_Supabase_Sync {
             'password_hash' => $account_data['password_hash']
         ];
         
-        error_log('ConversionIQ: Attempting to create account in Supabase');
-        error_log('ConversionIQ: Supabase URL: ' . $this->supabase_url);
-        error_log('ConversionIQ: Organization data: ' . json_encode($org_data));
+        $url = $this->supabase_url . '/rest/v1/organizations';
         
-        $response = wp_remote_post($this->supabase_url . '/rest/v1/organizations', [
+        $response = wp_remote_post($url, [
             'headers' => [
                 'apikey' => $this->supabase_anon_key,
                 'Content-Type' => 'application/json',
@@ -289,30 +288,42 @@ class ConversionIQ_Supabase_Sync {
         ]);
         
         if (is_wp_error($response)) {
-            error_log('ConversionIQ: Failed to create account - ' . $response->get_error_message());
-            return false;
+            return [
+                'error' => $response->get_error_message(),
+                'debug' => [
+                    'wp_error' => true,
+                    'error_code' => $response->get_error_code()
+                ]
+            ];
         }
         
         $status_code = wp_remote_retrieve_response_code($response);
         $response_body = wp_remote_retrieve_body($response);
-        
-        error_log('ConversionIQ: Create account response status: ' . $status_code);
-        error_log('ConversionIQ: Create account response body: ' . $response_body);
+        $body = json_decode($response_body, true);
         
         if ($status_code !== 201) {
-            error_log('ConversionIQ: Create account failed: Status ' . $status_code);
-            error_log('Response: ' . $response_body);
-            return false;
+            return [
+                'error' => 'Supabase API error',
+                'debug' => [
+                    'status_code' => $status_code,
+                    'response' => $body,
+                    'url' => $url,
+                    'sent_data' => $org_data
+                ]
+            ];
         }
         
-        $body = json_decode($response_body, true);
         if (isset($body[0])) {
-            error_log('ConversionIQ: Successfully created account with ID: ' . $body[0]['id']);
             return $body[0];
         }
         
-        error_log('ConversionIQ: Create account response missing expected data');
-        return false;
+        return [
+            'error' => 'Unexpected response format',
+            'debug' => [
+                'status_code' => $status_code,
+                'response' => $body
+            ]
+        ];
     }
     
     /**

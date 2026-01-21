@@ -877,18 +877,15 @@ function conversioniq_auth_register( WP_REST_Request $request ) {
     }
     
     // Check if account already exists in Supabase
-    try {
-        $supabase_sync = new ConversionIQ_Supabase_Sync();
-        $existing_account = $supabase_sync->check_account_exists( $email, $username );
-        
-        if ( $existing_account ) {
-            return new WP_REST_Response( array(
-                'success' => false,
-                'message' => 'An account with this email or username already exists. Please login or use different credentials.'
-            ), 400 );
-        }
-    } catch ( Exception $e ) {
-        error_log( 'ConversionIQ Registration Check Error: ' . $e->getMessage() );
+    $supabase_sync = new ConversionIQ_Supabase_Sync();
+    $existing_account = $supabase_sync->check_account_exists( $email, $username );
+    
+    if ( $existing_account ) {
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => 'An account with this email or username already exists.',
+            'debug' => ['existing_account_found' => true]
+        ), 400 );
     }
     
     // Generate unique API key and company identifier
@@ -911,39 +908,42 @@ function conversioniq_auth_register( WP_REST_Request $request ) {
     // Create account in Supabase
     try {
         $supabase_sync = new ConversionIQ_Supabase_Sync();
-        $supabase_org = $supabase_sync->create_account( $account );
+        $result = $supabase_sync->create_account( $account );
         
-        if ( ! $supabase_org ) {
-            error_log('ConversionIQ Registration Error: create_account returned false/null');
+        if ( ! $result || isset( $result['error'] ) ) {
+            error_log('ConversionIQ Registration Error: create_account returned false/null or error');
             error_log('ConversionIQ Registration Data: ' . json_encode($account));
+            
+            $error_details = isset( $result['error'] ) ? $result['error'] : 'Unknown error occurred';
+            $debug_info = isset( $result['debug'] ) ? $result['debug'] : array();
+            
             return new WP_REST_Response( array(
                 'success' => false,
-                'message' => 'Failed to create account in Supabase. Please check server logs.'
+                'message' => 'Failed to create account in Supabase.',
+                'error' => $error_details,
+                'debug' => $debug_info
             ), 500 );
         }
         
         // Store organization ID for future sync operations
-        if ( isset( $supabase_org['id'] ) ) {
-            update_option( 'conversioniq_organization_id', $supabase_org['id'] );
-            error_log('ConversionIQ: Stored organization ID: ' . $supabase_org['id']);
+        if ( isset( $result['id'] ) ) {
+            update_option( 'conversioniq_organization_id', $result['id'] );
         }
-        if ( isset( $supabase_org['api_key'] ) ) {
-            update_option( 'conversioniq_api_key', $supabase_org['api_key'] );
-            error_log('ConversionIQ: Stored API key');
+        if ( isset( $result['api_key'] ) ) {
+            update_option( 'conversioniq_api_key', $result['api_key'] );
         }
         
         // Store account locally as well
         update_option( 'conversioniq_account', $account );
-        
-        error_log('ConversionIQ: Account created successfully in Supabase with ID: ' . ($supabase_org['id'] ?? 'unknown'));
-        error_log('ConversionIQ: Full Supabase response: ' . json_encode($supabase_org));
         
     } catch ( Exception $e ) {
         error_log( 'ConversionIQ Registration Exception: ' . $e->getMessage() );
         error_log( 'ConversionIQ Registration Stack Trace: ' . $e->getTraceAsString() );
         return new WP_REST_Response( array(
             'success' => false,
-            'message' => 'Failed to create account. Error: ' . $e->getMessage()
+            'message' => 'Failed to create account.',
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
         ), 500 );
     }
     
