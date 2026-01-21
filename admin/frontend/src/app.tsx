@@ -184,7 +184,22 @@ export default function App() {
         setNotice('❌ ' + response.data.message);
       }
     } catch (err: any) {
-      setNotice('❌ Registration failed: ' + (err.response?.data?.message || 'Please try again'));
+      console.error('Registration Error:', err);
+      console.error('Error Response:', err.response?.data);
+      
+      const errorData = err.response?.data;
+      let errorMessage = err.response?.data?.message || 'Please try again';
+      
+      // Log debug information if available
+      if (errorData?.debug) {
+        console.error('Debug Info:', errorData.debug);
+      }
+      if (errorData?.error) {
+        console.error('Error Details:', errorData.error);
+        errorMessage += '\n\nCheck browser console for details.';
+      }
+      
+      setNotice('❌ Registration failed: ' + errorMessage);
     } finally {
       setLoading(false);
     }
