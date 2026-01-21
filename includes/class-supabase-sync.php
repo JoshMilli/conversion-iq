@@ -208,6 +208,14 @@ class ConversionIQ_Supabase_Sync {
         error_log('ConversionIQ: Successfully updated organization data');
         return true;
     }
+
+    /**
+     * Send audit data to Supabase
+     *
+     * @param array $audit_data The complete audit data
+     * @return bool Success status
+     */
+    public function send_audit($audit_data) {
         // Check if we're configured
         if (!$this->organization_id || !$this->api_key || !$this->supabase_anon_key) {
             error_log('ConversionIQ: Cannot sync audit - not properly configured');
