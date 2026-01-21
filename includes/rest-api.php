@@ -914,30 +914,36 @@ function conversioniq_auth_register( WP_REST_Request $request ) {
         $supabase_org = $supabase_sync->create_account( $account );
         
         if ( ! $supabase_org ) {
+            error_log('ConversionIQ Registration Error: create_account returned false/null');
+            error_log('ConversionIQ Registration Data: ' . json_encode($account));
             return new WP_REST_Response( array(
                 'success' => false,
-                'message' => 'Failed to create account. Please try again.'
+                'message' => 'Failed to create account in Supabase. Please check server logs.'
             ), 500 );
         }
         
         // Store organization ID for future sync operations
         if ( isset( $supabase_org['id'] ) ) {
             update_option( 'conversioniq_organization_id', $supabase_org['id'] );
+            error_log('ConversionIQ: Stored organization ID: ' . $supabase_org['id']);
         }
         if ( isset( $supabase_org['api_key'] ) ) {
             update_option( 'conversioniq_api_key', $supabase_org['api_key'] );
+            error_log('ConversionIQ: Stored API key');
         }
         
         // Store account locally as well
         update_option( 'conversioniq_account', $account );
         
-        error_log('ConversionIQ: Account created successfully in Supabase with ID: ' . $supabase_org['id']);
+        error_log('ConversionIQ: Account created successfully in Supabase with ID: ' . ($supabase_org['id'] ?? 'unknown'));
+        error_log('ConversionIQ: Full Supabase response: ' . json_encode($supabase_org));
         
     } catch ( Exception $e ) {
-        error_log( 'ConversionIQ Registration Error: ' . $e->getMessage() );
+        error_log( 'ConversionIQ Registration Exception: ' . $e->getMessage() );
+        error_log( 'ConversionIQ Registration Stack Trace: ' . $e->getTraceAsString() );
         return new WP_REST_Response( array(
             'success' => false,
-            'message' => 'Failed to create account. Please try again.'
+            'message' => 'Failed to create account. Error: ' . $e->getMessage()
         ), 500 );
     }
     

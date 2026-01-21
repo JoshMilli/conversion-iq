@@ -274,6 +274,10 @@ class ConversionIQ_Supabase_Sync {
             'password_hash' => $account_data['password_hash']
         ];
         
+        error_log('ConversionIQ: Attempting to create account in Supabase');
+        error_log('ConversionIQ: Supabase URL: ' . $this->supabase_url);
+        error_log('ConversionIQ: Organization data: ' . json_encode($org_data));
+        
         $response = wp_remote_post($this->supabase_url . '/rest/v1/organizations', [
             'headers' => [
                 'apikey' => $this->supabase_anon_key,
@@ -290,17 +294,24 @@ class ConversionIQ_Supabase_Sync {
         }
         
         $status_code = wp_remote_retrieve_response_code($response);
+        $response_body = wp_remote_retrieve_body($response);
+        
+        error_log('ConversionIQ: Create account response status: ' . $status_code);
+        error_log('ConversionIQ: Create account response body: ' . $response_body);
+        
         if ($status_code !== 201) {
             error_log('ConversionIQ: Create account failed: Status ' . $status_code);
-            error_log('Response: ' . wp_remote_retrieve_body($response));
+            error_log('Response: ' . $response_body);
             return false;
         }
         
-        $body = json_decode(wp_remote_retrieve_body($response), true);
+        $body = json_decode($response_body, true);
         if (isset($body[0])) {
+            error_log('ConversionIQ: Successfully created account with ID: ' . $body[0]['id']);
             return $body[0];
         }
         
+        error_log('ConversionIQ: Create account response missing expected data');
         return false;
     }
     
