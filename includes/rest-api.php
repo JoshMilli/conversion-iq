@@ -985,6 +985,35 @@ function conversioniq_auth_register( WP_REST_Request $request ) {
         // Store account locally as well
         update_option( 'conversioniq_account', $account );
         
+        // Automatically set the client's email in automated audits and enable if not already configured
+        $automated_settings = get_option( 'conversion_iq_automated_reports', array(
+            'enabled' => false,
+            'frequency' => 'weekly',
+            'email' => '',
+            'defaultPages' => array()
+        ) );
+        
+        // Add the client's email to the automated audits
+        $existing_emails = array_filter( array_map( 'trim', explode( ',', $automated_settings['email'] ) ) );
+        if ( ! in_array( $email, $existing_emails, true ) ) {
+            $existing_emails[] = $email;
+        }
+        
+        $automated_settings['email'] = implode( ', ', $existing_emails );
+        
+        // Enable automated audits if not already enabled and we have default pages
+        if ( ! $automated_settings['enabled'] && ! empty( $automated_settings['defaultPages'] ) ) {
+            $automated_settings['enabled'] = true;
+            
+            // Schedule the cron job if not already scheduled
+            if ( ! wp_next_scheduled( 'conversioniq_automated_audit' ) ) {
+                $next_run = time() + WEEK_IN_SECONDS;
+                wp_schedule_event( $next_run, 'conversioniq_' . $automated_settings['frequency'], 'conversioniq_automated_audit' );
+            }
+        }
+        
+        update_option( 'conversion_iq_automated_reports', $automated_settings );
+        
     } catch ( Exception $e ) {
         error_log( 'ConversionIQ Registration Exception: ' . $e->getMessage() );
         error_log( 'ConversionIQ Registration Stack Trace: ' . $e->getTraceAsString() );

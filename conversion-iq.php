@@ -99,6 +99,41 @@ function conversioniq_install() {
     ConversionIQ_DB::create_tables();
     flush_rewrite_rules();
     update_option( 'conversioniq_version', CONVERSION_IQ_VERSION );
+    
+    // Get the homepage ID
+    $homepage_id = get_option( 'page_on_front' );
+    if ( ! $homepage_id ) {
+        // Fallback: get the first published page
+        $first_page = get_posts( array(
+            'post_type' => 'page',
+            'posts_per_page' => 1,
+            'orderby' => 'date',
+            'order' => 'ASC',
+            'post_status' => 'publish'
+        ) );
+        if ( ! empty( $first_page ) ) {
+            $homepage_id = $first_page[0]->ID;
+        }
+    }
+    
+    // Enable automated audits with homepage as default page
+    $admin_email = get_option( 'admin_email' );
+    $automated_settings = array(
+        'enabled' => true,
+        'frequency' => 'weekly',
+        'email' => $admin_email,
+        'defaultPages' => $homepage_id ? array( $homepage_id ) : array()
+    );
+    update_option( 'conversion_iq_automated_reports', $automated_settings );
+    
+    // Schedule the cron job if we have pages and email
+    if ( $automated_settings['enabled'] && ! empty( $automated_settings['defaultPages'] ) && ! empty( $automated_settings['email'] ) ) {
+        // Only schedule if not already scheduled
+        if ( ! wp_next_scheduled( 'conversioniq_automated_audit' ) ) {
+            $next_run = time() + WEEK_IN_SECONDS;
+            wp_schedule_event( $next_run, 'conversioniq_weekly', 'conversioniq_automated_audit' );
+        }
+    }
 }
 register_activation_hook( __FILE__, 'conversioniq_install' );
 
