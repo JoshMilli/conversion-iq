@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 1.7.3
+ * Version: 1.7.4
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'CONVERSION_IQ_VERSION', '1.7.3' );
+define( 'CONVERSION_IQ_VERSION', '1.7.4' );
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
@@ -48,6 +48,7 @@ if ( file_exists( CONVERSION_IQ_DIR . 'vendor/autoload.php' ) ) {
 require_once CONVERSION_IQ_DIR . 'includes/class-database.php';
 require_once CONVERSION_IQ_DIR . 'includes/rest-api.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-ai-engine.php';
+require_once CONVERSION_IQ_DIR . 'includes/class-google-analytics.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-reports.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-automated-reports.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-supabase-sync.php';
@@ -157,3 +158,19 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
 add_action( 'plugins_loaded', function() {
     load_plugin_textdomain( 'conversion-iq', false, dirname( plugin_basename( __FILE__ ) ) . '/languages/' );
 } );
+
+// Handle Google Analytics OAuth callback
+add_action( 'admin_init', function() {
+    if ( isset( $_GET['page'] ) && $_GET['page'] === 'conversioniq' && isset( $_GET['code'] ) && isset( $_GET['ga_callback'] ) ) {
+        $ga = new ConversionIQ_Google_Analytics();
+        $result = $ga->exchange_code( $_GET['code'] );
+        
+        if ( $result['success'] ) {
+            wp_redirect( admin_url( 'admin.php?page=conversioniq&ga_connected=1' ) );
+        } else {
+            wp_redirect( admin_url( 'admin.php?page=conversioniq&ga_error=' . urlencode( $result['error'] ) ) );
+        }
+        exit;
+    }
+} );
+

@@ -74,7 +74,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
-  const [modal, setModal] = useState<{ audit?: Audit; open: boolean; tab?: string }>({ open: false, tab: 'overview' });
+  const [modal, setModal] = useState<{ audit?: Audit; open: boolean; tab?: string; gaData?: any }>({ open: false, tab: 'overview' });
   const [expandedSuggestions, setExpandedSuggestions] = useState<Set<number>>(new Set([0])); // First suggestion expanded by default
   const [activeTab, setActiveTab] = useState<'settings' | 'automated' | 'audits' | 'account' | 'faq'>('settings');
   const [automatedReporting, setAutomatedReporting] = useState({
@@ -97,6 +97,13 @@ export default function App() {
   });
   const [auditFilter, setAuditFilter] = useState<'all' | 'ai' | 'fallback'>('all');
   const [auditSearchQuery, setAuditSearchQuery] = useState('');
+  
+  // Google Analytics state
+  const [gaStatus, setGaStatus] = useState<any>({ connected: false, has_credentials: false });
+  const [gaClientId, setGaClientId] = useState('');
+  const [gaClientSecret, setGaClientSecret] = useState('');
+  const [gaProperties, setGaProperties] = useState<any[]>([]);
+  const [gaLoading, setGaLoading] = useState(false);
 
   // Check authentication status on mount
   useEffect(() => {
@@ -127,7 +134,38 @@ export default function App() {
       insert_id: row.id
     }))));
     axios.get(api('automated-settings'), { headers: { 'X-WP-Nonce': nonce } }).then(r => setAutomatedReporting(r.data));
+    axios.get(api('ga/status'), { headers: { 'X-WP-Nonce': nonce } }).then(r => setGaStatus(r.data));
   }, [isAuthenticated]);
+
+  // Check for GA OAuth callback
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('ga_connected') === '1') {
+      setNotice('✅ Google Analytics authenticated! Now select a property.');
+      handleGaLoadProperties();
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname + '?page=conversioniq');
+    } else if (params.get('ga_error')) {
+      setNotice('❌ Google Analytics auth failed: ' + params.get('ga_error'));
+      window.history.replaceState({}, document.title, window.location.pathname + '?page=conversioniq');
+    }
+  }, []);
+
+  // Load GA data when modal opens
+  useEffect(() => {
+    if (modal.open && modal.audit && modal.audit.page_url && gaStatus.connected) {
+      axios.post(api('ga/page-data'), {
+        url: modal.audit.page_url,
+        days: 30
+      }, { headers: { 'X-WP-Nonce': nonce } })
+        .then(r => {
+          if (r.data.success) {
+            setModal(m => ({ ...m, gaData: r.data.data }));
+          }
+        })
+        .catch(err => console.error('Failed to load GA data:', err));
+    }
+  }, [modal.open, modal.audit?.page_url, gaStatus.connected]);
 
   // Handlers
   const handleAuthFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -350,6 +388,95 @@ export default function App() {
     } finally {
       setManualReportLoading(false);
       setTimeout(() => setNotice(null), 8000);
+    }
+  };
+
+  // Google Analytics handlers
+  const handleGaSaveCredentials = async () => {
+    if (!gaClientId || !gaClientSecret) {
+      setNotice('❌ Please enter both Client ID and Client Secret');
+      return;
+    }
+    
+    setGaLoading(true);
+    try {
+      const response = await axios.post(api('ga/save-credentials'), {
+        client_id: gaClientId,
+        client_secret: gaClientSecret
+      }, { headers: { 'X-WP-Nonce': nonce } });
+      
+      if (response.data.success) {
+        setNotice('✅ Credentials saved! Now click "Connect to Google Analytics"');
+        setGaStatus({ ...gaStatus, has_credentials: true });
+      }
+    } catch (err: any) {
+      setNotice('❌ Failed to save credentials: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setGaLoading(false);
+    }
+  };
+
+  const handleGaConnect = async () => {
+    try {
+      const response = await axios.get(api('ga/auth-url'), { headers: { 'X-WP-Nonce': nonce } });
+      if (response.data.success && response.data.url) {
+        window.location.href = response.data.url;
+      }
+    } catch (err: any) {
+      setNotice('❌ ' + (err.response?.data?.error || 'Failed to get auth URL'));
+    }
+  };
+
+  const handleGaLoadProperties = async () => {
+    setGaLoading(true);
+    try {
+      const response = await axios.get(api('ga/properties'), { headers: { 'X-WP-Nonce': nonce } });
+      if (response.data.success) {
+        setGaProperties(response.data.properties);
+      } else {
+        setNotice('❌ ' + response.data.error);
+      }
+    } catch (err: any) {
+      setNotice('❌ Failed to load properties: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setGaLoading(false);
+    }
+  };
+
+  const handleGaSelectProperty = async (propertyId: string, propertyName: string) => {
+    setGaLoading(true);
+    try {
+      const response = await axios.post(api('ga/save-property'), {
+        property_id: propertyId,
+        property_name: propertyName
+      }, { headers: { 'X-WP-Nonce': nonce } });
+      
+      if (response.data.success) {
+        setNotice('✅ Google Analytics connected successfully!');
+        setGaStatus({ connected: true, has_credentials: true, property_id: propertyId, property_name: propertyName });
+        setGaProperties([]);
+      }
+    } catch (err: any) {
+      setNotice('❌ ' + (err.response?.data?.error || 'Failed to save property'));
+    } finally {
+      setGaLoading(false);
+    }
+  };
+
+  const handleGaDisconnect = async () => {
+    if (!confirm('Are you sure you want to disconnect Google Analytics?')) return;
+    
+    setGaLoading(true);
+    try {
+      await axios.post(api('ga/disconnect'), {}, { headers: { 'X-WP-Nonce': nonce } });
+      setNotice('✅ Google Analytics disconnected');
+      setGaStatus({ connected: false, has_credentials: false });
+      setGaClientId('');
+      setGaClientSecret('');
+    } catch (err: any) {
+      setNotice('❌ Failed to disconnect');
+    } finally {
+      setGaLoading(false);
     }
   };
 
@@ -1025,6 +1152,189 @@ export default function App() {
             <button className="ciq-btn primary" onClick={handleSaveSettings} disabled={loading} style={{ marginTop: 20, padding: '12px 24px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, transition: 'all 0.2s' }} onMouseEnter={(e) => !loading && (e.currentTarget.style.background = '#6d28d9')} onMouseLeave={(e) => !loading && (e.currentTarget.style.background = '#7c3aed')}>
               Save Settings
             </button>
+
+            {/* Google Analytics Integration */}
+            <div style={{ marginTop: 48, paddingTop: 32, borderTop: '2px solid #e5e7eb' }}>
+              <h2 style={{ margin: '0 0 8px 0', fontSize: 24, fontWeight: 700, color: '#111827' }}>
+                📊 Google Analytics Integration
+              </h2>
+              <p style={{ color: '#6b7280', marginBottom: 24, fontSize: 15 }}>
+                Connect Google Analytics to pull real conversion data and enhance audit insights with actual performance metrics.
+              </p>
+
+              {!gaStatus.connected ? (
+                <>
+                  {!gaStatus.has_credentials ? (
+                    <div style={{ background: '#f3f4f6', padding: 24, borderRadius: 12, marginBottom: 20 }}>
+                      <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600, color: '#111827' }}>
+                        Step 1: Configure Google API Credentials
+                      </h3>
+                      <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 16 }}>
+                        Create OAuth credentials in{' '}
+                        <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style={{ color: '#7c3aed', textDecoration: 'none', fontWeight: 600 }}>
+                          Google Cloud Console
+                        </a>
+                        {' '}and enter them below.
+                      </p>
+                      <div style={{ marginBottom: 16 }}>
+                        <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>
+                          Client ID
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Enter Google OAuth Client ID"
+                          value={gaClientId}
+                          onChange={(e) => setGaClientId(e.target.value)}
+                          style={{ width: '100%', padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }}
+                          onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
+                          onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                        />
+                      </div>
+                      <div style={{ marginBottom: 16 }}>
+                        <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>
+                          Client Secret
+                        </label>
+                        <input
+                          type="password"
+                          placeholder="Enter Google OAuth Client Secret"
+                          value={gaClientSecret}
+                          onChange={(e) => setGaClientSecret(e.target.value)}
+                          style={{ width: '100%', padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }}
+                          onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
+                          onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                        />
+                      </div>
+                      <button
+                        onClick={handleGaSaveCredentials}
+                        disabled={gaLoading}
+                        style={{
+                          padding: '12px 24px',
+                          background: gaLoading ? '#d1d5db' : '#7c3aed',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 8,
+                          fontSize: 15,
+                          fontWeight: 600,
+                          cursor: gaLoading ? 'not-allowed' : 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {gaLoading ? 'Saving...' : 'Save Credentials'}
+                      </button>
+                    </div>
+                  ) : gaProperties.length === 0 ? (
+                    <div style={{ background: '#f3f4f6', padding: 24, borderRadius: 12 }}>
+                      <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600, color: '#111827' }}>
+                        Step 2: Connect to Google Analytics
+                      </h3>
+                      <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 16 }}>
+                        Click the button below to authorize access to your Google Analytics account.
+                      </p>
+                      <button
+                        onClick={handleGaConnect}
+                        style={{
+                          padding: '12px 24px',
+                          background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 8,
+                          fontSize: 15,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          boxShadow: '0 4px 12px rgba(124, 58, 237, 0.3)',
+                          transition: 'transform 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                        onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                      >
+                        🔗 Connect to Google Analytics
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ background: '#f3f4f6', padding: 24, borderRadius: 12 }}>
+                      <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600, color: '#111827' }}>
+                        Step 3: Select a Property
+                      </h3>
+                      <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 16 }}>
+                        Choose which Google Analytics property to use:
+                      </p>
+                      <div style={{ maxHeight: 300, overflow: 'auto' }}>
+                        {gaProperties.map((prop: any) => (
+                          <div
+                            key={prop.id}
+                            onClick={() => handleGaSelectProperty(prop.id, prop.name)}
+                            style={{
+                              padding: 16,
+                              background: '#fff',
+                              border: '1px solid #d1d5db',
+                              borderRadius: 8,
+                              marginBottom: 12,
+                              cursor: 'pointer',
+                              transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = '#7c3aed';
+                              e.currentTarget.style.background = '#f3e8ff';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = '#d1d5db';
+                              e.currentTarget.style.background = '#fff';
+                            }}
+                          >
+                            <div style={{ fontWeight: 600, color: '#111827', marginBottom: 4 }}>
+                              {prop.name}
+                            </div>
+                            <div style={{ fontSize: 13, color: '#6b7280' }}>
+                              Account: {prop.account}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ background: '#d1fae5', padding: 24, borderRadius: 12, border: '2px solid #10b981' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 16 }}>
+                    <div>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: '#065f46', marginBottom: 8 }}>
+                        ✅ Connected to Google Analytics
+                      </div>
+                      <div style={{ fontSize: 15, color: '#059669' }}>
+                        Property: <strong>{gaStatus.property_name || gaStatus.property_id}</strong>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleGaDisconnect}
+                      disabled={gaLoading}
+                      style={{
+                        padding: '8px 16px',
+                        background: '#fff',
+                        color: '#dc2626',
+                        border: '1px solid #dc2626',
+                        borderRadius: 6,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: gaLoading ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => !gaLoading && (e.currentTarget.style.background = '#fef2f2')}
+                      onMouseLeave={(e) => !gaLoading && (e.currentTarget.style.background = '#fff')}
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 14, color: '#059669', lineHeight: 1.6 }}>
+                    Real conversion data will now be included in audit reports. The plugin will automatically pull metrics like:
+                    <ul style={{ marginTop: 8, marginBottom: 0, paddingLeft: 24 }}>
+                      <li>Page views and conversion rates</li>
+                      <li>Bounce rate and engagement metrics</li>
+                      <li>Average session duration</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </div>
           </section>
         )}
 
@@ -1880,7 +2190,7 @@ export default function App() {
 
               {/* Tabs */}
               <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #eee', padding: '0 24px', background: '#fafafa' }}>
-                {['overview', 'insights', 'suggestions', 'functionality', 'rewrites'].map(tab => (
+                {['overview', 'insights', 'suggestions', 'functionality'].map(tab => (
                   <button 
                     key={tab} 
                     onClick={() => setModal({ ...modal, tab })}
@@ -1923,6 +2233,48 @@ export default function App() {
                         </div>
                       ) : null)}
                     </div>
+                    
+                    {/* Google Analytics Metrics */}
+                    {modal.gaData && (
+                      <div style={{ marginBottom: 24, padding: 20, background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)', borderRadius: 12, border: '2px solid #0284c7' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+                          <span style={{ fontSize: 24, marginRight: 10 }}>📊</span>
+                          <div>
+                            <h4 style={{ margin: 0, color: '#0c4a6e', fontSize: 18 }}>Google Analytics Data (Last 30 Days)</h4>
+                            <p style={{ margin: 0, fontSize: 13, color: '#075985' }}>Real conversion metrics from your site</p>
+                          </div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+                          <div style={{ padding: 14, background: '#fff', borderRadius: 8, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Page Views</div>
+                            <div style={{ fontSize: 26, fontWeight: 700, color: '#0284c7' }}>{modal.gaData.pageViews.toLocaleString()}</div>
+                          </div>
+                          <div style={{ padding: 14, background: '#fff', borderRadius: 8, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Conversions</div>
+                            <div style={{ fontSize: 26, fontWeight: 700, color: '#10b981' }}>{modal.gaData.conversions.toLocaleString()}</div>
+                          </div>
+                          <div style={{ padding: 14, background: '#fff', borderRadius: 8, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Conversion Rate</div>
+                            <div style={{ fontSize: 26, fontWeight: 700, color: '#7c3aed' }}>{modal.gaData.conversionRate}%</div>
+                          </div>
+                          <div style={{ padding: 14, background: '#fff', borderRadius: 8, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Bounce Rate</div>
+                            <div style={{ fontSize: 26, fontWeight: 700, color: '#dc2626' }}>{modal.gaData.bounceRate}%</div>
+                          </div>
+                          <div style={{ padding: 14, background: '#fff', borderRadius: 8, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Engagement Rate</div>
+                            <div style={{ fontSize: 26, fontWeight: 700, color: '#f59e0b' }}>{modal.gaData.engagementRate}%</div>
+                          </div>
+                          <div style={{ padding: 14, background: '#fff', borderRadius: 8, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Avg. Session (sec)</div>
+                            <div style={{ fontSize: 26, fontWeight: 700, color: '#6366f1' }}>{modal.gaData.avgSessionDuration}</div>
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 12, fontSize: 12, color: '#075985', textAlign: 'center', fontStyle: 'italic' }}>
+                          This data helps identify opportunities to improve your conversion rate
+                        </div>
+                      </div>
+                    )}
                     
                     {modal.audit.insights?.audience_alignment && (
                       <div style={{ marginTop: 20 }}>
@@ -2194,26 +2546,6 @@ export default function App() {
                         Discuss Custom Solutions →
                       </a>
                     </div>
-                  </div>
-                )}
-
-                {modal.tab === 'rewrites' && (
-                  <div>
-                    <h4 style={{ marginTop: 0 }}>Suggested Rewrites</h4>
-                    {modal.audit.rewrites && Object.keys(modal.audit.rewrites).length > 0 ? (
-                      <div>
-                        {Object.entries(modal.audit.rewrites).map(([key, value]) => (
-                          <div key={key} style={{ marginBottom: 20 }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: '#666', marginBottom: 6, textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</div>
-                            <div style={{ background: '#f0f6ff', padding: 12, borderRadius: 6, fontFamily: 'Georgia, serif', fontSize: 15, lineHeight: 1.6 }}>
-                              "{value}"
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p style={{ color: '#999', fontStyle: 'italic' }}>No rewrites available for this audit.</p>
-                    )}
                   </div>
                 )}
               </div>

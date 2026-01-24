@@ -152,6 +152,55 @@ add_action( 'rest_api_init', function() {
         'callback' => 'conversioniq_send_manual_report',
         'permission_callback' => function() { return current_user_can('manage_options'); }
     ) );
+
+    // Google Analytics endpoints
+    register_rest_route( 'conversioniq/v1', '/ga/status', array(
+        'methods' => 'GET',
+        'callback' => 'conversioniq_ga_status',
+        'permission_callback' => function() { return current_user_can('manage_options'); }
+    ) );
+
+    register_rest_route( 'conversioniq/v1', '/ga/save-credentials', array(
+        'methods' => 'POST',
+        'callback' => 'conversioniq_ga_save_credentials',
+        'permission_callback' => function() { return current_user_can('manage_options'); }
+    ) );
+
+    register_rest_route( 'conversioniq/v1', '/ga/auth-url', array(
+        'methods' => 'GET',
+        'callback' => 'conversioniq_ga_auth_url',
+        'permission_callback' => function() { return current_user_can('manage_options'); }
+    ) );
+
+    register_rest_route( 'conversioniq/v1', '/ga/properties', array(
+        'methods' => 'GET',
+        'callback' => 'conversioniq_ga_properties',
+        'permission_callback' => function() { return current_user_can('manage_options'); }
+    ) );
+
+    register_rest_route( 'conversioniq/v1', '/ga/save-property', array(
+        'methods' => 'POST',
+        'callback' => 'conversioniq_ga_save_property',
+        'permission_callback' => function() { return current_user_can('manage_options'); }
+    ) );
+
+    register_rest_route( 'conversioniq/v1', '/ga/disconnect', array(
+        'methods' => 'POST',
+        'callback' => 'conversioniq_ga_disconnect',
+        'permission_callback' => function() { return current_user_can('manage_options'); }
+    ) );
+
+    register_rest_route( 'conversioniq/v1', '/ga/page-data', array(
+        'methods' => 'POST',
+        'callback' => 'conversioniq_ga_page_data',
+        'permission_callback' => function() { return current_user_can('manage_options'); }
+    ) );
+
+    register_rest_route( 'conversioniq/v1', '/ga/top-pages', array(
+        'methods' => 'GET',
+        'callback' => 'conversioniq_ga_top_pages',
+        'permission_callback' => function() { return current_user_can('manage_options'); }
+    ) );
 } );
 
 
@@ -1341,4 +1390,102 @@ function conversioniq_send_manual_report( WP_REST_Request $request ) {
             'log' => $log
         ), 500 );
     }
+}
+
+// ============================================================
+// GOOGLE ANALYTICS API ENDPOINTS
+// ============================================================
+
+function conversioniq_ga_status( WP_REST_Request $request ) {
+    $ga = new ConversionIQ_Google_Analytics();
+    return rest_ensure_response( $ga->get_status() );
+}
+
+function conversioniq_ga_save_credentials( WP_REST_Request $request ) {
+    $params = $request->get_json_params();
+    $client_id = $params['client_id'] ?? '';
+    $client_secret = $params['client_secret'] ?? '';
+    
+    if ( empty( $client_id ) || empty( $client_secret ) ) {
+        return new WP_REST_Response( array(
+            'success' => false,
+            'error' => 'Client ID and Client Secret are required'
+        ), 400 );
+    }
+    
+    $ga = new ConversionIQ_Google_Analytics();
+    return rest_ensure_response( $ga->save_client_credentials( $client_id, $client_secret ) );
+}
+
+function conversioniq_ga_auth_url( WP_REST_Request $request ) {
+    $ga = new ConversionIQ_Google_Analytics();
+    $url = $ga->get_auth_url();
+    
+    if ( empty( $url ) ) {
+        return new WP_REST_Response( array(
+            'success' => false,
+            'error' => 'Please configure Google Analytics credentials first'
+        ), 400 );
+    }
+    
+    return rest_ensure_response( array( 'success' => true, 'url' => $url ) );
+}
+
+function conversioniq_ga_properties( WP_REST_Request $request ) {
+    $ga = new ConversionIQ_Google_Analytics();
+    return rest_ensure_response( $ga->get_properties() );
+}
+
+function conversioniq_ga_save_property( WP_REST_Request $request ) {
+    $params = $request->get_json_params();
+    $property_id = $params['property_id'] ?? '';
+    $property_name = $params['property_name'] ?? '';
+    
+    if ( empty( $property_id ) ) {
+        return new WP_REST_Response( array(
+            'success' => false,
+            'error' => 'Property ID is required'
+        ), 400 );
+    }
+    
+    $ga = new ConversionIQ_Google_Analytics();
+    $result = $ga->save_property( $property_id );
+    
+    // Also save property name for display
+    if ( $result['success'] && $property_name ) {
+        $options = get_option('conversioniq_ga_credentials', array());
+        $options['property_name'] = $property_name;
+        update_option('conversioniq_ga_credentials', $options);
+    }
+    
+    return rest_ensure_response( $result );
+}
+
+function conversioniq_ga_disconnect( WP_REST_Request $request ) {
+    $ga = new ConversionIQ_Google_Analytics();
+    return rest_ensure_response( $ga->disconnect() );
+}
+
+function conversioniq_ga_page_data( WP_REST_Request $request ) {
+    $params = $request->get_json_params();
+    $page_url = $params['url'] ?? '';
+    $days = $params['days'] ?? 30;
+    
+    if ( empty( $page_url ) ) {
+        return new WP_REST_Response( array(
+            'success' => false,
+            'error' => 'Page URL is required'
+        ), 400 );
+    }
+    
+    $ga = new ConversionIQ_Google_Analytics();
+    return rest_ensure_response( $ga->get_page_conversions( $page_url, $days ) );
+}
+
+function conversioniq_ga_top_pages( WP_REST_Request $request ) {
+    $limit = $request->get_param( 'limit' ) ?? 10;
+    $days = $request->get_param( 'days' ) ?? 30;
+    
+    $ga = new ConversionIQ_Google_Analytics();
+    return rest_ensure_response( $ga->get_top_pages( $limit, $days ) );
 }
