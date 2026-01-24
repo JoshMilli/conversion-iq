@@ -107,8 +107,20 @@ export default function App() {
 
   // Check authentication status on mount
   useEffect(() => {
+    console.log('Conversion IQ: Checking authentication...');
+    console.log('API Base:', (window as any).ConversionIQData?.restUrl);
+    console.log('Nonce:', nonce ? 'Present' : 'Missing');
+    
+    if (!nonce) {
+      console.error('Conversion IQ: Nonce is missing! Check if ConversionIQData is loaded.');
+      setAuthLoading(false);
+      setIsAuthenticated(false);
+      return;
+    }
+    
     axios.get(api('auth/status'), { headers: { 'X-WP-Nonce': nonce } })
       .then(r => {
+        console.log('Auth response:', r.data);
         if (r.data.authenticated) {
           setIsAuthenticated(true);
           setAccount(r.data.account);
@@ -117,8 +129,15 @@ export default function App() {
           setIsAuthenticated(false);
         }
       })
-      .catch(() => setIsAuthenticated(false))
-      .finally(() => setAuthLoading(false));
+      .catch(err => {
+        console.error('Auth check failed:', err);
+        console.error('Error details:', err.response?.data);
+        setIsAuthenticated(false);
+      })
+      .finally(() => {
+        console.log('Auth check complete');
+        setAuthLoading(false);
+      });
   }, []);
 
   // Load settings, pages, audits, automated settings (only when authenticated)
