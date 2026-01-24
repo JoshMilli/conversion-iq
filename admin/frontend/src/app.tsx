@@ -142,7 +142,18 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('ga_connected') === '1') {
       setNotice('✅ Google Analytics authenticated! Now select a property.');
-      handleGaLoadProperties();
+      // Load properties after successful auth
+      setGaLoading(true);
+      axios.get(api('ga/properties'), { headers: { 'X-WP-Nonce': nonce } })
+        .then(r => {
+          if (r.data.success) {
+            setGaProperties(r.data.properties);
+          } else {
+            setNotice('❌ ' + r.data.error);
+          }
+        })
+        .catch(err => setNotice('❌ Failed to load properties: ' + (err.response?.data?.error || err.message)))
+        .finally(() => setGaLoading(false));
       // Clean up URL
       window.history.replaceState({}, document.title, window.location.pathname + '?page=conversioniq');
     } else if (params.get('ga_error')) {

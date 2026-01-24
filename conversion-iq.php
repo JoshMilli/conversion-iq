@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 1.7.4
+ * Version: 1.7.5
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'CONVERSION_IQ_VERSION', '1.7.4' );
+define( 'CONVERSION_IQ_VERSION', '1.7.5' );
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
@@ -38,6 +38,33 @@ $conversionIQUpdateChecker->setAuthentication('ghp_5wtZyb7lkXWJAxH9r4ppOcV6etOKm
 
 // Check for updates more frequently (every 1 hour instead of default 12 hours)
 $conversionIQUpdateChecker->checkForUpdates();
+
+// Clear cache after plugin updates
+add_action('upgrader_process_complete', function($upgrader_object, $options) {
+    if ($options['action'] == 'update' && $options['type'] == 'plugin') {
+        if (isset($options['plugins'])) {
+            foreach ($options['plugins'] as $plugin) {
+                if ($plugin == plugin_basename(__FILE__)) {
+                    // Clear WordPress cache
+                    wp_cache_flush();
+                    
+                    // Clear any object cache
+                    if (function_exists('wp_cache_flush_group')) {
+                        wp_cache_flush_group('conversioniq');
+                    }
+                    
+                    // Clear transients
+                    delete_transient('conversioniq_cache');
+                    
+                    // Force browser cache refresh by updating version option
+                    update_option('conversioniq_last_updated', time());
+                    
+                    error_log('Conversion IQ: Cache cleared after update to version ' . CONVERSION_IQ_VERSION);
+                }
+            }
+        }
+    }
+}, 10, 2);
 
 // Load Composer autoloader if it exists
 if ( file_exists( CONVERSION_IQ_DIR . 'vendor/autoload.php' ) ) {
@@ -123,11 +150,14 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
     
     // Dashboard app bundle (built)
     if ( $js_file ) {
+        // Add timestamp for cache busting after updates
+        $cache_buster = CONVERSION_IQ_VERSION . '.' . get_option('conversioniq_last_updated', time());
+        
         wp_enqueue_script(
             'conversion-iq-admin',
             $assets_url . $js_file,
             [],
-            CONVERSION_IQ_VERSION,
+            $cache_buster,
             true
         );
         
@@ -137,6 +167,7 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
             'restUrl' => esc_url_raw( rest_url( 'conversioniq/v1/' ) ),
             'nonce'   => $nonce,
             'pluginUrl' => CONVERSION_IQ_URL,
+            'version' => $cache_buster,
         ) );
         
         // Set type="module" for the dashboard bundle
@@ -150,7 +181,8 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
 
     // Enqueue built CSS bundle if it exists
     if ( $css_file ) {
-        wp_enqueue_style( 'conversioniq-dashboard-css', $assets_url . $css_file, array('conversioniq-admin'), CONVERSION_IQ_VERSION );
+        $cache_buster = CONVERSION_IQ_VERSION . '.' . get_option('conversioniq_last_updated', time());
+        wp_enqueue_style( 'conversioniq-dashboard-css', $assets_url . $css_file, array('conversioniq-admin'), $cache_buster );
     }
 } );
 
