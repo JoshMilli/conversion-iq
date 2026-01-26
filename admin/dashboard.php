@@ -37,5 +37,35 @@ $data = array(
             version: window.ConversionIQData.version
         });
         console.log('Waiting for React app to mount...');
+        
+        // Track script loading errors
+        window.addEventListener('error', function(event) {
+            if (event.filename && event.filename.includes('index.') && event.filename.includes('conversion')) {
+                console.error('✗ SCRIPT LOADING ERROR:', {
+                    message: event.message,
+                    filename: event.filename,
+                    lineno: event.lineno
+                });
+            }
+        }, true);
+        
+        // Timeout to detect if React never loads
+        var reactLoadTimeout = setTimeout(function() {
+            console.error('✗ TIMEOUT: React app failed to initialize within 5 seconds');
+            console.error('Check:');
+            console.error('  1. Network tab - is index.*.js loading?');
+            console.error('  2. Console - any red errors above?');
+            console.error('  3. Browser DevTools - go to Network tab and check for failed requests');
+            var appDiv = document.getElementById('conversion-iq-app');
+            if (appDiv) {
+                appDiv.innerHTML = '<div style="color: red; padding: 20px;"><strong>ERROR:</strong> React app failed to load. Check browser console (F12) for details.</div>';
+            }
+        }, 5000);
+        
+        // Clear timeout once React mounts
+        window.conversionIQReactMounted = function() {
+            clearTimeout(reactLoadTimeout);
+            console.log('✓ React app successfully mounted');
+        };
     </script>
 </div>
