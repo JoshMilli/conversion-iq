@@ -68,4 +68,31 @@ $data = array(
             console.log('✓ React app successfully mounted');
         };
     </script>
-</div>
+    
+    <?php
+    // Output the React bundle script directly
+    $assets_dir = CONVERSION_IQ_DIR . 'admin/build/vite-dist/assets/';
+    $assets_url = CONVERSION_IQ_URL . 'admin/build/vite-dist/assets/';
+    
+    if ( is_dir( $assets_dir ) ) {
+        $files = scandir( $assets_dir );
+        $js_file = null;
+        
+        foreach ( $files as $file ) {
+            if ( strpos( $file, 'index.' ) === 0 && substr( $file, -3 ) === '.js' ) {
+                $js_file = $file;
+                break;
+            }
+        }
+        
+        if ( $js_file ) {
+            $script_url = $assets_url . $js_file;
+            echo '<script type="module" src="' . esc_url( $script_url ) . '"></script>' . "\n";
+            echo '<script>console.log("✓ React bundle script tag added:", "' . esc_url( $script_url ) . '");</script>' . "\n";
+        } else {
+            echo '<script>console.error("✗ ERROR: React bundle (index.*.js) not found in assets directory");</script>' . "\n";
+        }
+    } else {
+        echo '<script>console.error("✗ ERROR: Assets directory does not exist:", "' . esc_attr( $assets_dir ) . '");</script>' . "\n";
+    }
+    ?>
