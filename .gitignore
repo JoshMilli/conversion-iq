@@ -2,9 +2,9 @@
 node_modules/
 admin/frontend/node_modules/
 
-# Build outputs
+# Build outputs (keep built assets for production)
 admin/frontend/dist/
-admin/build/vite-dist/
+# admin/build/vite-dist/ - commented out to include built assets in repo
 
 # IDE and editor files
 .vscode/
