@@ -64,6 +64,11 @@ class ConversionIQ_Reports {
 
         // Get saved business settings if available
         $business = json_decode( get_option( 'conversion_iq_settings', '{}' ), true );
+        
+        // Get account information for company name and website
+        $account = get_option( 'conversioniq_account', null );
+        $company_name = isset($account['company']) ? esc_html($account['company']) : '';
+        $website_url = isset($account['site_url']) ? esc_url($account['site_url']) : get_site_url();
 
         // Webtec brand colors
         $webtec_navy = '#1e3a5f';
@@ -194,6 +199,22 @@ class ConversionIQ_Reports {
             opacity: 0.9;
             margin-bottom: 60px;
             font-weight: 300;
+        }
+        .cover-company-info {
+            margin-bottom: 30px;
+            padding: 0;
+        }
+        .cover-company-name {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #ffffff;
+        }
+        .cover-company-url {
+            font-size: 16px;
+            opacity: 0.9;
+            color: #dbeafe;
+            word-break: break-all;
         }
         .cover-page-name {
             font-size: 20px;
@@ -493,11 +514,29 @@ class ConversionIQ_Reports {
             </div>
             <div>
                 <h1 class="cover-title">Website Conversion<br>Audit Report</h1>
-                <p class="cover-subtitle">Professional Analysis & Recommendations</p>
+                <p class="cover-subtitle">Professional Analysis & Recommendations</p>';
+        
+        // Add company information if available
+        if ( $company_name || $website_url ) {
+            $html .= '
+                <div class="cover-company-info">';
+            if ( $company_name ) {
+                $html .= '
+                    <div class="cover-company-name">'.$company_name.'</div>';
+            }
+            if ( $website_url ) {
+                $html .= '
+                    <div class="cover-company-url">'.$website_url.'</div>';
+            }
+            $html .= '
+                </div>';
+        }
+        
+        $html .= '
                 <div class="cover-page-name">
                     <strong>Page Analyzed:</strong> '.$page_name.'
                 </div>
-                '.($page_url ? '<div class="cover-page-url" style="margin-top: 8px; font-size: 14px; color: #2563eb;">'.$page_url.'</div>' : '').'
+                '.($page_url ? '<div class="cover-page-url" style="margin-top: 8px; font-size: 14px; color: #dbeafe;">'.$page_url.'</div>' : '').'
             </div>
             <div class="cover-meta">
                 <p><strong>Prepared by:</strong> Webtec</p>
