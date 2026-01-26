@@ -107,53 +107,98 @@ export default function App() {
 
   // Check authentication status on mount
   useEffect(() => {
-    console.log('Conversion IQ: Checking authentication...');
-    console.log('API Base:', (window as any).ConversionIQData?.restUrl);
-    console.log('Nonce:', nonce ? 'Present' : 'Missing');
+    console.log('=== Conversion IQ: Authentication Check Started ===');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('API Base URL:', (window as any).ConversionIQData?.restUrl || 'NOT FOUND');
+    console.log('Nonce Status:', nonce ? '✓ Present' : '✗ Missing');
+    console.log('ConversionIQData object:', (window as any).ConversionIQData);
     
     if (!nonce) {
-      console.error('Conversion IQ: Nonce is missing! Check if ConversionIQData is loaded.');
+      console.error('✗ CRITICAL ERROR: Nonce is missing!');
+      console.error('This means wp_localize_script() did not run properly.');
+      console.error('Check:');
+      console.error('  1. WordPress REST nonce generation');
+      console.error('  2. Admin menu page hook (toplevel_page_conversion-iq)');
+      console.error('  3. Browser console for any other errors');
       setAuthLoading(false);
       setIsAuthenticated(false);
       return;
     }
     
+    console.log('→ Calling auth/status endpoint...');
     axios.get(api('auth/status'), { headers: { 'X-WP-Nonce': nonce } })
       .then(r => {
-        console.log('Auth response:', r.data);
+        console.log('✓ Auth API Response:', r.data);
         if (r.data.authenticated) {
+          console.log('✓ User authenticated successfully');
           setIsAuthenticated(true);
           setAccount(r.data.account);
           setShowLogin(false);
         } else {
+          console.log('⚠ User not authenticated');
           setIsAuthenticated(false);
         }
       })
       .catch(err => {
-        console.error('Auth check failed:', err);
-        console.error('Error details:', err.response?.data);
+        console.error('✗ Auth API Call Failed:');
+        console.error('  URL:', api('auth/status'));
+        console.error('  Status:', err.response?.status);
+        console.error('  Error:', err.message);
+        console.error('  Response Data:', err.response?.data);
         setIsAuthenticated(false);
       })
       .finally(() => {
-        console.log('Auth check complete');
+        console.log('=== Authentication Check Complete ===');
         setAuthLoading(false);
       });
   }, []);
 
   // Load settings, pages, audits, automated settings (only when authenticated)
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated) {
+      console.log('→ Skipping data load - user not authenticated');
+      return;
+    }
     
-    axios.get(api('settings'), { headers: { 'X-WP-Nonce': nonce } }).then(r => {
-      setSettings(r.data);
-    });
-    axios.get(api('pages'), { headers: { 'X-WP-Nonce': nonce } }).then(r => setPages(r.data));
-    axios.get(api('audits'), { headers: { 'X-WP-Nonce': nonce } }).then(r => setAudits(r.data.map((row: any) => ({
-      ...row,
-      insert_id: row.id
-    }))));
-    axios.get(api('automated-settings'), { headers: { 'X-WP-Nonce': nonce } }).then(r => setAutomatedReporting(r.data));
-    axios.get(api('ga/status'), { headers: { 'X-WP-Nonce': nonce } }).then(r => setGaStatus(r.data));
+    console.log('=== Loading Plugin Data ===');
+    
+    axios.get(api('settings'), { headers: { 'X-WP-Nonce': nonce } })
+      .then(r => {
+        console.log('✓ Settings loaded');
+        setSettings(r.data);
+      })
+      .catch(err => console.error('✗ Failed to load settings:', err));
+    
+    axios.get(api('pages'), { headers: { 'X-WP-Nonce': nonce } })
+      .then(r => {
+        console.log('✓ Pages loaded:', r.data.length, 'page(s)');
+        setPages(r.data);
+      })
+      .catch(err => console.error('✗ Failed to load pages:', err));
+    
+    axios.get(api('audits'), { headers: { 'X-WP-Nonce': nonce } })
+      .then(r => {
+        console.log('✓ Audits loaded:', r.data.length, 'audit(s)');
+        setAudits(r.data.map((row: any) => ({
+          ...row,
+          insert_id: row.id
+        })));
+      })
+      .catch(err => console.error('✗ Failed to load audits:', err));
+    
+    axios.get(api('automated-settings'), { headers: { 'X-WP-Nonce': nonce } })
+      .then(r => {
+        console.log('✓ Automated settings loaded');
+        setAutomatedReporting(r.data);
+      })
+      .catch(err => console.error('✗ Failed to load automated settings:', err));
+    
+    axios.get(api('ga/status'), { headers: { 'X-WP-Nonce': nonce } })
+      .then(r => {
+        console.log('✓ GA status loaded');
+        setGaStatus(r.data);
+      })
+      .catch(err => console.error('✗ Failed to load GA status:', err));
   }, [isAuthenticated]);
 
   // Check for GA OAuth callback

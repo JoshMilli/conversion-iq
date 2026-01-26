@@ -148,11 +148,28 @@ add_action( 'admin_menu', function() {
         'dashicons-chart-line',
         56
     );
+    
+    // Add diagnostic submenu if in debug mode
+    if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+        add_submenu_page(
+            'conversion-iq',
+            __( 'Diagnostics', 'conversion-iq' ),
+            __( 'Diagnostics', 'conversion-iq' ),
+            'manage_options',
+            'conversion-iq-diagnostic',
+            'conversioniq_diagnostic_page'
+        );
+    }
 } );
 
 function conversioniq_admin_page() {
     // Load admin page template
     include CONVERSION_IQ_DIR . 'admin/dashboard.php';
+}
+
+function conversioniq_diagnostic_page() {
+    // Load diagnostic page
+    include CONVERSION_IQ_DIR . 'admin/diagnostic-report.php';
 }
 
 // Enqueue admin assets
@@ -161,6 +178,8 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
         return;
     }
 
+    error_log( 'Conversion IQ: Enqueueing admin assets for hook: ' . $hook );
+
     // CSS - base admin styles
     wp_enqueue_style( 'conversioniq-admin', CONVERSION_IQ_URL . 'assets/css/admin.css', array(), CONVERSION_IQ_VERSION );
 
@@ -168,19 +187,27 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
     $assets_dir = CONVERSION_IQ_DIR . 'admin/build/vite-dist/assets/';
     $assets_url = CONVERSION_IQ_URL . 'admin/build/vite-dist/assets/';
     
+    error_log( 'Conversion IQ: Looking for assets in: ' . $assets_dir );
+    
     $js_file = null;
     $css_file = null;
     
     if ( is_dir( $assets_dir ) ) {
         $files = scandir( $assets_dir );
+        error_log( 'Conversion IQ: Found files: ' . print_r( $files, true ) );
+        
         foreach ( $files as $file ) {
             if ( strpos( $file, 'index.' ) === 0 && substr( $file, -3 ) === '.js' ) {
                 $js_file = $file;
+                error_log( 'Conversion IQ: Found JS file: ' . $js_file );
             }
             if ( strpos( $file, 'index.' ) === 0 && substr( $file, -4 ) === '.css' ) {
                 $css_file = $file;
+                error_log( 'Conversion IQ: Found CSS file: ' . $css_file );
             }
         }
+    } else {
+        error_log( 'Conversion IQ: Assets directory does not exist: ' . $assets_dir );
     }
     
     // Dashboard app bundle (built)
@@ -188,30 +215,45 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
         // Add timestamp for cache busting after updates
         $cache_buster = CONVERSION_IQ_VERSION . '.' . get_option('conversioniq_last_updated', time());
         
+        $script_url = $assets_url . $js_file;
+        error_log( 'Conversion IQ: Enqueueing script from: ' . $script_url );
+        
         wp_enqueue_script(
             'conversion-iq-admin',
-            $assets_url . $js_file,
+            $script_url,
             [],
             $cache_buster,
             true
         );
         
-        // Localize data for the React app
+        // Localize data for the React app - MUST come after wp_enqueue_script
         $nonce = wp_create_nonce( 'wp_rest' );
-        wp_localize_script( 'conversion-iq-admin', 'ConversionIQData', array(
+        $localized_data = array(
             'restUrl' => esc_url_raw( rest_url( 'conversioniq/v1/' ) ),
             'nonce'   => $nonce,
             'pluginUrl' => CONVERSION_IQ_URL,
             'version' => $cache_buster,
-        ) );
+        );
+        error_log( 'Conversion IQ: Localizing script data: ' . wp_json_encode( $localized_data ) );
+        wp_localize_script( 'conversion-iq-admin', 'ConversionIQData', $localized_data );
         
         // Set type="module" for the dashboard bundle
+        // Also add error handling script
         add_filter( 'script_loader_tag', function( $tag, $handle, $src ) {
             if ( $handle === 'conversion-iq-admin' ) {
-                return str_replace( '<script ', '<script type="module" ', $tag );
+                error_log( 'Conversion IQ: Setting module type for script: ' . $handle );
+                $tag = str_replace( '<script ', '<script type="module" ', $tag );
+                // Add error event handler to catch module loading errors
+                $tag = str_replace( '<script type="module" ', '<script type="module" onError="console.error(\'Conversion IQ module failed to load:\', event)" ', $tag );
+                return $tag;
             }
             return $tag;
         }, 10, 3 );
+        
+        // Inline script to ensure ConversionIQData is available before the app loads
+        wp_add_inline_script( 'conversion-iq-admin', 'console.log("Conversion IQ: Admin script loaded. Version:", ConversionIQData?.version);', 'before' );
+    } else {
+        error_log( 'Conversion IQ: ERROR - No JS file found!' );
     }
 
     // Enqueue built CSS bundle if it exists
@@ -224,6 +266,36 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
 // Load textdomain for translations
 add_action( 'plugins_loaded', function() {
     load_plugin_textdomain( 'conversion-iq', false, dirname( plugin_basename( __FILE__ ) ) . '/languages/' );
+} );
+
+// AJAX handler to check plugin status
+add_action( 'wp_ajax_conversioniq_status', function() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( 'Unauthorized' );
+    }
+    
+    $status = array(
+        'version' => CONVERSION_IQ_VERSION,
+        'rest_api' => rest_get_routes() ? true : false,
+        'plugin_url' => CONVERSION_IQ_URL,
+        'plugin_dir' => CONVERSION_IQ_DIR,
+        'assets_exist' => is_dir( CONVERSION_IQ_DIR . 'admin/build/vite-dist/assets/' ),
+    );
+    
+    wp_send_json_success( $status );
+} );
+
+// AJAX handler to clear cache
+add_action( 'wp_ajax_conversioniq_clear_cache', function() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( 'Unauthorized' );
+    }
+    
+    wp_cache_flush();
+    delete_transient( 'conversioniq_cache' );
+    update_option( 'conversioniq_last_updated', time() );
+    
+    wp_send_json_success( 'Cache cleared' );
 } );
 
 // Handle Google Analytics OAuth callback
