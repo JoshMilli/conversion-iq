@@ -317,6 +317,19 @@ class ConversionIQ_Automated_Reports {
                                 Your automated Conversion IQ audit has been completed. We analyzed <strong>%d page%s</strong> on your website to evaluate conversion performance across six critical factors: conversion clarity, emotional resonance, call-to-action effectiveness, readability, engagement, and trust signals.
                             </p>
                             
+                            <p style="margin: 0 0 12px; color: #4b5563; font-size: 15px;">
+                                Feel free to book a quick chat if you have any questions on: <a href="https://calendly.com/d/ct85-ktz-3wd/webtec-website-improvement-meeting" style="color: #2563eb; text-decoration: none;">https://calendly.com/d/ct85-ktz-3wd/webtec-website-improvement-meeting</a>
+                            </p>
+                            
+                            <p style="margin: 0 0 24px; color: #4b5563; font-size: 15px;">
+                                You are also invited to paste any recommendations directly into Basecamp and our Customer Success Team will get onto them right away.
+                            </p>
+                            
+                            <p style="margin: 0 0 24px; color: #4b5563; font-size: 15px;">
+                                Thanks,<br>
+                                WebTec
+                            </p>
+                            
                             <!-- Overall Score Card -->
                             <table width="100%%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f3f4f6; border-radius: 8px; margin: 24px 0; border-left: 4px solid %s;">
                                 <tr>
