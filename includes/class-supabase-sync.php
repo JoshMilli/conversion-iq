@@ -592,8 +592,11 @@ class ConversionIQ_Supabase_Sync {
     public function create_organization($org_data) {
         if (!$this->supabase_anon_key) {
             error_log('ConversionIQ: Cannot create organization - Supabase credentials not configured');
+            error_log('Supabase URL: ' . ($this->supabase_url ? $this->supabase_url : 'NOT SET'));
             return null;
         }
+        
+        error_log('ConversionIQ: Creating organization with data: ' . wp_json_encode($org_data));
         
         $response = wp_remote_post(
             $this->supabase_url . '/rest/v1/organizations',
@@ -614,14 +617,18 @@ class ConversionIQ_Supabase_Sync {
         }
         
         $status_code = wp_remote_retrieve_response_code($response);
+        $body = wp_remote_retrieve_body($response);
+        
+        error_log('ConversionIQ: Create organization response status: ' . $status_code);
+        error_log('ConversionIQ: Create organization response body: ' . $body);
+        
         if ($status_code !== 201) {
-            $body = wp_remote_retrieve_body($response);
-            error_log('ConversionIQ: Organization creation failed with status ' . $status_code . ' - ' . $body);
+            error_log('ConversionIQ: Organization creation failed with status ' . $status_code);
             return null;
         }
         
-        $body = json_decode(wp_remote_retrieve_body($response), true);
-        return isset($body[0]) ? $body[0] : null;
+        $parsed_body = json_decode($body, true);
+        return isset($parsed_body[0]) ? $parsed_body[0] : null;
     }
     
     /**
@@ -700,11 +707,18 @@ class ConversionIQ_Supabase_Sync {
     public function update_organization($organization_id, $data) {
         if (!$this->supabase_anon_key || !$organization_id) {
             error_log('ConversionIQ: Cannot update organization - missing credentials or ID');
+            error_log('Supabase URL: ' . ($this->supabase_url ? 'SET' : 'NOT SET'));
+            error_log('Supabase Key: ' . ($this->supabase_anon_key ? 'SET' : 'NOT SET'));
+            error_log('Organization ID: ' . $organization_id);
             return false;
         }
         
+        $url = $this->supabase_url . '/rest/v1/organizations?id=eq.' . urlencode($organization_id);
+        error_log('ConversionIQ: Updating organization - URL: ' . $url);
+        error_log('ConversionIQ: Update data: ' . wp_json_encode($data));
+        
         $response = wp_remote_request(
-            $this->supabase_url . '/rest/v1/organizations?id=eq.' . urlencode($organization_id),
+            $url,
             [
                 'method' => 'PATCH',
                 'headers' => [
@@ -723,6 +737,11 @@ class ConversionIQ_Supabase_Sync {
         }
         
         $status_code = wp_remote_retrieve_response_code($response);
+        $response_body = wp_remote_retrieve_body($response);
+        
+        error_log('ConversionIQ: Update response status: ' . $status_code);
+        error_log('ConversionIQ: Update response body: ' . $response_body);
+        
         if ($status_code !== 200) {
             error_log('ConversionIQ: Organization update failed with status ' . $status_code);
             return false;

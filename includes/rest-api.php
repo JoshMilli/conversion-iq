@@ -225,6 +225,9 @@ function conversioniq_save_settings( WP_REST_Request $request ) {
     
     // Sync business information to Supabase
     $organization_id = get_option( 'conversioniq_organization_id', null );
+    error_log( '=== ConversionIQ: Save Settings ===' );
+    error_log( 'Organization ID: ' . ( $organization_id ? $organization_id : 'NOT FOUND' ) );
+    
     if ( $organization_id ) {
         $business_fields = array(
             'industry' => isset( $params['industry'] ) ? sanitize_text_field( $params['industry'] ) : null,
@@ -236,15 +239,28 @@ function conversioniq_save_settings( WP_REST_Request $request ) {
             'additional_info' => isset( $params['additional_info'] ) ? sanitize_textarea_field( $params['additional_info'] ) : null
         );
         
+        error_log( 'Business fields to sync: ' . wp_json_encode( $business_fields ) );
+        
         // Only sync if at least one business field has a value
         $has_business_data = array_filter( $business_fields, function($value) {
             return !empty($value);
         } );
         
         if ( !empty( $has_business_data ) ) {
+            error_log( 'Syncing business data to Supabase for org: ' . $organization_id );
             $supabase_sync = new ConversionIQ_Supabase_Sync();
-            $supabase_sync->update_organization( $organization_id, $business_fields );
+            $result = $supabase_sync->update_organization( $organization_id, $business_fields );
+            
+            if ( $result ) {
+                error_log( 'SUCCESS: Business info synced to Supabase' );
+            } else {
+                error_log( 'FAILED: Business info sync to Supabase failed' );
+            }
+        } else {
+            error_log( 'No business data to sync (all fields empty)' );
         }
+    } else {
+        error_log( 'WARNING: No organization_id found - business info not synced to Supabase' );
     }
     
     return array( 'success' => true );
@@ -1181,10 +1197,12 @@ function conversioniq_update_account( WP_REST_Request $request ) {
                 'max_audits_per_month' => 10
             );
             
+            error_log( 'Creating organization with data: ' . wp_json_encode( $org_data ) );
             $result = $supabase_sync->create_organization( $org_data );
             
             if ( ! $result || ! isset( $result['id'] ) ) {
                 error_log( 'ConversionIQ: Failed to create organization in Supabase' );
+                error_log( 'Create result: ' . wp_json_encode( $result ) );
                 return new WP_REST_Response( array(
                     'success' => false,
                     'message' => 'Failed to sync account to database'
