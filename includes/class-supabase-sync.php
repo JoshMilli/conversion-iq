@@ -609,6 +609,77 @@ class ConversionIQ_Supabase_Sync {
     }
     
     /**
+     * Check if an organization exists in Supabase
+     * 
+     * @param string $organization_id Organization ID
+     * @return bool True if exists, false otherwise
+     */
+    public function organization_exists($organization_id) {
+        if (!$this->supabase_anon_key || !$organization_id) {
+            return false;
+        }
+        
+        $response = wp_remote_get(
+            $this->supabase_url . '/rest/v1/organizations?id=eq.' . urlencode($organization_id) . '&select=id',
+            [
+                'headers' => [
+                    'apikey' => $this->supabase_anon_key,
+                    'Content-Type' => 'application/json'
+                ],
+                'timeout' => 10
+            ]
+        );
+        
+        if (is_wp_error($response)) {
+            return false;
+        }
+        
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        return !empty($body);
+    }
+    
+    /**
+     * Create a new organization in Supabase
+     * 
+     * @param array $org_data Organization data
+     * @return array|null Created organization data or null on failure
+     */
+    public function create_organization($org_data) {
+        if (!$this->supabase_anon_key) {
+            error_log('ConversionIQ: Cannot create organization - Supabase credentials not configured');
+            return null;
+        }
+        
+        $response = wp_remote_post(
+            $this->supabase_url . '/rest/v1/organizations',
+            [
+                'headers' => [
+                    'apikey' => $this->supabase_anon_key,
+                    'Content-Type' => 'application/json',
+                    'Prefer' => 'return=representation'
+                ],
+                'body' => json_encode($org_data),
+                'timeout' => 15
+            ]
+        );
+        
+        if (is_wp_error($response)) {
+            error_log('ConversionIQ: Organization creation failed - ' . $response->get_error_message());
+            return null;
+        }
+        
+        $status_code = wp_remote_retrieve_response_code($response);
+        if ($status_code !== 201) {
+            $body = wp_remote_retrieve_body($response);
+            error_log('ConversionIQ: Organization creation failed with status ' . $status_code . ' - ' . $body);
+            return null;
+        }
+        
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        return isset($body[0]) ? $body[0] : null;
+    }
+    
+    /**
      * Check if username or email conflicts with another organization
      * 
      * @param string $username Username to check

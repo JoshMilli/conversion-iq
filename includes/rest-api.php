@@ -1084,43 +1084,99 @@ function conversioniq_update_account( WP_REST_Request $request ) {
         ), 401 );
     }
     
-    // Get organization ID
+    // Get organization ID (might not exist for older accounts)
     $organization_id = get_option( 'conversioniq_organization_id', null );
-    
-    if ( ! $organization_id ) {
-        return new WP_REST_Response( array(
-            'success' => false,
-            'message' => 'Organization not found'
-        ), 401 );
-    }
     
     // Update in Supabase
     try {
         $supabase_sync = new ConversionIQ_Supabase_Sync();
         
-        // Check if username or email is taken by another organization
-        $conflict = $supabase_sync->check_account_conflict( $username, $email, $organization_id );
-        
-        if ( $conflict ) {
-            return new WP_REST_Response( array(
-                'success' => false,
-                'message' => $conflict
-            ), 400 );
+        // Check if organization exists in Supabase
+        if ( $organization_id ) {
+            $org_exists = $supabase_sync->organization_exists( $organization_id );
+        } else {
+            $org_exists = false;
         }
         
-        // Update organization
-        $updated = $supabase_sync->update_organization( $organization_id, array(
-            'company_name' => $company,
-            'username' => $username,
-            'user_full_name' => $full_name,
-            'user_email' => $email
-        ) );
-        
-        if ( ! $updated ) {
-            return new WP_REST_Response( array(
-                'success' => false,
-                'message' => 'Failed to update account in database'
-            ), 500 );
+        if ( $org_exists ) {
+            // Organization exists - update it
+            
+            // Check if username or email is taken by another organization
+            $conflict = $supabase_sync->check_account_conflict( $username, $email, $organization_id );
+            
+            if ( $conflict ) {
+                return new WP_REST_Response( array(
+                    'success' => false,
+                    'message' => $conflict
+                ), 400 );
+            }
+            
+            // Update organization
+            $updated = $supabase_sync->update_organization( $organization_id, array(
+                'company_name' => $company,
+                'username' => $username,
+                'user_full_name' => $full_name,
+                'user_email' => $email
+            ) );
+            
+            if ( ! $updated ) {
+                return new WP_REST_Response( array(
+                    'success' => false,
+                    'message' => 'Failed to update account in database'
+                ), 500 );
+            }
+        } else {
+            // Organization doesn't exist in Supabase - create it
+            error_log( 'ConversionIQ: Organization not found in Supabase, creating new entry' );
+            
+            // Check if username or email is taken
+            $conflict = $supabase_sync->check_account_conflict( $username, $email, '' );
+            
+            if ( $conflict ) {
+                return new WP_REST_Response( array(
+                    'success' => false,
+                    'message' => $conflict
+                ), 400 );
+            }
+            
+            // Generate or reuse API key
+            $api_key = $current_account['api_key'] ?? wp_generate_password( 32, false );
+            
+            // Create organization in Supabase
+            $site_url = get_site_url();
+            $org_data = array(
+                'company_name' => $company,
+                'domain' => parse_url( $site_url, PHP_URL_HOST ),
+                'api_key' => $api_key,
+                'username' => $username,
+                'user_full_name' => $full_name,
+                'user_email' => $email,
+                'password_hash' => $current_account['password_hash'] ?? '',
+                'plan' => 'free',
+                'max_audits_per_month' => 10
+            );
+            
+            $result = $supabase_sync->create_organization( $org_data );
+            
+            if ( ! $result || ! isset( $result['id'] ) ) {
+                error_log( 'ConversionIQ: Failed to create organization in Supabase' );
+                return new WP_REST_Response( array(
+                    'success' => false,
+                    'message' => 'Failed to sync account to database'
+                ), 500 );
+            }
+            
+            // Store the new organization ID
+            $organization_id = $result['id'];
+            update_option( 'conversioniq_organization_id', $organization_id );
+            update_option( 'conversioniq_api_key', $api_key );
+            
+            // Update current account with API key if it didn't have one
+            if ( empty( $current_account['api_key'] ) ) {
+                $current_account['api_key'] = $api_key;
+            }
+            
+            error_log( 'ConversionIQ: Successfully created organization in Supabase with ID: ' . $organization_id );
         }
         
         // Update local cache
@@ -1128,6 +1184,7 @@ function conversioniq_update_account( WP_REST_Request $request ) {
         $current_account['email'] = $email;
         $current_account['company'] = $company;
         $current_account['username'] = $username;
+        $current_account['company_id'] = $organization_id;
         
         update_option( 'conversioniq_account', $current_account );
         
