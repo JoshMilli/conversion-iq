@@ -189,7 +189,12 @@ export default function App() {
     axios.get(api('automated-settings'), { headers: { 'X-WP-Nonce': nonce } })
       .then(r => {
         console.log('✓ Automated settings loaded');
-        setAutomatedReporting(r.data);
+        // Ensure defaultPages is always an array
+        const settings = {
+          ...r.data,
+          defaultPages: Array.isArray(r.data.defaultPages) ? r.data.defaultPages : []
+        };
+        setAutomatedReporting(settings);
       })
       .catch(err => console.error('✗ Failed to load automated settings:', err));
     
