@@ -517,17 +517,11 @@ class ConversionIQ_Reports {
                 <p class="cover-subtitle">Professional Analysis & Recommendations</p>';
         
         // Add company information if available
-        if ( $company_name || $website_url ) {
+        if ( $company_name ) {
             $html .= '
                 <div class="cover-company-info">';
-            if ( $company_name ) {
-                $html .= '
+            $html .= '
                     <div class="cover-company-name">'.$company_name.'</div>';
-            }
-            if ( $website_url ) {
-                $html .= '
-                    <div class="cover-company-url">'.$website_url.'</div>';
-            }
             $html .= '
                 </div>';
         }
