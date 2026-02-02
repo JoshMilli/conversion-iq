@@ -222,6 +222,31 @@ function conversioniq_save_settings( WP_REST_Request $request ) {
         unset( $params['openai_api_key'] );
     }
     update_option( 'conversion_iq_settings', wp_json_encode( $params ) );
+    
+    // Sync business information to Supabase
+    $organization_id = get_option( 'conversioniq_organization_id', null );
+    if ( $organization_id ) {
+        $business_fields = array(
+            'industry' => isset( $params['industry'] ) ? sanitize_text_field( $params['industry'] ) : null,
+            'product' => isset( $params['product'] ) ? sanitize_text_field( $params['product'] ) : null,
+            'audience' => isset( $params['audience'] ) ? sanitize_text_field( $params['audience'] ) : null,
+            'pain_points' => isset( $params['pain_points'] ) ? sanitize_text_field( $params['pain_points'] ) : null,
+            'competitors' => isset( $params['competitors'] ) ? sanitize_text_field( $params['competitors'] ) : null,
+            'goal' => isset( $params['goal'] ) ? sanitize_text_field( $params['goal'] ) : null,
+            'additional_info' => isset( $params['additional_info'] ) ? sanitize_textarea_field( $params['additional_info'] ) : null
+        );
+        
+        // Only sync if at least one business field has a value
+        $has_business_data = array_filter( $business_fields, function($value) {
+            return !empty($value);
+        } );
+        
+        if ( !empty( $has_business_data ) ) {
+            $supabase_sync = new ConversionIQ_Supabase_Sync();
+            $supabase_sync->update_organization( $organization_id, $business_fields );
+        }
+    }
+    
     return array( 'success' => true );
 }
 
