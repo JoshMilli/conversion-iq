@@ -637,9 +637,15 @@ class ConversionIQ_Supabase_Sync {
             return 'Configuration error';
         }
         
+        // Build query with proper exclusion
+        $username_query = $this->supabase_url . '/rest/v1/organizations?username=eq.' . urlencode($username) . '&select=id';
+        if (!empty($exclude_org_id)) {
+            $username_query .= '&id=neq.' . urlencode($exclude_org_id);
+        }
+        
         // Check username
         $response = wp_remote_get(
-            $this->supabase_url . '/rest/v1/organizations?username=eq.' . urlencode($username) . '&id=neq.' . urlencode($exclude_org_id) . '&select=id',
+            $username_query,
             [
                 'headers' => [
                     'apikey' => $this->supabase_anon_key,
@@ -656,9 +662,15 @@ class ConversionIQ_Supabase_Sync {
             }
         }
         
+        // Build query with proper exclusion for email
+        $email_query = $this->supabase_url . '/rest/v1/organizations?user_email=eq.' . urlencode($email) . '&select=id';
+        if (!empty($exclude_org_id)) {
+            $email_query .= '&id=neq.' . urlencode($exclude_org_id);
+        }
+        
         // Check email
         $response = wp_remote_get(
-            $this->supabase_url . '/rest/v1/organizations?user_email=eq.' . urlencode($email) . '&id=neq.' . urlencode($exclude_org_id) . '&select=id',
+            $email_query,
             [
                 'headers' => [
                     'apikey' => $this->supabase_anon_key,
