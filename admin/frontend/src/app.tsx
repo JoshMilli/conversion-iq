@@ -98,6 +98,15 @@ export default function App() {
   const [auditFilter, setAuditFilter] = useState<'all' | 'ai' | 'fallback'>('all');
   const [auditSearchQuery, setAuditSearchQuery] = useState('');
   
+  // Account editing state
+  const [isEditingAccount, setIsEditingAccount] = useState(false);
+  const [accountForm, setAccountForm] = useState({
+    full_name: '',
+    email: '',
+    company: '',
+    username: ''
+  });
+  
   // Google Analytics state
   const [gaStatus, setGaStatus] = useState<any>({ connected: false, has_credentials: false });
   const [gaClientId, setGaClientId] = useState('');
@@ -332,6 +341,58 @@ export default function App() {
       setNotice('👋 Logged out successfully');
     } catch (err) {
       console.error('Logout error:', err);
+    }
+  };
+
+  const handleAccountFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setAccountForm({ ...accountForm, [e.target.name]: e.target.value });
+  };
+
+  const handleEditAccount = () => {
+    setAccountForm({
+      full_name: account?.full_name || '',
+      email: account?.email || '',
+      company: account?.company || '',
+      username: account?.username || ''
+    });
+    setIsEditingAccount(true);
+  };
+
+  const handleCancelEditAccount = () => {
+    setIsEditingAccount(false);
+    setAccountForm({
+      full_name: '',
+      email: '',
+      company: '',
+      username: ''
+    });
+  };
+
+  const handleUpdateAccount = async () => {
+    if (!accountForm.full_name || !accountForm.email || !accountForm.company || !accountForm.username) {
+      setNotice('❌ Please fill out all fields');
+      return;
+    }
+
+    setLoading(true);
+    setNotice(null);
+    try {
+      const response = await axios.post(api('account/update'), accountForm, {
+        headers: { 'X-WP-Nonce': nonce }
+      });
+
+      if (response.data.success) {
+        setAccount(response.data.account);
+        setIsEditingAccount(false);
+        setNotice('✅ Account updated successfully!');
+        setTimeout(() => setNotice(null), 3000);
+      } else {
+        setNotice('❌ ' + response.data.message);
+      }
+    } catch (err: any) {
+      setNotice('❌ Failed to update account: ' + (err.response?.data?.message || 'Please try again'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1853,31 +1914,187 @@ export default function App() {
             </p>
 
             <div style={{ background: '#f9fafb', borderRadius: 12, padding: 24, marginBottom: 24, border: '1px solid #e5e7eb' }}>
-              <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600, color: '#111827' }}>Account Information</h3>
-              <div style={{ display: 'grid', gap: 16 }}>
-                <div>
-                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Full Name</div>
-                  <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>{account?.full_name || 'Not set'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Email</div>
-                  <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>{account?.email || 'Not set'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Company</div>
-                  <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>{account?.company || 'Not set'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Username</div>
-                  <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>{account?.username || 'Not set'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Member Since</div>
-                  <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>
-                    {account?.created_at ? new Date(account.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Unknown'}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#111827' }}>Account Information</h3>
+                {!isEditingAccount && (
+                  <button
+                    onClick={handleEditAccount}
+                    style={{
+                      padding: '8px 16px',
+                      background: '#7c3aed',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 6,
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#6d28d9'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = '#7c3aed'}
+                  >
+                    ✏️ Edit
+                  </button>
+                )}
+              </div>
+              
+              {!isEditingAccount ? (
+                <div style={{ display: 'grid', gap: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Full Name</div>
+                    <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>{account?.full_name || 'Not set'}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Email</div>
+                    <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>{account?.email || 'Not set'}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Company</div>
+                    <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>{account?.company || 'Not set'}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Username</div>
+                    <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>{account?.username || 'Not set'}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Member Since</div>
+                    <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>
+                      {account?.created_at ? new Date(account.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Unknown'}
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div style={{ display: 'grid', gap: 16 }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>Full Name</label>
+                    <input
+                      type="text"
+                      name="full_name"
+                      value={accountForm.full_name}
+                      onChange={handleAccountFormChange}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: 8,
+                        fontSize: 14,
+                        outline: 'none',
+                        transition: 'border 0.2s',
+                        background: '#fff',
+                        color: '#111827'
+                      }}
+                      onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
+                      onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>Email</label>
+                    <input
+                      type="email"
+                      name="email"
+                      value={accountForm.email}
+                      onChange={handleAccountFormChange}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: 8,
+                        fontSize: 14,
+                        outline: 'none',
+                        transition: 'border 0.2s',
+                        background: '#fff',
+                        color: '#111827'
+                      }}
+                      onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
+                      onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>Company</label>
+                    <input
+                      type="text"
+                      name="company"
+                      value={accountForm.company}
+                      onChange={handleAccountFormChange}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: 8,
+                        fontSize: 14,
+                        outline: 'none',
+                        transition: 'border 0.2s',
+                        background: '#fff',
+                        color: '#111827'
+                      }}
+                      onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
+                      onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>Username</label>
+                    <input
+                      type="text"
+                      name="username"
+                      value={accountForm.username}
+                      onChange={handleAccountFormChange}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: 8,
+                        fontSize: 14,
+                        outline: 'none',
+                        transition: 'border 0.2s',
+                        background: '#fff',
+                        color: '#111827'
+                      }}
+                      onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
+                      onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                    <button
+                      onClick={handleUpdateAccount}
+                      disabled={loading}
+                      style={{
+                        padding: '12px 24px',
+                        background: loading ? '#d1d5db' : '#10b981',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 8,
+                        fontSize: 15,
+                        fontWeight: 600,
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => !loading && (e.currentTarget.style.background = '#059669')}
+                      onMouseLeave={(e) => !loading && (e.currentTarget.style.background = '#10b981')}
+                    >
+                      {loading ? 'Saving...' : '✓ Save Changes'}
+                    </button>
+                    <button
+                      onClick={handleCancelEditAccount}
+                      disabled={loading}
+                      style={{
+                        padding: '12px 24px',
+                        background: '#fff',
+                        color: '#6b7280',
+                        border: '1px solid #d1d5db',
+                        borderRadius: 8,
+                        fontSize: 15,
+                        fontWeight: 600,
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => !loading && (e.currentTarget.style.background = '#f9fafb')}
+                      onMouseLeave={(e) => !loading && (e.currentTarget.style.background = '#fff')}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div style={{ background: '#fef3c7', borderRadius: 12, padding: 24, marginBottom: 24, border: '1px solid #fde68a' }}>

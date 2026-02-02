@@ -74,6 +74,13 @@ add_action( 'rest_api_init', function() {
         'permission_callback' => function() { return current_user_can('manage_options'); }
     ) );
 
+    // Account update route
+    register_rest_route( 'conversioniq/v1', '/account/update', array(
+        'methods' => 'POST',
+        'callback' => 'conversioniq_update_account',
+        'permission_callback' => function() { return current_user_can('manage_options'); }
+    ) );
+
     register_rest_route( 'conversioniq/v1', '/settings', array(
         array(
             'methods' => 'POST',
@@ -1040,6 +1047,105 @@ function conversioniq_auth_logout() {
     // In a more complex setup, you might want to implement session management
     return rest_ensure_response( array(
         'success' => true
+    ) );
+}
+
+/**
+ * Update account information
+ */
+function conversioniq_update_account( WP_REST_Request $request ) {
+    global $wpdb;
+    $table = $wpdb->prefix . 'conversioniq_accounts';
+    
+    $params = $request->get_json_params();
+    $full_name = sanitize_text_field( $params['full_name'] ?? '' );
+    $email = sanitize_email( $params['email'] ?? '' );
+    $company = sanitize_text_field( $params['company'] ?? '' );
+    $username = sanitize_user( $params['username'] ?? '' );
+    
+    if ( empty( $full_name ) || empty( $email ) || empty( $company ) || empty( $username ) ) {
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => 'All fields are required'
+        ), 400 );
+    }
+    
+    if ( ! is_email( $email ) ) {
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => 'Invalid email address'
+        ), 400 );
+    }
+    
+    // Get current session account_id
+    $account_id = get_option( 'conversioniq_current_account_id', 0 );
+    
+    if ( ! $account_id ) {
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => 'No active session'
+        ), 401 );
+    }
+    
+    // Check if username is taken by another account
+    $existing = $wpdb->get_var( $wpdb->prepare(
+        "SELECT id FROM $table WHERE username = %s AND id != %d",
+        $username,
+        $account_id
+    ) );
+    
+    if ( $existing ) {
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => 'Username is already taken'
+        ), 400 );
+    }
+    
+    // Check if email is taken by another account
+    $existing_email = $wpdb->get_var( $wpdb->prepare(
+        "SELECT id FROM $table WHERE email = %s AND id != %d",
+        $email,
+        $account_id
+    ) );
+    
+    if ( $existing_email ) {
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => 'Email is already in use'
+        ), 400 );
+    }
+    
+    // Update account
+    $updated = $wpdb->update(
+        $table,
+        array(
+            'full_name' => $full_name,
+            'email' => $email,
+            'company' => $company,
+            'username' => $username
+        ),
+        array( 'id' => $account_id ),
+        array( '%s', '%s', '%s', '%s' ),
+        array( '%d' )
+    );
+    
+    if ( $updated === false ) {
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => 'Failed to update account'
+        ), 500 );
+    }
+    
+    // Get updated account
+    $account = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, full_name, email, company, username, api_key, created_at FROM $table WHERE id = %d",
+        $account_id
+    ), ARRAY_A );
+    
+    return rest_ensure_response( array(
+        'success' => true,
+        'account' => $account,
+        'message' => 'Account updated successfully'
     ) );
 }
 
