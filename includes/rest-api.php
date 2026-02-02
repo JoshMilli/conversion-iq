@@ -269,6 +269,42 @@ function conversioniq_save_settings( WP_REST_Request $request ) {
 function conversioniq_get_settings() {
     $v = get_option( 'conversion_iq_settings', '{}' );
     $decoded = json_decode( $v, true );
+    
+    // Check if business info fields are empty
+    $business_fields = array( 'industry', 'product', 'audience', 'pain_points', 'competitors', 'goal', 'additional_info' );
+    $has_local_business_data = false;
+    
+    foreach ( $business_fields as $field ) {
+        if ( !empty( $decoded[$field] ) ) {
+            $has_local_business_data = true;
+            break;
+        }
+    }
+    
+    // If no local business data, try to fetch from Supabase
+    if ( ! $has_local_business_data ) {
+        $organization_id = get_option( 'conversioniq_organization_id', null );
+        
+        if ( $organization_id ) {
+            $supabase_sync = new ConversionIQ_Supabase_Sync();
+            $org_data = $supabase_sync->get_organization( $organization_id );
+            
+            if ( $org_data ) {
+                // Merge Supabase business data with local settings
+                foreach ( $business_fields as $field ) {
+                    if ( !empty( $org_data[$field] ) && empty( $decoded[$field] ) ) {
+                        $decoded[$field] = $org_data[$field];
+                    }
+                }
+                
+                // Update local settings with Supabase data
+                update_option( 'conversion_iq_settings', wp_json_encode( $decoded ) );
+                
+                error_log( 'ConversionIQ: Restored business info from Supabase database' );
+            }
+        }
+    }
+    
     return rest_ensure_response( $decoded );
 }
 

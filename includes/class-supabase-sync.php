@@ -584,6 +584,44 @@ class ConversionIQ_Supabase_Sync {
     }
     
     /**
+     * Get organization data from Supabase
+     * 
+     * @param string $organization_id Organization ID
+     * @return array|null Organization data or null on failure
+     */
+    public function get_organization($organization_id) {
+        if (!$this->supabase_anon_key || !$organization_id) {
+            error_log('ConversionIQ: Cannot get organization - missing credentials or ID');
+            return null;
+        }
+        
+        $response = wp_remote_get(
+            $this->supabase_url . '/rest/v1/organizations?id=eq.' . urlencode($organization_id),
+            [
+                'headers' => [
+                    'apikey' => $this->supabase_anon_key,
+                    'Content-Type' => 'application/json'
+                ],
+                'timeout' => 10
+            ]
+        );
+        
+        if (is_wp_error($response)) {
+            error_log('ConversionIQ: Failed to get organization - ' . $response->get_error_message());
+            return null;
+        }
+        
+        $status_code = wp_remote_retrieve_response_code($response);
+        if ($status_code !== 200) {
+            error_log('ConversionIQ: Failed to get organization - status ' . $status_code);
+            return null;
+        }
+        
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        return isset($body[0]) ? $body[0] : null;
+    }
+    
+    /**
      * Create a new organization in Supabase
      * 
      * @param array $org_data Organization data
