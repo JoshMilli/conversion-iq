@@ -323,61 +323,6 @@ class ConversionIQ_Supabase_Sync {
             ]
         ];
     }
-    
-    /**
-     * Update organization data in Supabase (e.g., when account info changes)
-     *
-     * @param array $data Data to update
-     * @return bool Success status
-     */
-    public function update_organization($data = null) {
-        if (!$this->organization_id || !$this->supabase_anon_key) {
-            error_log('ConversionIQ: Cannot update organization - not registered');
-            return false;
-        }
-        
-        // If no data provided, fetch current account data
-        if ($data === null) {
-            $account = get_option('conversioniq_account', null);
-            if (!$account) {
-                return false;
-            }
-            
-            $data = [
-                'user_full_name' => isset($account['full_name']) ? $account['full_name'] : null,
-                'user_email' => isset($account['email']) ? $account['email'] : null,
-                'company_name' => isset($account['company']) ? $account['company'] : null,
-                'company_id' => isset($account['company_id']) ? $account['company_id'] : null,
-                'username' => isset($account['username']) ? $account['username'] : null
-            ];
-        }
-        
-        $response = wp_remote_request($this->supabase_url . '/rest/v1/organizations?id=eq.' . $this->organization_id, [
-            'method' => 'PATCH',
-            'headers' => [
-                'apikey' => $this->supabase_anon_key,
-                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
-                'Content-Type' => 'application/json',
-                'Prefer' => 'return=minimal'
-            ],
-            'body' => json_encode($data),
-            'timeout' => 30
-        ]);
-        
-        if (is_wp_error($response)) {
-            error_log('ConversionIQ: Failed to update organization - ' . $response->get_error_message());
-            return false;
-        }
-        
-        $status_code = wp_remote_retrieve_response_code($response);
-        if ($status_code !== 204) {
-            error_log('ConversionIQ: Update organization failed: Status ' . $status_code);
-            return false;
-        }
-        
-        error_log('ConversionIQ: Successfully updated organization data');
-        return true;
-    }
 
     /**
      * Send audit data to Supabase
