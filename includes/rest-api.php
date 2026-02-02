@@ -1054,9 +1054,6 @@ function conversioniq_auth_logout() {
  * Update account information
  */
 function conversioniq_update_account( WP_REST_Request $request ) {
-    global $wpdb;
-    $table = $wpdb->prefix . 'conversioniq_accounts';
-    
     $params = $request->get_json_params();
     $full_name = sanitize_text_field( $params['full_name'] ?? '' );
     $email = sanitize_email( $params['email'] ?? '' );
@@ -1077,76 +1074,82 @@ function conversioniq_update_account( WP_REST_Request $request ) {
         ), 400 );
     }
     
-    // Get current session account_id
-    $account_id = get_option( 'conversioniq_current_account_id', 0 );
+    // Get current account
+    $current_account = get_option( 'conversioniq_account', null );
     
-    if ( ! $account_id ) {
+    if ( ! $current_account ) {
         return new WP_REST_Response( array(
             'success' => false,
             'message' => 'No active session'
         ), 401 );
     }
     
-    // Check if username is taken by another account
-    $existing = $wpdb->get_var( $wpdb->prepare(
-        "SELECT id FROM $table WHERE username = %s AND id != %d",
-        $username,
-        $account_id
-    ) );
+    // Get organization ID
+    $organization_id = get_option( 'conversioniq_organization_id', null );
     
-    if ( $existing ) {
+    if ( ! $organization_id ) {
         return new WP_REST_Response( array(
             'success' => false,
-            'message' => 'Username is already taken'
-        ), 400 );
+            'message' => 'Organization not found'
+        ), 401 );
     }
     
-    // Check if email is taken by another account
-    $existing_email = $wpdb->get_var( $wpdb->prepare(
-        "SELECT id FROM $table WHERE email = %s AND id != %d",
-        $email,
-        $account_id
-    ) );
-    
-    if ( $existing_email ) {
+    // Update in Supabase
+    try {
+        $supabase_sync = new ConversionIQ_Supabase_Sync();
+        
+        // Check if username or email is taken by another organization
+        $conflict = $supabase_sync->check_account_conflict( $username, $email, $organization_id );
+        
+        if ( $conflict ) {
+            return new WP_REST_Response( array(
+                'success' => false,
+                'message' => $conflict
+            ), 400 );
+        }
+        
+        // Update organization
+        $updated = $supabase_sync->update_organization( $organization_id, array(
+            'company_name' => $company,
+            'username' => $username,
+            'user_full_name' => $full_name,
+            'user_email' => $email
+        ) );
+        
+        if ( ! $updated ) {
+            return new WP_REST_Response( array(
+                'success' => false,
+                'message' => 'Failed to update account in database'
+            ), 500 );
+        }
+        
+        // Update local cache
+        $current_account['full_name'] = $full_name;
+        $current_account['email'] = $email;
+        $current_account['company'] = $company;
+        $current_account['username'] = $username;
+        
+        update_option( 'conversioniq_account', $current_account );
+        
+        // Remove sensitive data before sending
+        $safe_account = $current_account;
+        if ( isset( $safe_account['password_hash'] ) ) {
+            unset( $safe_account['password_hash'] );
+        }
+        
+        return rest_ensure_response( array(
+            'success' => true,
+            'account' => $safe_account,
+            'message' => 'Account updated successfully'
+        ) );
+        
+    } catch ( Exception $e ) {
+        error_log( 'ConversionIQ Account Update Error: ' . $e->getMessage() );
         return new WP_REST_Response( array(
             'success' => false,
-            'message' => 'Email is already in use'
-        ), 400 );
-    }
-    
-    // Update account
-    $updated = $wpdb->update(
-        $table,
-        array(
-            'full_name' => $full_name,
-            'email' => $email,
-            'company' => $company,
-            'username' => $username
-        ),
-        array( 'id' => $account_id ),
-        array( '%s', '%s', '%s', '%s' ),
-        array( '%d' )
-    );
-    
-    if ( $updated === false ) {
-        return new WP_REST_Response( array(
-            'success' => false,
-            'message' => 'Failed to update account'
+            'message' => 'Failed to update account. Please try again.'
         ), 500 );
     }
-    
-    // Get updated account
-    $account = $wpdb->get_row( $wpdb->prepare(
-        "SELECT id, full_name, email, company, username, api_key, created_at FROM $table WHERE id = %d",
-        $account_id
-    ), ARRAY_A );
-    
-    return rest_ensure_response( array(
-        'success' => true,
-        'account' => $account,
-        'message' => 'Account updated successfully'
-    ) );
 }
 
 /**

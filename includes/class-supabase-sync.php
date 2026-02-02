@@ -607,4 +607,99 @@ class ConversionIQ_Supabase_Sync {
         $body = json_decode(wp_remote_retrieve_body($response), true);
         return isset($body[0]) ? $body[0] : null;
     }
+    
+    /**
+     * Check if username or email conflicts with another organization
+     * 
+     * @param string $username Username to check
+     * @param string $email Email to check
+     * @param string $exclude_org_id Organization ID to exclude from check
+     * @return string|null Error message if conflict exists, null otherwise
+     */
+    public function check_account_conflict($username, $email, $exclude_org_id) {
+        if (!$this->supabase_anon_key) {
+            return 'Configuration error';
+        }
+        
+        // Check username
+        $response = wp_remote_get(
+            $this->supabase_url . '/rest/v1/organizations?username=eq.' . urlencode($username) . '&id=neq.' . urlencode($exclude_org_id) . '&select=id',
+            [
+                'headers' => [
+                    'apikey' => $this->supabase_anon_key,
+                    'Content-Type' => 'application/json'
+                ],
+                'timeout' => 10
+            ]
+        );
+        
+        if (!is_wp_error($response)) {
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            if (!empty($body)) {
+                return 'Username is already taken';
+            }
+        }
+        
+        // Check email
+        $response = wp_remote_get(
+            $this->supabase_url . '/rest/v1/organizations?user_email=eq.' . urlencode($email) . '&id=neq.' . urlencode($exclude_org_id) . '&select=id',
+            [
+                'headers' => [
+                    'apikey' => $this->supabase_anon_key,
+                    'Content-Type' => 'application/json'
+                ],
+                'timeout' => 10
+            ]
+        );
+        
+        if (!is_wp_error($response)) {
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            if (!empty($body)) {
+                return 'Email is already in use';
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Update organization information in Supabase
+     * 
+     * @param string $organization_id Organization ID
+     * @param array $data Data to update
+     * @return bool Success status
+     */
+    public function update_organization($organization_id, $data) {
+        if (!$this->supabase_anon_key || !$organization_id) {
+            error_log('ConversionIQ: Cannot update organization - missing credentials or ID');
+            return false;
+        }
+        
+        $response = wp_remote_request(
+            $this->supabase_url . '/rest/v1/organizations?id=eq.' . urlencode($organization_id),
+            [
+                'method' => 'PATCH',
+                'headers' => [
+                    'apikey' => $this->supabase_anon_key,
+                    'Content-Type' => 'application/json',
+                    'Prefer' => 'return=representation'
+                ],
+                'body' => json_encode($data),
+                'timeout' => 15
+            ]
+        );
+        
+        if (is_wp_error($response)) {
+            error_log('ConversionIQ: Organization update failed - ' . $response->get_error_message());
+            return false;
+        }
+        
+        $status_code = wp_remote_retrieve_response_code($response);
+        if ($status_code !== 200) {
+            error_log('ConversionIQ: Organization update failed with status ' . $status_code);
+            return false;
+        }
+        
+        return true;
+    }
 }
