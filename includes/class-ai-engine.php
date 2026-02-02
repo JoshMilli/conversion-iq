@@ -325,6 +325,112 @@ class ConversionIQ_AI {
     }
     
     /**
+     * Detect page type and return appropriate conversion context
+     */
+    private static function detect_page_type( $title, $url ) {
+        $title_lower = strtolower( $title );
+        $url_lower = strtolower( $url );
+        
+        // Homepage detection
+        if ( preg_match( '/^home$/i', $title ) || 
+             preg_match( '/\/\s*$/', $url ) || 
+             strpos( $url_lower, 'homepage' ) !== false ) {
+            return array(
+                'type' => 'Homepage',
+                'context' => 'The homepage is the first impression and gateway to your business. It should quickly communicate value, build trust, and guide visitors to take the next step in their journey.',
+                'conversion_goal' => 'Capture attention, communicate value proposition clearly, and guide visitors to explore key pages or take primary action (contact, sign up, learn more)'
+            );
+        }
+        
+        // About/Company page
+        if ( preg_match( '/about|who we are|our story|our team|our company|meet the team/i', $title_lower ) ||
+             preg_match( '/about|our-story|our-team|company/i', $url_lower ) ) {
+            return array(
+                'type' => 'About Page',
+                'context' => 'The About page builds trust and credibility by humanizing your business. Visitors here are evaluating whether to work with you.',
+                'conversion_goal' => 'Build trust and emotional connection, showcase expertise and values, guide visitors to contact or service pages'
+            );
+        }
+        
+        // Services/Product pages
+        if ( preg_match( '/services|what we do|our services|products|offerings/i', $title_lower ) ||
+             preg_match( '/services|products|offerings/i', $url_lower ) ) {
+            return array(
+                'type' => 'Services/Products Page',
+                'context' => 'Service pages are high-intent pages where visitors evaluate your specific offerings. They need clear information and strong CTAs.',
+                'conversion_goal' => 'Clearly explain offerings, demonstrate value and benefits, address objections, drive direct conversion (inquiry, booking, purchase)'
+            );
+        }
+        
+        // Contact page
+        if ( preg_match( '/contact|get in touch|reach us|book|schedule/i', $title_lower ) ||
+             preg_match( '/contact|booking|schedule/i', $url_lower ) ) {
+            return array(
+                'type' => 'Contact/Booking Page',
+                'context' => 'This is a high-intent page where visitors are ready to take action. Remove friction and make it easy to connect.',
+                'conversion_goal' => 'Minimize friction, provide multiple contact options, reassure visitors, make it extremely easy to take action'
+            );
+        }
+        
+        // FAQ page
+        if ( preg_match( '/faq|frequently asked|questions|help center/i', $title_lower ) ||
+             preg_match( '/faq|questions|help/i', $url_lower ) ) {
+            return array(
+                'type' => 'FAQ Page',
+                'context' => 'FAQ pages remove objections and answer concerns that prevent conversion. They support the buying decision.',
+                'conversion_goal' => 'Address common objections clearly, reduce uncertainty, build confidence, include CTAs to move visitors to conversion'
+            );
+        }
+        
+        // Pricing page
+        if ( preg_match( '/pricing|plans|packages|cost|rates/i', $title_lower ) ||
+             preg_match( '/pricing|plans|packages/i', $url_lower ) ) {
+            return array(
+                'type' => 'Pricing Page',
+                'context' => 'Pricing pages are critical conversion points. Visitors need clear value justification and easy next steps.',
+                'conversion_goal' => 'Present pricing clearly, justify value, compare options effectively, drive purchase or inquiry with strong CTAs'
+            );
+        }
+        
+        // Blog/Article page
+        if ( preg_match( '/blog|article|post|news|guide/i', $title_lower ) ||
+             preg_match( '/blog|article|post|news/i', $url_lower ) ) {
+            return array(
+                'type' => 'Blog/Content Page',
+                'context' => 'Content pages attract and educate visitors. They should build authority and guide readers to service pages.',
+                'conversion_goal' => 'Provide valuable information, establish expertise, include relevant CTAs to services/contact, capture emails for nurturing'
+            );
+        }
+        
+        // Testimonials/Reviews page
+        if ( preg_match( '/testimonial|reviews|success stories|case studies|clients/i', $title_lower ) ||
+             preg_match( '/testimonial|reviews|case-studies/i', $url_lower ) ) {
+            return array(
+                'type' => 'Testimonials/Social Proof Page',
+                'context' => 'Social proof pages validate your claims and build trust. They overcome skepticism.',
+                'conversion_goal' => 'Showcase credible testimonials and results, build trust through social proof, guide visitors to take action'
+            );
+        }
+        
+        // Gallery/Portfolio page
+        if ( preg_match( '/gallery|portfolio|our work|projects/i', $title_lower ) ||
+             preg_match( '/gallery|portfolio|projects/i', $url_lower ) ) {
+            return array(
+                'type' => 'Gallery/Portfolio Page',
+                'context' => 'Visual showcases demonstrate quality and capability. They should inspire confidence.',
+                'conversion_goal' => 'Showcase quality of work, demonstrate capabilities, provide context for projects, guide to inquiry or booking'
+            );
+        }
+        
+        // Default for unidentified pages
+        return array(
+            'type' => 'Standard Page',
+            'context' => 'This page supports the overall customer journey and should align with its specific purpose in the conversion funnel.',
+            'conversion_goal' => 'Guide visitors toward the primary business goal while serving the specific purpose of this page'
+        );
+    }
+    
+    /**
      * Build comprehensive prompt for AI analysis
      */
     private static function build_prompt( $title, $content, $url, $word_count, $html_structure, $business, $section_name = null ) {
@@ -334,6 +440,14 @@ class ConversionIQ_AI {
         $pain_points = isset( $business['pain_points'] ) ? $business['pain_points'] : 'Not specified';
         $competitors = isset( $business['competitors'] ) ? $business['competitors'] : 'Not specified';
         $goal = isset( $business['goal'] ) ? $business['goal'] : 'Not specified';
+        
+        // Detect page type and set appropriate conversion goals
+        $page_type_info = self::detect_page_type( $title, $url );
+        $page_type = $page_type_info['type'];
+        $page_context = $page_type_info['context'];
+        $conversion_goal = $page_type_info['conversion_goal'];
+        
+        error_log( '🎯 Detected page type: ' . $page_type . ' | Conversion goal: ' . $conversion_goal );
         
         // Section context for chunked analysis
         $section_context = '';
@@ -361,7 +475,18 @@ class ConversionIQ_AI {
 - Target Audience: {$audience}
 - Customer Pain Points: {$pain_points}
 - Key Competitors: {$competitors}
-- Primary Goal: {$goal}
+- Primary Business Goal: {$goal}
+
+**Page Type & Context:**
+- Page Type: {$page_type}
+- Page Purpose: {$page_context}
+- Specific Conversion Goal for This Page: {$conversion_goal}
+
+**IMPORTANT - Page-Specific Analysis:**
+This is a {$page_type} page. Your analysis MUST consider the unique conversion goals and user expectations for this page type:
+{$page_context}
+
+Evaluate all metrics (clarity, emotional resonance, CTA, readability, engagement, trust) specifically through the lens of this page type's conversion goals.
 
 **Page Information:**
 - Title: {$title}
@@ -375,12 +500,18 @@ class ConversionIQ_AI {
 {$html_structure}
 
 **Analysis Task:**
-Analyze this page SPECIFICALLY in the context of the business information provided above. Your suggestions MUST be:
-1. Directly relevant to the actual page content (not generic advice)
-2. Aligned with the stated business goals and target audience
-3. Addressing the specific customer pain points mentioned
-4. Competitive against the mentioned competitors
-5. Actionable and specific (reference actual page elements and sections)
+Analyze this page SPECIFICALLY in the context of:
+1. The page type and its specific conversion goals (not just general business goals)
+2. The business information and target audience
+3. The actual page content (not generic advice)
+4. Customer pain points and competitive positioning
+5. How this page fits into the overall customer journey
+
+Your suggestions MUST be:
+- Appropriate for a {$page_type} page
+- Aligned with this page's conversion goal: {$conversion_goal}
+- Based on actual page content (reference specific elements)
+- Actionable and specific
 
 **IMPORTANT for Page Sections:**
 - Identify which specific section of the page each suggestion relates to
