@@ -1186,6 +1186,7 @@ function conversioniq_update_account( WP_REST_Request $request ) {
             // Create organization in Supabase
             $site_url = get_site_url();
             $org_data = array(
+                'name' => $company, // Required field in Supabase schema
                 'company_name' => $company,
                 'domain' => parse_url( $site_url, PHP_URL_HOST ),
                 'api_key' => $api_key,
