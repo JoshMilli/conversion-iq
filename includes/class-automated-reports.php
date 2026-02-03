@@ -458,17 +458,6 @@ class ConversionIQ_Automated_Reports {
                                 </tr>
                             </table>
                             
-                            <!-- CTA Button -->
-                            <table width="100%%" cellpadding="0" cellspacing="0" border="0" style="margin: 32px 0;">
-                                <tr>
-                                    <td align="center">
-                                        <a href="%s" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1e3a5f 0%%, #2563eb 100%%); color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                            View Full Dashboard →
-                                        </a>
-                                    </td>
-                                </tr>
-                            </table>
-                            
                         </td>
                     </tr>
                     
@@ -511,8 +500,7 @@ class ConversionIQ_Automated_Reports {
             ucfirst( $weakest_areas[1] ),
             $avg_scores[$weakest_areas[1]],
             count( $attachments ),
-            count( $attachments ) !== 1 ? 's' : '',
-            admin_url( 'admin.php?page=conversion-iq' )
+            count( $attachments ) !== 1 ? 's' : ''
         );
         
         $headers = array(
