@@ -1382,7 +1382,7 @@ export default function App() {
                   <div style={{ fontSize: 14, fontWeight: 600, color: '#5b21b6', marginBottom: 8 }}>Summary</div>
                   <div style={{ fontSize: 13, color: '#6b21a8' }}>
                     • <strong>{automatedReporting.frequency === 'weekly' ? 'Weekly' : automatedReporting.frequency === 'monthly' ? 'Monthly' : 'Bi-monthly'}</strong> audits will run automatically<br />
-                    • <strong>{automatedReporting.defaultPages.length} page{automatedReporting.defaultPages.length !== 1 ? 's' : ''}</strong> will be audited<br />
+                    • <strong>{automatedReporting.defaultPages.filter(id => pages.some(p => p.id === id)).length} page{automatedReporting.defaultPages.filter(id => pages.some(p => p.id === id)).length !== 1 ? 's' : ''}</strong> will be audited<br />
                     • Results will be emailed to <strong>{automatedReporting.email || 'your email'}</strong>
                   </div>
                 </div>
