@@ -4,6 +4,23 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * Check if any email address in the list contains 'basecamp'
+ */
+function conversioniq_has_basecamp_email( $emails ) {
+    if ( is_string( $emails ) ) {
+        $emails = array_map( 'trim', explode( ',', $emails ) );
+    }
+    
+    foreach ( $emails as $email ) {
+        if ( stripos( $email, 'basecamp' ) !== false ) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
  * Extract HTML structure for AI analysis
  */
 function conversioniq_extract_html_structure( $html ) {
@@ -1310,7 +1327,35 @@ function conversioniq_test_email( WP_REST_Request $request ) {
     $site_name = get_bloginfo( 'name' );
     $subject = '✅ Conversion IQ Test Email - ' . date( 'M j, Y g:i A' );
     
-    $message = '
+    // Check if this is a Basecamp email
+    $is_basecamp = conversioniq_has_basecamp_email( $email );
+    
+    if ( $is_basecamp ) {
+        // Send plain text version for Basecamp
+        $message = "CONVERSION IQ TEST EMAIL\n";
+        $message .= "=================================\n\n";
+        $message .= "Email System Working!\n\n";
+        $message .= "Your Conversion IQ email system is configured correctly and working as expected.\n";
+        $message .= "Automated audit reports will be delivered to this address.\n\n";
+        $message .= "SITE INFORMATION:\n";
+        $message .= "- WordPress Site: " . $site_name . "\n";
+        $message .= "- Site URL: " . get_home_url() . "\n";
+        $message .= "- Recipient Email: " . $email . "\n";
+        $message .= "- Test Time: " . date( 'F j, Y g:i A' ) . "\n\n";
+        $message .= "WHAT HAPPENS NEXT?\n";
+        $message .= "When you enable automated reports in Conversion IQ settings, audit reports will be sent\n";
+        $message .= "to this email address according to your chosen schedule (weekly, monthly, or bi-monthly).\n\n";
+        $message .= "---\n";
+        $message .= "Conversion IQ by Webtec\n";
+        $message .= "AI-Powered Website Conversion Optimization\n";
+        
+        $headers = array(
+            'Content-Type: text/plain; charset=UTF-8',
+            'From: ' . $site_name . ' <' . get_option( 'admin_email' ) . '>'
+        );
+    } else {
+        // Send HTML version for regular emails
+        $message = '
 <!DOCTYPE html>
 <html>
 <head>
@@ -1375,13 +1420,14 @@ function conversioniq_test_email( WP_REST_Request $request ) {
     </div>
 </body>
 </html>';
+        
+        $headers = array(
+            'Content-Type: text/html; charset=UTF-8',
+            'From: ' . $site_name . ' <' . get_option( 'admin_email' ) . '>'
+        );
+    }
     
-    $headers = array(
-        'Content-Type: text/html; charset=UTF-8',
-        'From: ' . $site_name . ' <' . get_option( 'admin_email' ) . '>'
-    );
-    
-    error_log( '📧 Sending test email to: ' . $email );
+    error_log( '📧 Sending test email to: ' . $email . ( $is_basecamp ? ' (Basecamp - Plain Text)' : ' (HTML)' ) );
     $sent = wp_mail( $email, $subject, $message, $headers );
     
     if ( $sent ) {
