@@ -1075,57 +1075,70 @@ class ConversionIQ_Reports {
         // Recommendations
         if ( ! empty( $data['suggestions'] ) && is_array( $data['suggestions'] ) ) {
             $html .= '<div class="section">
-                <h3 class="section-title">Recommendations</h3>';
+                <h3 class="section-title">Priority Recommendations</h3>
+                <p style="font-size: 15px; color: #6b7280; margin-bottom: 24px; line-height: 1.7;">
+                    Based on your audit results, here are the most impactful changes you can make to improve your conversion rate.
+                </p>';
             
             $counter = 1;
+            $total_suggestions = count($data['suggestions']);
+            
             foreach ( $data['suggestions'] as $s ) {
                 // Handle both string format (old) and object format (new with why/impact/implementation)
                 if (is_string($s)) {
                     $suggestion_text = $s;
                     $has_details = false;
+                    $impact_text = '';
                 } else {
                     $suggestion_text = isset($s['text']) ? $s['text'] : '';
                     $has_details = !empty($s['why']) || !empty($s['impact']) || !empty($s['implementation']);
+                    $impact_text = isset($s['impact']) ? $s['impact'] : '';
+                }
+                
+                // Determine priority badge based on position
+                if ($counter <= 2) {
+                    $priority = 'HIGH PRIORITY';
+                    $priority_color = '#fee2e2';
+                    $priority_text_color = '#ef4444';
+                } elseif ($counter <= 4) {
+                    $priority = 'MEDIUM PRIORITY';
+                    $priority_color = '#fef3c7';
+                    $priority_text_color = '#f59e0b';
+                } else {
+                    $priority = 'LOW PRIORITY';
+                    $priority_color = '#dbeafe';
+                    $priority_text_color = '#3b82f6';
                 }
                 
                 if ( ! empty( $suggestion_text ) ) {
-                    if ($has_details) {
-                        // New detailed format with styled card
-                        $html .= '<div style="background: #f9fafb; padding: 20px; border-radius: 10px; margin-bottom: 16px; border-left: 4px solid #2563eb; page-break-inside: avoid; break-inside: avoid;">
-                            <div style="display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px;">
-                                <span style="flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: #2563eb; color: #ffffff; border-radius: 50%; font-size: 14px; font-weight: 700;">'.$counter.'</span>
-                                <h4 style="margin: 0; color: #1e3a5f; font-size: 16px; font-weight: 700; line-height: 1.4;">'.esc_html($suggestion_text).'</h4>
-                            </div>';
-                        
-                        if (!empty($s['why'])) {
-                            $html .= '<div style="margin-left: 40px; margin-bottom: 10px;">
-                                <div style="font-size: 12px; font-weight: 700; color: #2563eb; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Why This Matters</div>
-                                <p style="margin: 0; font-size: 14px; color: #4b5563; line-height: 1.6;">'.nl2br(esc_html($s['why'])).'</p>
-                            </div>';
-                        }
-                        
-                        if (!empty($s['impact'])) {
-                            $html .= '<div style="margin-left: 40px; margin-bottom: 10px;">
-                                <div style="font-size: 12px; font-weight: 700; color: #059669; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Expected Impact</div>
-                                <p style="margin: 0; font-size: 14px; color: #4b5563; line-height: 1.6;">'.nl2br(esc_html($s['impact'])).'</p>
-                            </div>';
-                        }
-                        
-                        if (!empty($s['implementation'])) {
-                            $html .= '<div style="margin-left: 40px;">
-                                <div style="font-size: 12px; font-weight: 700; color: #7c3aed; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">How To Implement</div>
-                                <p style="margin: 0; font-size: 14px; color: #4b5563; line-height: 1.6;">'.nl2br(esc_html($s['implementation'])).'</p>
-                            </div>';
-                        }
-                        
-                        $html .= '</div>';
-                    } else {
-                        // Old simple format
-                        $html .= '<div style="display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; page-break-inside: avoid; break-inside: avoid;">
-                            <span style="flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: #2563eb; color: #ffffff; border-radius: 50%; font-size: 13px; font-weight: 700;">'.$counter.'</span>
-                            <p style="margin: 0; font-size: 14px; color: #374151; line-height: 1.6;">'.esc_html($suggestion_text).'</p>
+                    // Modern card format with priority badge
+                    $html .= '<div style="background: white; padding: 24px; border-radius: 12px; margin-bottom: 20px; border-left: 6px solid #6366f1; box-shadow: 0 2px 8px rgba(0,0,0,0.08); page-break-inside: avoid; break-inside: avoid;">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 14px; gap: 16px;">
+                            <h4 style="margin: 0; color: #1e293b; font-size: 18px; font-weight: 700; line-height: 1.4; flex: 1;">'.$counter.'. '.esc_html($suggestion_text).'</h4>
+                            <span style="flex-shrink: 0; padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; background: '.$priority_color.'; color: '.$priority_text_color.';">'.$priority.'</span>
+                        </div>';
+                    
+                    // Add description from "why" field or default text
+                    if ($has_details && !empty($s['why'])) {
+                        $html .= '<p style="margin: 0 0 16px 0; font-size: 14px; color: #475569; line-height: 1.7;">'.nl2br(esc_html($s['why'])).'</p>';
+                    }
+                    
+                    // Add impact section if available
+                    if (!empty($impact_text)) {
+                        $html .= '<div style="background: #f1f5f9; padding: 14px; border-radius: 8px; border-left: 3px solid #6366f1;">
+                            <p style="margin: 0; font-size: 13px; color: #334155; line-height: 1.6;"><strong style="color: #1e293b; font-weight: 600;">Expected Impact:</strong> '.nl2br(esc_html($impact_text)).'</p>
                         </div>';
                     }
+                    
+                    // Add implementation if available
+                    if ($has_details && !empty($s['implementation'])) {
+                        $html .= '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e8f0;">
+                            <div style="font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">How To Implement</div>
+                            <p style="margin: 0; font-size: 13px; color: #475569; line-height: 1.6;">'.nl2br(esc_html($s['implementation'])).'</p>
+                        </div>';
+                    }
+                    
+                    $html .= '</div>';
                     $counter++;
                 }
             }
