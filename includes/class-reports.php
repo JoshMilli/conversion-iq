@@ -755,8 +755,6 @@ class ConversionIQ_Reports {
             </div>';
         }
         
-        $html .= '
-            
         // Benchmark Explanation Section - only show if we have AI-generated benchmark data
         if ($industry_avg !== null && $top_performers !== null) {
             $html .= '<div class="section">
