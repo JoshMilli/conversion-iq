@@ -729,7 +729,7 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanatory te
                 )
             ),
             'max_tokens' => 4000,
-            'temperature' => 0.7,
+            'temperature' => 0.1,
             'stream' => false
         );
         

@@ -1758,9 +1758,17 @@ export default function App() {
                     </div>
                   )}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600, padding: '6px 12px', borderRadius: 8, background: a.ai_used === false ? '#fef3c7' : '#f3e8ff', color: a.ai_used === false ? '#92400e' : '#7c3aed' }}>
-                  <span>{a.ai_used === false ? '⚠' : '✓'}</span>
-                  <span>{a.ai_used === false ? 'Fallback' : 'AI Powered'}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {a.content_changed === false && (
+                    <div title="Page content unchanged from previous audit - scores may vary due to AI analysis" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, padding: '6px 12px', borderRadius: 8, background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}>
+                      <span>⚠️</span>
+                      <span>Page Unchanged</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600, padding: '6px 12px', borderRadius: 8, background: a.ai_used === false ? '#fef3c7' : '#f3e8ff', color: a.ai_used === false ? '#92400e' : '#7c3aed' }}>
+                    <span>{a.ai_used === false ? '⚠' : '✓'}</span>
+                    <span>{a.ai_used === false ? 'Fallback' : 'AI Powered'}</span>
+                  </div>
                 </div>
               </div>
               

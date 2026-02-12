@@ -450,8 +450,12 @@ function conversioniq_run_audit( WP_REST_Request $request ) {
             ),
         );
         
+        // Calculate content hash for change detection
+        $content_hash = hash( 'sha256', $content . $html_structure );
+        
         error_log( '🔍 Running audit for: ' . $post->post_title );
         error_log( '📄 Content length: ' . strlen($content) . ' chars, Word count: ' . str_word_count($content) );
+        error_log( '🔐 Content hash: ' . $content_hash );
         
         $audit_start = microtime(true);
         try {
@@ -477,7 +481,7 @@ function conversioniq_run_audit( WP_REST_Request $request ) {
                 error_log( '📋 Response keys: ' . json_encode( array_keys( $ai ) ) );
             }
             
-            $insert_id = ConversionIQ_DB::insert_audit( $post->ID, $post->post_title, $ai );
+            $insert_id = ConversionIQ_DB::insert_audit( $post->ID, $post->post_title, $ai, $content_hash );
             
             // Add company identifier for webhook tracking
             $account = get_option( 'conversioniq_account', null );
@@ -604,6 +608,13 @@ function conversioniq_list_audits( WP_REST_Request $request ) {
         $audit['page_id'] = $row['page_id'];
         $audit['page_title'] = $row['page_title']; // Ensure page_title is always present
         $audit['created_at'] = $row['created_at'];
+        
+        // Add content change detection
+        $content_changed = ConversionIQ_DB::has_content_changed( $row['id'] );
+        if ( $content_changed !== null ) {
+            $audit['content_changed'] = $content_changed;
+        }
+        
         $formatted[] = $audit;
     }
     
