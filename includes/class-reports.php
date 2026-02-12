@@ -656,6 +656,25 @@ class ConversionIQ_Reports {
         $lowest_area = array_key_first($score_values);
         $potential_gain = round((85 - $score_values[$lowest_area]) * 0.8);
         
+        // Find highest and second-lowest scores for insight cards
+        $sorted_scores_asc = $score_values;
+        asort($sorted_scores_asc);
+        $sorted_scores_desc = $score_values;
+        arsort($sorted_scores_desc);
+        
+        $highest_area = array_key_first($sorted_scores_desc);
+        $highest_score = $sorted_scores_desc[$highest_area];
+        
+        // Get second-lowest for "Biggest Opportunity"
+        $scores_array = array_values($sorted_scores_asc);
+        $keys_array = array_keys($sorted_scores_asc);
+        $second_lowest_area = isset($keys_array[1]) ? $keys_array[1] : $keys_array[0];
+        $second_lowest_score = $sorted_scores_asc[$second_lowest_area];
+        
+        // Get third-lowest for "Quick Win"
+        $third_lowest_area = isset($keys_array[2]) ? $keys_array[2] : $keys_array[1];
+        $third_lowest_score = $sorted_scores_asc[$third_lowest_area];
+        
         // Fetch historical data for trend
         global $wpdb;
         $table = $wpdb->prefix . 'conversioniq_audits';
@@ -732,7 +751,7 @@ class ConversionIQ_Reports {
                 <div style="display: grid; gap: 15px;">
                     <!-- Priority Action -->
                     <div style="background: #fff7ed; padding: 16px; border-radius: 8px; border-left: 4px solid #f59e0b; page-break-inside: avoid; break-inside: avoid;">
-                        <h4 style="color: #f59e0b; font-size: 16px; margin-bottom: 10px; font-weight: 700;">Top Priority Action</h4>
+                        <h4 style="color: #f59e0b; font-size: 16px; margin-bottom: 10px; font-weight: 700;">⚡ Top Priority Action</h4>
                         <p style="font-size: 14px; color: #374151; line-height: 1.6; margin-bottom: 10px;">
                             <strong>Focus Area:</strong> '.$lowest_area.' (currently scoring '.$score_values[$lowest_area].' out of 100)
                         </p>
@@ -740,16 +759,40 @@ class ConversionIQ_Reports {
                             This represents your greatest opportunity for improvement. By addressing the issues identified, you can expect an improvement of approximately <strong>+'.$potential_gain.' points</strong>. '.$lowest_area.' directly impacts how visitors perceive your offer and make decisions.
                         </p>
                     </div>
-                    
-                    <!-- Expected Impact -->
-                    <div style="background: #dbeafe; padding: 16px; border-radius: 8px; border-left: 4px solid #2563eb; page-break-inside: avoid; break-inside: avoid;">
-                        <h4 style="color: #2563eb; font-size: 16px; margin-bottom: 10px; font-weight: 700;">Expected Impact & Timeline</h4>
-                        <p style="font-size: 14px; color: #374151; line-height: 1.6; margin-bottom: 10px;">
-                            <strong>Projected Conversion Increase:</strong> 25-40% improvement within 60-90 days
-                        </p>
-                        <p style="font-size: 13px; color: #374151; line-height: 1.6; margin: 0;">
-                            By systematically implementing the recommendations, you can expect measurable improvements in bounce rate, time on page, engagement metrics, and ultimately conversion rate - with no additional marketing spend required.
-                        </p>
+                </div>
+                
+                <!-- Insight Cards Grid -->
+                <div style="display: table; width: 100%; table-layout: fixed; margin-top: 15px;">
+                    <div style="display: table-row;">
+                        <!-- Top Strength Card -->
+                        <div style="display: table-cell; width: 33.33%; padding-right: 8px; vertical-align: top;">
+                            <div style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); padding: 16px; border-radius: 8px; border-left: 4px solid #10b981; height: 100%; page-break-inside: avoid; break-inside: avoid;">
+                                <h4 style="color: #10b981; font-size: 15px; margin-bottom: 10px; font-weight: 700;">🎯 Top Strength</h4>
+                                <p style="font-size: 13px; color: #1e293b; line-height: 1.6; margin: 0;">
+                                    Your <strong>'.$highest_area.' ('.$highest_score.'/100)</strong> shows strong performance. This solid foundation helps keep visitors engaged and moving toward conversion.
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <!-- Biggest Opportunity Card -->
+                        <div style="display: table-cell; width: 33.33%; padding-left: 4px; padding-right: 4px; vertical-align: top;">
+                            <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); padding: 16px; border-radius: 8px; border-left: 4px solid #f59e0b; height: 100%; page-break-inside: avoid; break-inside: avoid;">
+                                <h4 style="color: #f59e0b; font-size: 15px; margin-bottom: 10px; font-weight: 700;">💡 Biggest Opportunity</h4>
+                                <p style="font-size: 13px; color: #1e293b; line-height: 1.6; margin: 0;">
+                                    Your <strong>'.$second_lowest_area.' ('.$second_lowest_score.'/100)</strong> could better connect with your target audience. Improvements here typically lift conversions by 20-30%.
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <!-- Quick Win Card -->
+                        <div style="display: table-cell; width: 33.33%; padding-left: 8px; vertical-align: top;">
+                            <div style="background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%); padding: 16px; border-radius: 8px; border-left: 4px solid #8b5cf6; height: 100%; page-break-inside: avoid; break-inside: avoid;">
+                                <h4 style="color: #8b5cf6; font-size: 15px; margin-bottom: 10px; font-weight: 700;">🚀 Quick Win</h4>
+                                <p style="font-size: 13px; color: #1e293b; line-height: 1.6; margin: 0;">
+                                    Strengthening your <strong>'.$third_lowest_area.' ('.$third_lowest_score.'/100)</strong> with targeted improvements could yield immediate results in conversion rates.
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>';
