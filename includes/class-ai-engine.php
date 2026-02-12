@@ -581,6 +581,53 @@ Prioritize recommendations by:
 2. **Long-term**: Strategic improvements requiring more time/resources
 3. **Priority**: The ONE most critical change that addresses the biggest weakness
 
+**CRITICAL INSTRUCTIONS for Key Insights:**
+
+The insights section is the FIRST thing clients read - make it valuable, specific, and actionable:
+
+1. **Executive Summary**: Write a 2-3 sentence overview in client-facing language that:
+   - Summarizes the overall conversion health based on audit scores
+   - Highlights the #1 priority area that needs attention
+   - Sets a positive, solution-focused tone (avoid being overly negative)
+   - Example: "Your page shows strong foundations with clear messaging (clarity: 78), but trust-building elements are your biggest opportunity. With a trust score of 58, adding social proof and testimonials could increase conversions by 20-30%. The good news: these are quick wins that can be implemented within a week."
+
+2. **Strengths**: List 2-3 specific things this page does WELL:
+   - Reference actual content you analyzed (not generic observations)
+   - Connect to specific scores (e.g., "Strong headline clarity (82/100)")
+   - Be specific about what's working (e.g., "Your value proposition in the hero section clearly addresses {$audience}'s need for...")
+   - ❌ BAD: "Good content quality"
+   - ✅ GOOD: "Your feature descriptions effectively address {$pain_points}, creating strong emotional resonance (score: 84)"
+
+3. **Weaknesses**: Identify 2-3 critical gaps that hurt conversion:
+   - Be constructive and solution-focused in tone
+   - Reference specific audit scores that are below 70
+   - Point to actual missing elements you identified
+   - Frame in terms of missed opportunities, not just problems
+   - ❌ BAD: "Poor trust signals"
+   - ✅ GOOD: "Missing testimonials and client logos (trust score: 58) - your competitors showcase social proof prominently, and adding this could boost conversions significantly"
+
+4. **Opportunities**: List 2-3 high-impact improvements presented positively:
+   - Focus on what could be gained, not what's missing
+   - Connect to business goals and expected outcomes
+   - Make clients excited about the potential
+   - ❌ BAD: "Need better CTAs"
+   - ✅ GOOD: "Strengthening your CTA from 'Learn More' to action-driven copy like 'Start Your {$goal}' could increase click-through rates by 15-25%"
+
+5. **Top Priority Insight**: A clear, client-friendly explanation of the #1 area to focus on:
+   - Explain WHY this is the priority (reference the lowest score or biggest gap)
+   - Explain the IMPACT of fixing it (expected conversion improvement)
+   - Make it digestible for non-technical business owners
+   - Set realistic timeframe and difficulty expectations
+   - ❌ BAD: "Improve trust score"
+   - ✅ GOOD: "Your trust score of 58 is your biggest opportunity. For {$industry} businesses targeting {$audience}, trust signals are critical - visitors need proof before converting. Adding client testimonials, trust badges, and case studies could lift your conversion rate by 25-30% within 2 weeks of implementation."
+
+6. **Audience Alignment**: Specific analysis of how well the page speaks to {$audience}:
+   - Reference actual language, tone, and messaging from the page
+   - Identify gaps between current copy and audience expectations
+   - Be specific about what resonates and what doesn't
+   - ❌ BAD: "Good audience fit"
+   - ✅ GOOD: "Your messaging resonates well with {$audience}, particularly the emphasis on {$pain_points}. However, the technical jargon in the features section may alienate non-technical decision-makers in your audience."
+
 **Required Output (JSON only, no markdown):**
 {
   \"clarity_score\": [0-100],
@@ -620,11 +667,21 @@ Prioritize recommendations by:
         \"closing_statement\": \"Final conversion-focused statement\"
     },
   \"insights\": {
-    \"strengths\": [\"Strength 1\", \"Strength 2\", \"Strength 3\"],
-    \"weaknesses\": [\"Weakness 1\", \"Weakness 2\", \"Weakness 3\"],
-    \"opportunities\": [\"Opportunity 1\", \"Opportunity 2\"],
-    \"audience_alignment\": \"Analysis of alignment with {$audience}\",
-    \"tone_analysis\": \"Tone analysis\"
+    \"executive_summary\": \"2-3 sentence client-facing overview that summarizes conversion health, highlights #1 priority, and sets positive tone. Reference specific scores and expected improvement.\",
+    \"strengths\": [
+        \"Specific strength #1 with reference to actual page content and scores (e.g., 'Strong value proposition in hero section addresses {$audience}'s need for X, achieving clarity score of 85')\",
+        \"Specific strength #2 connecting to business goals\"
+    ],
+    \"weaknesses\": [
+        \"Constructive weakness #1 with specific score and what's missing (e.g., 'Trust score of 58 indicates missing social proof - no testimonials or client logos visible, unlike competitors')\",
+        \"Constructive weakness #2 framed as missed opportunity\"
+    ],
+    \"opportunities\": [
+        \"High-impact opportunity #1 presented positively with expected outcome (e.g., 'Strengthening CTAs could increase conversions by 15-25%')\",
+        \"High-impact opportunity #2 tied to business goals\"
+    ],
+    \"top_priority_insight\": \"Client-friendly explanation of the #1 focus area: why it's the priority (reference lowest score), impact of fixing it (expected % improvement), realistic timeframe. Make it digestible for non-technical business owners.\",
+    \"audience_alignment\": \"Specific analysis of how well page speaks to {$audience} - reference actual language, tone, and messaging from the page. Identify gaps between current copy and audience expectations with specific examples.\"
   },
   \"recommendations\": {
     \"quick_wins\": [
@@ -813,11 +870,12 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanatory te
             'rewrites' => array(),
             'ai_used' => false,
             'insights' => array(
-                'strengths' => array( 'Fallback data generated' ),
-                'weaknesses' => array( 'AI unavailable - check debug.log for details' ),
-                'opportunities' => array( 'Retry audit after fixing AI integration' ),
-                'audience_alignment' => 'Unable to analyze without AI',
-                'tone_analysis' => 'Unable to analyze without AI'
+                'executive_summary' => 'AI analysis is currently unavailable, so these are fallback scores. To get accurate, personalized conversion insights for your business, please fix the AI integration issues listed below.',
+                'strengths' => array( 'Fallback data has been generated to prevent complete failure' ),
+                'weaknesses' => array( 'AI service unavailable - check debug.log at wp-content/debug.log for detailed error messages' ),
+                'opportunities' => array( 'Retry audit after fixing AI integration to get real conversion insights and recommendations' ),
+                'top_priority_insight' => 'Your top priority is fixing the AI integration. Without AI analysis, this audit cannot provide personalized conversion insights based on your actual page content, business goals, or target audience. Fixing this will unlock detailed recommendations that could improve your conversion rate by 20-40%.',
+                'audience_alignment' => 'Unable to analyze audience alignment without AI. AI analysis evaluates how well your messaging resonates with your target audience.'
             ),
             'recommendations' => array(
                 'quick_wins' => array(

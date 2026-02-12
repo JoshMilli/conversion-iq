@@ -2573,55 +2573,71 @@ export default function App() {
                         </div>
                       </div>
                     )}
-                    
-                    {modal.audit.insights?.audience_alignment && (
-                      <div style={{ marginTop: 20 }}>
-                        <h4>Audience Alignment</h4>
-                        <p style={{ background: '#f0f6ff', padding: 12, borderRadius: 6, margin: 0 }}>{modal.audit.insights.audience_alignment}</p>
-                      </div>
-                    )}
-
-                    {modal.audit.insights?.tone_analysis && (
-                      <div style={{ marginTop: 20 }}>
-                        <h4>Tone Analysis</h4>
-                        <p style={{ background: '#f0fdf4', padding: 12, borderRadius: 6, margin: 0 }}>{modal.audit.insights.tone_analysis}</p>
-                      </div>
-                    )}
                   </div>
                 )}
 
                 {modal.tab === 'insights' && (
                   <div>
+                    {modal.audit.insights?.executive_summary && (
+                      <div style={{ marginBottom: 24, padding: 20, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 12, color: '#fff', boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+                          <span style={{ fontSize: 28, marginRight: 10 }}>📊</span>
+                          <h4 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Executive Summary</h4>
+                        </div>
+                        <p style={{ margin: 0, fontSize: 15, lineHeight: 1.7, opacity: 0.95 }}>{modal.audit.insights.executive_summary}</p>
+                      </div>
+                    )}
+
+                    {modal.audit.insights?.top_priority_insight && (
+                      <div style={{ marginBottom: 24, padding: 20, background: '#fff7ed', borderRadius: 12, border: '2px solid #f59e0b', boxShadow: '0 2px 8px rgba(245, 158, 11, 0.15)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+                          <span style={{ fontSize: 28, marginRight: 10 }}>🎯</span>
+                          <h4 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#ea580c' }}>Top Priority Focus</h4>
+                        </div>
+                        <p style={{ margin: 0, fontSize: 15, lineHeight: 1.7, color: '#374151' }}>{modal.audit.insights.top_priority_insight}</p>
+                      </div>
+                    )}
+
                     {modal.audit.insights?.strengths && modal.audit.insights.strengths.length > 0 && (
                       <div style={{ marginBottom: 24 }}>
-                        <h4 style={{ color: '#27ae60', marginBottom: 12 }}>💪 Strengths</h4>
-                        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                        <h4 style={{ color: '#27ae60', marginBottom: 12, fontSize: 17, fontWeight: 700 }}>💪 What's Working Well</h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                           {modal.audit.insights.strengths.map((s, i) => (
-                            <li key={i} style={{ background: '#f0fdf4', padding: 12, borderRadius: 6, marginBottom: 8, borderLeft: '3px solid #27ae60' }}>{s}</li>
+                            <div key={i} style={{ background: '#f0fdf4', padding: 16, borderRadius: 8, borderLeft: '4px solid #27ae60', fontSize: 14, lineHeight: 1.6, color: '#374151' }}>{s}</div>
                           ))}
-                        </ul>
+                        </div>
                       </div>
                     )}
 
                     {modal.audit.insights?.weaknesses && modal.audit.insights.weaknesses.length > 0 && (
                       <div style={{ marginBottom: 24 }}>
-                        <h4 style={{ color: '#dc2626', marginBottom: 12 }}>⚠️ Weaknesses</h4>
-                        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                        <h4 style={{ color: '#dc2626', marginBottom: 12, fontSize: 17, fontWeight: 700 }}>⚠️ Areas for Improvement</h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                           {modal.audit.insights.weaknesses.map((w, i) => (
-                            <li key={i} style={{ background: '#fef2f2', padding: 12, borderRadius: 6, marginBottom: 8, borderLeft: '3px solid #dc2626' }}>{w}</li>
+                            <div key={i} style={{ background: '#fef2f2', padding: 16, borderRadius: 8, borderLeft: '4px solid #dc2626', fontSize: 14, lineHeight: 1.6, color: '#374151' }}>{w}</div>
                           ))}
-                        </ul>
+                        </div>
                       </div>
                     )}
 
                     {modal.audit.insights?.opportunities && modal.audit.insights.opportunities.length > 0 && (
-                      <div>
-                        <h4 style={{ color: '#0284c7', marginBottom: 12 }}>🚀 Opportunities</h4>
-                        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                      <div style={{ marginBottom: 24 }}>
+                        <h4 style={{ color: '#0284c7', marginBottom: 12, fontSize: 17, fontWeight: 700 }}>🚀 Growth Opportunities</h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                           {modal.audit.insights.opportunities.map((o, i) => (
-                            <li key={i} style={{ background: '#e0f2fe', padding: 12, borderRadius: 6, marginBottom: 8, borderLeft: '3px solid #0284c7' }}>{o}</li>
+                            <div key={i} style={{ background: '#e0f2fe', padding: 16, borderRadius: 8, borderLeft: '4px solid #0284c7', fontSize: 14, lineHeight: 1.6, color: '#374151' }}>{o}</div>
                           ))}
-                        </ul>
+                        </div>
+                      </div>
+                    )}
+
+                    {modal.audit.insights?.audience_alignment && (
+                      <div style={{ padding: 20, background: '#f3f4f6', borderRadius: 12, border: '2px solid #9ca3af' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+                          <span style={{ fontSize: 24, marginRight: 10 }}>👥</span>
+                          <h4 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#374151' }}>Audience Alignment</h4>
+                        </div>
+                        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: '#4b5563' }}>{modal.audit.insights.audience_alignment}</p>
                       </div>
                     )}
                   </div>
