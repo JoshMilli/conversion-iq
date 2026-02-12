@@ -1795,7 +1795,7 @@ export default function App() {
                 <div style={{ marginBottom: 16, padding: 16, background: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)', borderRadius: 10, borderLeft: '4px solid #f59e0b' }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>🔥 Priority Recommendation</div>
                   <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.6, fontWeight: 500 }}>
-                    {a.recommendations.priority}
+                    {typeof a.recommendations.priority === 'string' ? a.recommendations.priority : a.recommendations.priority.text}
                   </div>
                 </div>
               )}
