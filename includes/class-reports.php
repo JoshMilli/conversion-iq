@@ -766,38 +766,22 @@ class ConversionIQ_Reports {
                             Based on AI analysis of '.(!empty($business['industry']) ? 'competitive '.strtolower(esc_html($business['industry'])).' websites' : 'thousands of websites').' and conversion optimization data
                         </p>
                         
-                        <div style="background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%); padding: 28px; border-radius: 12px; margin-bottom: 18px; border: 2px solid #e5e7eb;">
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 24px;">
-                                <div style="text-align: center; flex: 1; padding: 16px; background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); border-radius: 10px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);">
-                                    <div style="font-size: 11px; color: rgba(255,255,255,0.8); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Your Score</div>
-                                    <div style="font-size: 42px; font-weight: 800; color: #ffffff; line-height: 1;">'.$overall_score.'</div>
-                                </div>
-                                <div style="text-align: center; flex: 1; padding: 16px; background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%); border-radius: 10px; border: 2px solid #f59e0b;">
-                                    <div style="font-size: 11px; color: #92400e; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">'.(!empty($business['industry']) ? esc_html($business['industry']) : 'Industry').' Average</div>
-                                    <div style="font-size: 42px; font-weight: 800; color: #f59e0b; line-height: 1;">'.$industry_avg.'</div>
-                                </div>
-                                <div style="text-align: center; flex: 1; padding: 16px; background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border-radius: 10px; border: 2px solid #10b981;">
-                                    <div style="font-size: 11px; color: #065f46; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Top Performers</div>
-                                    <div style="font-size: 42px; font-weight: 800; color: #10b981; line-height: 1;">'.$top_performers.'<span style="font-size: 24px;">+</span></div>
-                                </div>
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 24px;">
+                            <div style="text-align: center; flex: 1; padding: 20px; background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); border-radius: 10px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);">
+                                <div style="font-size: 12px; color: rgba(255,255,255,0.8); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Your Score</div>
+                                <div style="font-size: 48px; font-weight: 800; color: #ffffff; line-height: 1;">'.$overall_score.'</div>
                             </div>
-                            
-                            <div style="position: relative; margin-bottom: 12px;">
-                                <div style="height: 16px; background: linear-gradient(90deg, #fee2e2 0%, #fef3c7 40%, #d1fae5 100%); border-radius: 8px; overflow: visible; position: relative; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);">
-                                    <div style="position: absolute; height: 100%; background: linear-gradient(90deg, #1e3a5f 0%, #2563eb 100%); width: '.min($overall_score, 100).'%; left: 0; border-radius: 8px; box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4); transition: width 0.3s ease;"></div>
-                                    <div style="position: absolute; height: 28px; width: 4px; background: #1e3a5f; left: '.$overall_score.'%; top: -6px; border-radius: 2px; box-shadow: 0 3px 10px rgba(0,0,0,0.3);"></div>
-                                    <div style="position: absolute; top: -32px; left: '.$overall_score.'%; transform: translateX(-50%); background: #1e3a5f; color: white; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 12px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.2);">You ('.$overall_score.')</div>
-                                </div>
+                            <div style="text-align: center; flex: 1; padding: 20px; background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%); border-radius: 10px; border: 2px solid #f59e0b;">
+                                <div style="font-size: 12px; color: #92400e; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">'.(!empty($business['industry']) ? esc_html($business['industry']) : 'Industry').' Average</div>
+                                <div style="font-size: 48px; font-weight: 800; color: #f59e0b; line-height: 1;">'.$industry_avg.'</div>
                             </div>
-                            
-                            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #6b7280; font-weight: 500; margin-top: 8px;">
-                                <span style="display: flex; align-items: center;"><span style="display: inline-block; width: 8px; height: 8px; background: #ef4444; border-radius: 50%; margin-right: 6px;"></span>0-60 Poor</span>
-                                <span style="display: flex; align-items: center;"><span style="display: inline-block; width: 8px; height: 8px; background: #f59e0b; border-radius: 50%; margin-right: 6px;"></span>60-75 Fair</span>
-                                <span style="display: flex; align-items: center;"><span style="display: inline-block; width: 8px; height: 8px; background: #10b981; border-radius: 50%; margin-right: 6px;"></span>75+ Excellent</span>
+                            <div style="text-align: center; flex: 1; padding: 20px; background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border-radius: 10px; border: 2px solid #10b981;">
+                                <div style="font-size: 12px; color: #065f46; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Top Performers</div>
+                                <div style="font-size: 48px; font-weight: 800; color: #10b981; line-height: 1;">'.$top_performers.'<span style="font-size: 28px;">+</span></div>
                             </div>
                         </div>
                         
-                        <div style="background: white; padding: 16px; border-radius: 8px; border-left: 4px solid #2563eb; margin-bottom: 15px;">
+                        <div style="background: white; padding: 18px; border-radius: 8px; border-left: 4px solid #2563eb; margin-bottom: 15px;">
                             <h5 style="color: #1e3a5f; font-size: 15px; margin: 0 0 10px 0; font-weight: 700;">Competitive Position</h5>
                             <p style="font-size: 13px; color: #374151; line-height: 1.6; margin: 0;">';
         
@@ -815,64 +799,61 @@ class ConversionIQ_Reports {
         }
         
         $html .= '</p>
-                        </div>
-                        
-                        <div style="background: #fef3c7; padding: 16px; border-radius: 8px; border-left: 4px solid #f59e0b; margin-bottom: 15px;">
-                            <h5 style="color: #92400e; font-size: 15px; margin: 0 0 8px 0; font-weight: 700;">Impact Potential</h5>
-                            <p style="font-size: 13px; color: #78350f; line-height: 1.6; margin: 0;">
-                                '.(!empty($conversion_lift) ? 'Industry data shows every <strong>10-point improvement</strong> in your overall score correlates with a <strong>'.$conversion_lift.' increase in conversion rate</strong>' : 'Improving your overall score will directly increase your conversion rate').(!empty($business['goal']) ? ', directly supporting your goal of '.strtolower(esc_html($business['goal'])) : '').'. The recommendations in this report target the highest-impact opportunities specific to '.(!empty($business['industry']) ? esc_html($business['industry']).' businesses' : 'your business').'.
-                            </p>
-                        </div>
-                        
-                        <div style="background: white; padding: 16px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #6b7280;">
-                            <h5 style="color: #1e3a5f; font-size: 15px; margin: 0 0 8px 0; font-weight: 700;">How Scores Are Calculated</h5>
-                            <p style="font-size: 13px; color: #374151; line-height: 1.6; margin: 0;">
-                                <strong>Your Score ('.$overall_score.'):</strong> The average of your six conversion metrics (Clarity, Emotional Impact, CTA Strength, Readability, Engagement, and Trust Signals).<br><br>
-                                <strong>'.(!empty($business['industry']) ? esc_html($business['industry']).' ' : '').'Industry Average ('.$industry_avg.'):</strong> Based on AI analysis of competitive '.(!empty($business['industry']) ? strtolower(esc_html($business['industry'])).' ' : '').'websites, the typical business scores around '.$industry_avg.'/100.<br><br>
-                                <strong>Top Performers ('.$top_performers.'+):</strong> The top 10% of '.(!empty($business['industry']) ? esc_html($business['industry']).' ' : '').'businesses achieve scores of '.$top_performers.' or higher through strategic optimization and continuous testing.
-                            </p>
                         </div>';
         
-        // Display competitive context if available
+        // Display competitive context if available - EXPANDED
         if (!empty($competitive_context)) {
-            $html .= '<div style="background: #f0f9ff; padding: 18px; border-radius: 8px; border-left: 4px solid #2563eb; margin-bottom: 20px;">
-                <h5 style="color: #1e3a5f; font-size: 15px; margin: 0 0 10px 0; font-weight: 700;">Competitive Landscape</h5>
-                <p style="font-size: 14px; color: #374151; line-height: 1.7; margin: 0;">'.esc_html($competitive_context).'</p>
+            $html .= '<div style="background: #f0f9ff; padding: 20px; border-radius: 8px; border-left: 4px solid #0891b2; margin-bottom: 20px;">
+                <h5 style="color: #0891b2; font-size: 15px; margin: 0 0 12px 0; font-weight: 700;">📊 Competitive Landscape</h5>
+                <p style="font-size: 14px; color: #1e293b; line-height: 1.7; margin-bottom: 12px;">'.nl2br(esc_html($competitive_context)).'</p>';
+            
+            // Add industry-specific context if available
+            if (!empty($business['industry'])) {
+                $html .= '<div style="background: white; padding: 12px; border-radius: 6px; margin-top: 12px; border-left: 3px solid #0891b2;">
+                    <p style="font-size: 13px; color: #475569; line-height: 1.6; margin: 0;">
+                        <strong>Industry Context:</strong> In the '.esc_html($business['industry']).' sector, top-performing websites typically excel in trust-building elements, clear value propositions, and streamlined conversion paths. Your score of '.$overall_score.' compared to the industry average of '.$industry_avg.' indicates '.($overall_score >= $industry_avg ? 'strong competitive positioning' : 'significant opportunities for improvement').' relative to market standards.
+                    </p>
+                </div>';
+            }
+            
+            $html .= '</div>';
+        } elseif (!empty($business['industry'])) {
+            // Fallback competitive landscape if AI didn't provide one
+            $html .= '<div style="background: #f0f9ff; padding: 20px; border-radius: 8px; border-left: 4px solid #0891b2; margin-bottom: 20px;">
+                <h5 style="color: #0891b2; font-size: 15px; margin: 0 0 12px 0; font-weight: 700;">📊 Competitive Landscape</h5>
+                <p style="font-size: 14px; color: #1e293b; line-height: 1.7; margin-bottom: 12px;">
+                    Within the <strong>'.esc_html($business['industry']).' industry</strong>, conversion optimization and user experience are critical differentiators. Analysis of competitive websites in this sector reveals that successful businesses focus on building immediate trust, presenting clear value propositions, and removing friction from the conversion process.
+                </p>
+                <div style="background: white; padding: 12px; border-radius: 6px; margin-top: 12px; border-left: 3px solid #0891b2;">
+                    <p style="font-size: 13px; color: #475569; line-height: 1.6; margin: 0;">
+                        <strong>Your Position:</strong> With a score of '.$overall_score.' against an industry average of '.$industry_avg.', you are '.($overall_score >= $industry_avg ? 'performing above typical '.esc_html($business['industry']).' competitors' : 'positioned to gain significant competitive advantage through focused optimization').'. The gap between average performers ('.$industry_avg.') and top performers ('.$top_performers.'+) in your industry represents substantial market opportunity.
+                    </p>
+                </div>
             </div>';
         }
         
-        // Display quick wins if available
+        // Display quick wins if available - MORE COMPACT
         if (!empty($quick_wins) && is_array($quick_wins)) {
             $html .= '<div style="margin-top: 20px;">
-                <h5 style="color: #1e3a5f; font-size: 16px; margin: 0 0 10px 0; font-weight: 700;">Quick Wins for '.(!empty($business['industry']) ? esc_html($business['industry']).' ' : 'Your ').'Business</h5>
-                <p style="font-size: 14px; color: #6b7280; margin-bottom: 15px;">Implement these industry-specific tactics within 1-2 weeks to see immediate conversion improvements:</p>
-                <div style="display: grid; gap: 15px;">';
+                <h5 style="color: #1e3a5f; font-size: 15px; margin: 0 0 12px 0; font-weight: 700;">⚡ Quick Wins</h5>
+                <div style="display: grid; gap: 10px;">';
             
             $win_number = 1;
             foreach ($quick_wins as $win) {
                 if (isset($win['tactic'])) {
                     $tactic = esc_html($win['tactic']);
                     $impact = isset($win['impact']) ? esc_html($win['impact']) : '';
-                    $implementation = isset($win['implementation']) ? esc_html($win['implementation']) : '';
                     
-                    $html .= '<div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb;">
-                        <div style="display: flex; align-items: start; gap: 12px;">
-                            <div style="background: #2563eb; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0;">'.$win_number.'</div>
-                            <div style="flex: 1;">
-                                <div style="font-weight: 600; color: #1e3a5f; margin-bottom: 8px; font-size: 15px;">'.$tactic.'</div>';
-                    
-                    if (!empty($implementation)) {
-                        $html .= '<div style="font-size: 14px; color: #374151; line-height: 1.6; margin-bottom: 8px;">'.$implementation.'</div>';
-                    }
+                    $html .= '<div style="background: white; padding: 14px; border-radius: 6px; border: 1px solid #e5e7eb; display: flex; align-items: start; gap: 10px;">
+                        <div style="background: #2563eb; color: white; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex-shrink: 0;">'.$win_number.'</div>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600; color: #1e3a5f; font-size: 13px; line-height: 1.4;">'.$tactic.'</div>';
                     
                     if (!empty($impact)) {
-                        $html .= '<div style="font-size: 13px; color: #059669; background: #d1fae5; padding: 6px 10px; border-radius: 4px; display: inline-block; margin-top: 8px;">
-                            Expected Impact: '.$impact.'
-                        </div>';
+                        $html .= '<div style="font-size: 12px; color: #059669; margin-top: 4px;">Impact: '.$impact.'</div>';
                     }
                     
                     $html .= '</div>
-                        </div>
                     </div>';
                     
                     $win_number++;
@@ -880,20 +861,6 @@ class ConversionIQ_Reports {
             }
             
             $html .= '</div>
-            </div>';
-        }
-        
-        // Display key competitive factors if available
-        if (!empty($competitive_factors) && is_array($competitive_factors)) {
-            $html .= '<div style="margin-top: 20px;">
-                <h5 style="color: #1e3a5f; font-size: 16px; margin: 0 0 12px 0; font-weight: 700;">Key Success Factors in '.(!empty($business['industry']) ? esc_html($business['industry']) : 'Your Industry').'</h5>
-                <ul style="font-size: 14px; color: #374151; line-height: 1.7; margin: 0; padding-left: 20px;">';
-            
-            foreach ($competitive_factors as $factor) {
-                $html .= '<li style="margin-bottom: 8px;">'.esc_html($factor).'</li>';
-            }
-            
-            $html .= '</ul>
             </div>';
         }
         
