@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 1.7.27
+ * Version: 1.7.28
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'CONVERSION_IQ_VERSION', '1.7.27' );
+define( 'CONVERSION_IQ_VERSION', '1.7.28' );
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
@@ -100,29 +100,13 @@ function conversioniq_install() {
     flush_rewrite_rules();
     update_option( 'conversioniq_version', CONVERSION_IQ_VERSION );
     
-    // Get the homepage ID
-    $homepage_id = get_option( 'page_on_front' );
-    if ( ! $homepage_id ) {
-        // Fallback: get the first published page
-        $first_page = get_posts( array(
-            'post_type' => 'page',
-            'posts_per_page' => 1,
-            'orderby' => 'date',
-            'order' => 'ASC',
-            'post_status' => 'publish'
-        ) );
-        if ( ! empty( $first_page ) ) {
-            $homepage_id = $first_page[0]->ID;
-        }
-    }
-    
-    // Enable automated audits with homepage as default page
+    // Enable automated audits with no default pages selected
     $admin_email = get_option( 'admin_email' );
     $automated_settings = array(
         'enabled' => true,
         'frequency' => 'weekly',
         'email' => $admin_email,
-        'defaultPages' => $homepage_id ? array( $homepage_id ) : array()
+        'defaultPages' => array()
     );
     update_option( 'conversion_iq_automated_reports', $automated_settings );
     
