@@ -698,8 +698,35 @@ class ConversionIQ_Reports {
                 <div style="font-size: 14px; color: #6b7280;">Your website shows '.(strtolower($status)).' performance with opportunities for growth</div>
             </div>
             
-            <!-- Key Insights -->
-            <div class="section">
+            <!-- Key Insights -->';
+            
+        // Check if we have AI-generated insights
+        $has_ai_insights = isset($data['executive_summary']) && !empty($data['executive_summary']);
+        $has_priority_insight = isset($data['top_priority_insight']) && !empty($data['top_priority_insight']);
+        
+        if ($has_ai_insights || $has_priority_insight) {
+            // Use AI-generated insights
+            $html .= '<div class="section">
+                <h3 class="section-title" style="font-size: 20px; margin-bottom: 12px;">Key Insights</h3>';
+                
+            if ($has_ai_insights) {
+                $html .= '<div style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); padding: 20px; border-radius: 10px; margin-bottom: 16px; border-left: 4px solid #0891b2; page-break-inside: avoid; break-inside: avoid;">
+                    <h4 style="color: #0891b2; font-size: 16px; margin-bottom: 12px; font-weight: 700;">📊 Executive Summary</h4>
+                    <p style="font-size: 14px; color: #1e293b; line-height: 1.7; margin: 0;">'.nl2br(esc_html($data['executive_summary'])).'</p>
+                </div>';
+            }
+            
+            if ($has_priority_insight) {
+                $html .= '<div style="background: #fff7ed; padding: 20px; border-radius: 10px; border-left: 4px solid #f59e0b; page-break-inside: avoid; break-inside: avoid;">
+                    <h4 style="color: #f59e0b; font-size: 16px; margin-bottom: 12px; font-weight: 700;">🎯 Top Priority Focus</h4>
+                    <p style="font-size: 14px; color: #1e293b; line-height: 1.7; margin: 0;">'.nl2br(esc_html($data['top_priority_insight'])).'</p>
+                </div>';
+            }
+            
+            $html .= '</div>';
+        } else {
+            // Fallback to static template for older audits
+            $html .= '<div class="section">
                 <h3 class="section-title" style="font-size: 20px; margin-bottom: 12px;">Key Insights</h3>
                 
                 <div style="display: grid; gap: 15px;">
@@ -726,6 +753,9 @@ class ConversionIQ_Reports {
                     </div>
                 </div>
             </div>';
+        }
+        
+        $html .= '
             
         // Benchmark Explanation Section - only show if we have AI-generated benchmark data
         if ($industry_avg !== null && $top_performers !== null) {
@@ -1028,21 +1058,61 @@ class ConversionIQ_Reports {
         // Recommendations
         if ( ! empty( $data['suggestions'] ) && is_array( $data['suggestions'] ) ) {
             $html .= '<div class="section">
-                <h3 class="section-title">Recommendations</h3>
-                <ul class="recommendation-list">';
+                <h3 class="section-title">Recommendations</h3>';
+            
             $counter = 1;
             foreach ( $data['suggestions'] as $s ) {
-                $suggestion_text = is_string($s) ? $s : (isset($s['text']) ? $s['text'] : '');
+                // Handle both string format (old) and object format (new with why/impact/implementation)
+                if (is_string($s)) {
+                    $suggestion_text = $s;
+                    $has_details = false;
+                } else {
+                    $suggestion_text = isset($s['text']) ? $s['text'] : '';
+                    $has_details = !empty($s['why']) || !empty($s['impact']) || !empty($s['implementation']);
+                }
+                
                 if ( ! empty( $suggestion_text ) ) {
-                    $html .= '<li class="recommendation-item">
-                        <span class="recommendation-number">'.$counter.'</span>
-                        <span class="recommendation-text">'.esc_html( $suggestion_text ).'</span>
-                    </li>';
+                    if ($has_details) {
+                        // New detailed format with styled card
+                        $html .= '<div style="background: #f9fafb; padding: 20px; border-radius: 10px; margin-bottom: 16px; border-left: 4px solid #2563eb; page-break-inside: avoid; break-inside: avoid;">
+                            <div style="display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px;">
+                                <span style="flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: #2563eb; color: #ffffff; border-radius: 50%; font-size: 14px; font-weight: 700;">'.$counter.'</span>
+                                <h4 style="margin: 0; color: #1e3a5f; font-size: 16px; font-weight: 700; line-height: 1.4;">'.esc_html($suggestion_text).'</h4>
+                            </div>';
+                        
+                        if (!empty($s['why'])) {
+                            $html .= '<div style="margin-left: 40px; margin-bottom: 10px;">
+                                <div style="font-size: 12px; font-weight: 700; color: #2563eb; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Why This Matters</div>
+                                <p style="margin: 0; font-size: 14px; color: #4b5563; line-height: 1.6;">'.nl2br(esc_html($s['why'])).'</p>
+                            </div>';
+                        }
+                        
+                        if (!empty($s['impact'])) {
+                            $html .= '<div style="margin-left: 40px; margin-bottom: 10px;">
+                                <div style="font-size: 12px; font-weight: 700; color: #059669; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Expected Impact</div>
+                                <p style="margin: 0; font-size: 14px; color: #4b5563; line-height: 1.6;">'.nl2br(esc_html($s['impact'])).'</p>
+                            </div>';
+                        }
+                        
+                        if (!empty($s['implementation'])) {
+                            $html .= '<div style="margin-left: 40px;">
+                                <div style="font-size: 12px; font-weight: 700; color: #7c3aed; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">How To Implement</div>
+                                <p style="margin: 0; font-size: 14px; color: #4b5563; line-height: 1.6;">'.nl2br(esc_html($s['implementation'])).'</p>
+                            </div>';
+                        }
+                        
+                        $html .= '</div>';
+                    } else {
+                        // Old simple format
+                        $html .= '<div style="display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; page-break-inside: avoid; break-inside: avoid;">
+                            <span style="flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: #2563eb; color: #ffffff; border-radius: 50%; font-size: 13px; font-weight: 700;">'.$counter.'</span>
+                            <p style="margin: 0; font-size: 14px; color: #374151; line-height: 1.6;">'.esc_html($suggestion_text).'</p>
+                        </div>';
+                    }
                     $counter++;
                 }
             }
-            $html .= '</ul>
-            </div>';
+            $html .= '</div>';
         }
 
         $html .= '
@@ -1066,14 +1136,36 @@ class ConversionIQ_Reports {
             foreach ( $data['functionality_suggestions'] as $feature ) {
                 $feature_title = $feature['title'] ?? 'Suggested Feature';
                 $feature_desc = $feature['description'] ?? '';
+                $feature_why = $feature['why'] ?? '';
                 $feature_impact = $feature['impact'] ?? '';
+                $feature_impl = $feature['implementation'] ?? '';
                 
-                $html .= '<div class="feature-card">
+                $html .= '<div class="feature-card" style="page-break-inside: avoid; break-inside: avoid;">
                     <h4 class="feature-title">'.esc_html($feature_title).'</h4>
                     <p class="feature-desc">'.esc_html($feature_desc).'</p>';
-                if (!empty($feature_impact)) {
-                    $html .= '<div class="feature-impact">Expected Impact: '.esc_html($feature_impact).'</div>';
+                
+                // Show detailed fields if available
+                if (!empty($feature_why)) {
+                    $html .= '<div style="margin-top: 12px; padding: 12px; background: #f0f9ff; border-radius: 6px; border-left: 3px solid #0891b2;">
+                        <div style="font-size: 11px; font-weight: 700; color: #0891b2; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Why This Feature</div>
+                        <p style="margin: 0; font-size: 13px; color: #374151; line-height: 1.5;">'.nl2br(esc_html($feature_why)).'</p>
+                    </div>';
                 }
+                
+                if (!empty($feature_impact)) {
+                    $html .= '<div style="margin-top: 8px; padding: 12px; background: #f0fdf4; border-radius: 6px; border-left: 3px solid #059669;">
+                        <div style="font-size: 11px; font-weight: 700; color: #059669; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Expected Impact</div>
+                        <p style="margin: 0; font-size: 13px; color: #374151; line-height: 1.5;">'.nl2br(esc_html($feature_impact)).'</p>
+                    </div>';
+                }
+                
+                if (!empty($feature_impl)) {
+                    $html .= '<div style="margin-top: 8px; padding: 12px; background: #faf5ff; border-radius: 6px; border-left: 3px solid #7c3aed;">
+                        <div style="font-size: 11px; font-weight: 700; color: #7c3aed; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Implementation Guide</div>
+                        <p style="margin: 0; font-size: 13px; color: #374151; line-height: 1.5;">'.nl2br(esc_html($feature_impl)).'</p>
+                    </div>';
+                }
+                
                 $html .= '</div>';
             }
         } else {

@@ -1,0 +1,698 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Website Conversion Audit Report</title>
+    <style>
+        @page { 
+            margin: 0; 
+            size: A4 portrait;
+        }
+        * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
+        }
+        body { 
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            color: #1e3a5f;
+            line-height: 1.6;
+            background: #ffffff;
+            white-space: normal;
+            orphans: 3;
+            widows: 3;
+        }
+        
+        /* Global text rendering rules */
+        p, div, span, li, td, th, h1, h2, h3, h4, h5, h6 {
+            white-space: normal;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        
+        /* Print-specific rules for better PDF output */
+        @media print {
+            .page {
+                page-break-after: always;
+                page-break-inside: avoid;
+            }
+            .page:last-child {
+                page-break-after: avoid;
+            }
+            /* Prevent breaks inside styled content boxes */
+            div[style*="background"][style*="padding"] {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+        }
+        
+        /* Page Structure */
+        .page {
+            max-width: 1200px;
+            width: 100%;
+            min-height: 29.7cm;
+            padding: 0;
+            margin: 0 auto;
+            background: #ffffff;
+            page-break-after: always;
+            page-break-inside: avoid;
+            position: relative;
+            overflow: visible;
+        }
+        .page:last-child {
+            page-break-after: avoid;
+        }
+        
+        /* Prevent page breaks inside key elements */
+        .intro-box, .section, .score-grid, .recommendation-item,
+        .feature-card, .score-card {
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+        
+        /* Prevent orphaned headings */
+        h1, h2, h3, h4, h5, h6 {
+            page-break-after: avoid;
+            break-after: avoid;
+            orphans: 3;
+            widows: 3;
+        }
+        
+        /* Keep headings with following content */
+        h3 + div, h3 + p, h4 + div, h4 + p {
+            page-break-before: avoid;
+        }
+        
+        /* Page 1: Cover Page */
+        .cover-page {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 60px 80px;
+        }
+        .cover-logo {
+            width: 180px;
+            height: auto;
+            margin-bottom: 40px;
+        }
+        .cover-title {
+            font-size: 48px;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: 20px;
+            letter-spacing: -1px;
+        }
+        .cover-subtitle {
+            font-size: 24px;
+            opacity: 0.9;
+            margin-bottom: 60px;
+            font-weight: 300;
+        }
+        .cover-company-info {
+            margin-bottom: 30px;
+            padding: 0;
+        }
+        .cover-company-name {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #ffffff;
+        }
+        .cover-company-url {
+            font-size: 16px;
+            opacity: 0.9;
+            color: #dbeafe;
+            word-break: break-all;
+        }
+        .cover-page-name {
+            font-size: 20px;
+            padding: 20px 30px;
+            background: rgba(255,255,255,0.15);
+            border-left: 4px solid #ffffff;
+            margin-bottom: 40px;
+            border-radius: 4px;
+        }
+        .cover-meta {
+            border-top: 1px solid rgba(255,255,255,0.3);
+            padding-top: 30px;
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        .cover-date {
+            font-size: 14px;
+            opacity: 0.8;
+            margin-top: 10px;
+        }
+        
+        /* Introduction Page */
+        .intro-page {
+            padding: 80px;
+        }
+        .page-header {
+            border-bottom: 3px solid #2563eb;
+            padding-bottom: 20px;
+            margin-bottom: 40px;
+        }
+        .page-number {
+            position: absolute;
+            bottom: 40px;
+            right: 80px;
+            font-size: 12px;
+            color: #6b7280;
+        }
+        .intro-title {
+            font-size: 36px;
+            color: #1e3a5f;
+            margin-bottom: 30px;
+            font-weight: 700;
+        }
+        .intro-text {
+            font-size: 16px;
+            line-height: 1.8;
+            color: #374151;
+            margin-bottom: 20px;
+            white-space: normal;
+        }
+        .intro-box {
+            background: #dbeafe;
+            padding: 30px;
+            border-radius: 8px;
+            border-left: 4px solid #2563eb;
+            margin: 30px 0;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+        .intro-box h3 {
+            color: #1e3a5f;
+            font-size: 20px;
+            margin-bottom: 15px;
+        }
+        .intro-list {
+            list-style: none;
+            padding-left: 0;
+        }
+        .intro-list li {
+            padding: 10px 0 10px 30px;
+            position: relative;
+            font-size: 15px;
+            color: #374151;
+        }
+        .intro-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #2563eb;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        
+        /* Content Pages */
+        .content-page {
+            padding: 50px 70px 60px 70px;
+        }
+        .content-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #2563eb;
+            margin-bottom: 40px;
+        }
+        .content-header h2 {
+            font-size: 28px;
+            color: #1e3a5f;
+            font-weight: 700;
+        }
+        .section {
+            margin-bottom: 30px;
+            page-break-inside: avoid;
+            break-inside: avoid;
+            orphans: 2;
+            widows: 2;
+        }
+        .section-title {
+            font-size: 22px;
+            color: #1e3a5f;
+            font-weight: 700;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e5e7eb;
+            page-break-after: avoid;
+            orphans: 3;
+            widows: 3;
+        }
+        
+        /* Score Grid */
+        .score-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 30px;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+        .score-card {
+            background: #f9fafb;
+            padding: 18px;
+            border-radius: 8px;
+            border-left: 4px solid;
+            text-align: center;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+        .score-card.clarity { border-color: #2563eb; }
+        .score-card.emotional { border-color: #f59e0b; }
+        .score-card.cta { border-color: #10b981; }
+        .score-card.readability { border-color: #9333ea; }
+        .score-card.engagement { border-color: #d97706; }
+        .score-card.trust { border-color: #0891b2; }
+        .score-label {
+            font-size: 10px;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .score-value {
+            font-size: 36px;
+            font-weight: 800;
+            margin-bottom: 12px;
+        }
+        .score-card.clarity .score-value { color: #2563eb; }
+        .score-card.emotional .score-value { color: #f59e0b; }
+        .score-card.cta .score-value { color: #10b981; }
+        .score-card.readability .score-value { color: #9333ea; }
+        .score-card.engagement .score-value { color: #d97706; }
+        .score-card.trust .score-value { color: #0891b2; }
+        .score-bar {
+            background: #e5e7eb;
+            height: 6px;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .score-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+        }
+        
+        /* Recommendations */
+        .recommendation-list {
+            list-style: none;
+            padding: 0;
+        }
+        .recommendation-item {
+            background: #ffffff;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-left: 4px solid #2563eb;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+        .recommendation-number {
+            display: inline-block;
+            background: #2563eb;
+            color: #ffffff;
+            width: 28px;
+            height: 28px;
+            line-height: 28px;
+            text-align: center;
+            border-radius: 50%;
+            font-weight: 700;
+            font-size: 14px;
+            margin-right: 15px;
+        }
+        .recommendation-text {
+            display: inline;
+            font-size: 15px;
+            line-height: 1.6;
+            color: #374151;
+            white-space: normal;
+            word-wrap: break-word;
+        }
+        
+        /* Features Section */
+        .feature-card {
+            background: #f9fafb;
+            padding: 25px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #9333ea;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+        .feature-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1e3a5f;
+            margin-bottom: 10px;
+        }
+        .feature-desc {
+            font-size: 14px;
+            color: #6b7280;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+        .feature-impact {
+            background: #ffffff;
+            padding: 12px 16px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #059669;
+            font-weight: 600;
+        }
+        
+        /* Thank You Page */
+        .thank-you-page {
+            padding: 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            background: linear-gradient(135deg, #f9fafb 0%, #ffffff 100%);
+        }
+        .thank-you-content {
+            text-align: center;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .thank-you-title {
+            font-size: 42px;
+            color: #1e3a5f;
+            font-weight: 700;
+            margin-bottom: 30px;
+        }
+        .thank-you-text {
+            font-size: 18px;
+            color: #374151;
+            line-height: 1.8;
+            margin-bottom: 40px;
+        }
+        .thank-you-cta {
+            background: #2563eb;
+            color: #ffffff;
+            padding: 20px 40px;
+            border-radius: 8px;
+            display: inline-block;
+            font-size: 18px;
+            font-weight: 600;
+            text-decoration: none;
+            margin-bottom: 40px;
+        }
+        .thank-you-footer {
+            border-top: 2px solid #e5e7eb;
+            padding-top: 30px;
+            margin-top: 40px;
+        }
+        .thank-you-footer p {
+            font-size: 14px;
+            color: #6b7280;
+            margin: 5px 0;
+        }
+    </style>
+<style>@media print { body { margin: 0; padding: 0; } .page { page-break-after: always; } .page:last-child { page-break-after: avoid; } }</style></head>
+<body>
+        <div class="page cover-page">
+            <div>
+                <img src="data:image/png;base64,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" alt="Webtec" style="width: 90px; height: auto;" />
+            </div>
+            <div>
+                <h1 class="cover-title">Website Conversion<br>Audit Report</h1>
+                <p class="cover-subtitle">Professional Analysis & Recommendations</p>
+                <div class="cover-company-info">
+                    <div class="cover-company-name">Test</div>
+                </div>
+                <div class="cover-page-name">
+                    <strong>Page Analyzed:</strong> Home
+                </div>
+                <div class="cover-page-url" style="margin-top: 8px; font-size: 14px; color: #dbeafe;">https://urdkugu157tco8.projectwebtec7.com/</div>
+            </div>
+            <div class="cover-meta">
+                <p><strong>Prepared by:</strong> Webtec</p>
+                <p class="cover-date">Report Date: February 12, 2026</p>
+            </div>
+        </div>
+        <div class="page intro-page">
+            <div class="page-header">
+                <img src="data:image/png;base64,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" alt="Webtec" style="width: 90px; height: auto;" />
+            </div>
+            
+            <h1 class="intro-title">About This Report</h1>
+            
+            <p class="intro-text">
+                Thank you for choosing Webtec's ConversionIQ platform to analyze your website. This comprehensive audit has been designed to help you understand how your site performs in key areas that directly impact visitor engagement and conversion rates.
+            </p>
+            
+            <p class="intro-text">
+                Using advanced AI analysis combined with conversion rate optimization best practices, industry insights and competitor analysis. We've evaluated your page across six critical dimensions and identified specific opportunities for improvement.
+            </p>
+            
+            <div class="intro-box">
+                <h3>What You'll Find in This Report</h3>
+                <ul class="intro-list">
+                    <li><strong>Performance Scores:</strong> Six key metrics measuring your page's effectiveness</li>
+                    <li><strong>Detailed Recommendations:</strong> Specific, actionable suggestions for improvement</li>
+                    <li><strong>Feature Suggestions:</strong> Advanced functionality that could boost conversions</li>
+                    <li><strong>Priority Actions:</strong> The most impactful changes you can make right now</li>
+                </ul>
+            </div>
+            
+            <div class="intro-box" style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-left: 4px solid #2563eb; padding: 30px; page-break-inside: avoid; break-inside: avoid;">
+                <h3 style="color: #1e3a5f; margin: 0 0 12px 0; font-size: 20px;">Business Context for This Analysis</h3>
+                <p style="font-size: 15px; color: #374151; line-height: 1.6; margin-bottom: 20px; white-space: normal; word-wrap: break-word;">
+                    This report has been tailored to your site and industry by considering the following:
+                </p>
+                
+                <div style="background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); page-break-inside: avoid; break-inside: avoid;">
+                    <div style="display: grid; gap: 12px;">
+                        <div>
+                            <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; font-weight: 600;">Industry/Niche</div>
+                            <div style="font-size: 16px; color: #1e3a5f; font-weight: 700; white-space: normal; word-wrap: break-word;">Construction/Pool Building</div>
+                        </div>
+                        
+                        <div style="height: 1px; background: #e5e7eb;"></div>
+                        
+                        <div>
+                            <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; font-weight: 600;">What You Sell</div>
+                            <div style="font-size: 16px; color: #1e3a5f; font-weight: 700; white-space: normal; word-wrap: break-word;">Luxury pool design, construction, renovation, and repair services</div>
+                        </div>
+                        
+                        <div style="height: 1px; background: #e5e7eb;"></div>
+                        
+                        <div>
+                            <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; font-weight: 600;">Target Audience</div>
+                            <div style="font-size: 16px; color: #1e3a5f; font-weight: 700; white-space: normal; word-wrap: break-word;">Homeowners looking for custom luxury pools and outdoor living spaces</div>
+                        </div>
+                        
+                        <div style="height: 1px; background: #e5e7eb;"></div>
+                        
+                        <div>
+                            <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; font-weight: 600;">Customer Pain Points</div>
+                            <div style="font-size: 16px; color: #1e3a5f; font-weight: 700; white-space: normal; word-wrap: break-word;">Need for high-quality pool construction, desire for customized outdoor spaces, lack of reliable pool builders</div>
+                        </div>
+                        
+                        <div style="height: 1px; background: #e5e7eb;"></div>
+                        
+                        <div>
+                            <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; font-weight: 600;">Key Competitors</div>
+                            <div style="font-size: 16px; color: #1e3a5f; font-weight: 700; white-space: normal; word-wrap: break-word;">Premier Pools and Spas, Blue Haven Pools, Anthony &amp; Sylvan Pools</div>
+                        </div>
+                        
+                        <div style="height: 1px; background: #e5e7eb;"></div>
+                        
+                        <div>
+                            <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; font-weight: 600;">Primary Conversion Goal</div>
+                            <div style="font-size: 16px; color: #1e3a5f; font-weight: 700; white-space: normal; word-wrap: break-word;">Book a Consultation</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 16px; padding: 14px; background: white; border-radius: 8px; border-left: 3px solid #f59e0b; page-break-inside: avoid; break-inside: avoid;">
+                    <p style="font-size: 13px; color: #92400e; line-height: 1.6; margin: 0; white-space: normal; word-wrap: break-word;">
+                        We know this information will change over time. Let us know so we can update our database and ensure your recommendations are tailored correctly for you.
+                    </p>
+                </div>
+            </div>
+            
+            <p class="intro-text">
+                Our team at Webtec is here to help you implement these changes and achieve your digital marketing goals. Let's dive into your results.
+            </p>
+            
+            <div class="page-number">Page 1</div>
+        </div>
+        <div class="page content-page">
+            <div class="content-header">
+                <h2>Executive Summary</h2>
+                <span style="font-size: 14px; color: #6b7280;">February 12, 2026</span>
+            </div>
+            
+            <!-- Overall Score Card -->
+            <div style="background: linear-gradient(135deg, #f9fafb 0%, #ffffff 100%); padding: 25px; border-radius: 12px; margin-bottom: 20px; text-align: center; border: 2px solid #f59e0b;">
+                <div style="font-size: 56px; font-weight: 800; color: #f59e0b; margin-bottom: 6px;">68<span style="font-size: 28px;">/100</span></div>
+                <div style="font-size: 20px; font-weight: 600; color: #1e3a5f; margin-bottom: 6px;">Fair Performance</div>
+                <div style="font-size: 14px; color: #6b7280;">Your website shows fair performance with opportunities for growth</div>
+            </div>
+            
+            <!-- Key Insights -->
+            <div class="section">
+                <h3 class="section-title" style="font-size: 20px; margin-bottom: 12px;">Key Insights</h3>
+                
+                <div style="display: grid; gap: 15px;">
+                    <!-- Priority Action -->
+                    <div style="background: #fff7ed; padding: 16px; border-radius: 8px; border-left: 4px solid #f59e0b; page-break-inside: avoid; break-inside: avoid;">
+                        <h4 style="color: #f59e0b; font-size: 16px; margin-bottom: 10px; font-weight: 700;">Top Priority Action</h4>
+                        <p style="font-size: 14px; color: #374151; line-height: 1.6; margin-bottom: 10px;">
+                            <strong>Focus Area:</strong> Trust Signals (currently scoring 58 out of 100)
+                        </p>
+                        <p style="font-size: 13px; color: #374151; line-height: 1.6; margin: 0;">
+                            This represents your greatest opportunity for improvement. By addressing the issues identified, you can expect an improvement of approximately <strong>+22 points</strong>. Trust Signals directly impacts how visitors perceive your offer and make decisions.
+                        </p>
+                    </div>
+                    
+                    <!-- Expected Impact -->
+                    <div style="background: #dbeafe; padding: 16px; border-radius: 8px; border-left: 4px solid #2563eb; page-break-inside: avoid; break-inside: avoid;">
+                        <h4 style="color: #2563eb; font-size: 16px; margin-bottom: 10px; font-weight: 700;">Expected Impact & Timeline</h4>
+                        <p style="font-size: 14px; color: #374151; line-height: 1.6; margin-bottom: 10px;">
+                            <strong>Projected Conversion Increase:</strong> 25-40% improvement within 60-90 days
+                        </p>
+                        <p style="font-size: 13px; color: #374151; line-height: 1.6; margin: 0;">
+                            By systematically implementing the recommendations, you can expect measurable improvements in bounce rate, time on page, engagement metrics, and ultimately conversion rate - with no additional marketing spend required.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        <div class="page content-page">
+            <div class="content-header">
+                <h2>Performance Analysis</h2>
+                <span style="font-size: 14px; color: #6b7280;">February 12, 2026</span>
+            </div>
+            
+            <div class="section">
+                <h3 class="section-title">Conversion Scores</h3>
+                <div class="score-grid"><div class="score-card clarity">
+                <div class="score-label">Clarity</div>
+                <div class="score-value">75</div>
+                <div class="score-bar">
+                    <div class="score-bar-fill" style="width:75%;background:#2563eb"></div>
+                </div>
+            </div><div class="score-card emotional">
+                <div class="score-label">Emotional Impact</div>
+                <div class="score-value">70</div>
+                <div class="score-bar">
+                    <div class="score-bar-fill" style="width:70%;background:#f59e0b"></div>
+                </div>
+            </div><div class="score-card cta">
+                <div class="score-label">CTA Strength</div>
+                <div class="score-value">65</div>
+                <div class="score-bar">
+                    <div class="score-bar-fill" style="width:65%;background:#10b981"></div>
+                </div>
+            </div><div class="score-card readability">
+                <div class="score-label">Readability</div>
+                <div class="score-value">80</div>
+                <div class="score-bar">
+                    <div class="score-bar-fill" style="width:80%;background:#9333ea"></div>
+                </div>
+            </div><div class="score-card engagement">
+                <div class="score-label">Engagement</div>
+                <div class="score-value">60</div>
+                <div class="score-bar">
+                    <div class="score-bar-fill" style="width:60%;background:#d97706"></div>
+                </div>
+            </div><div class="score-card trust">
+                <div class="score-label">Trust Signals</div>
+                <div class="score-value">58</div>
+                <div class="score-bar">
+                    <div class="score-bar-fill" style="width:58%;background:#0891b2"></div>
+                </div>
+            </div></div>
+            </div><div class="section">
+                <h3 class="section-title">Understanding Your Scores</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
+                    <div style="background: #f9fafb; padding: 15px; border-radius: 8px; border-left: 4px solid #2563eb;">
+                        <h4 style="color: #2563eb; font-size: 14px; margin-bottom: 8px;">📝 Clarity Score</h4>
+                        <p style="font-size: 13px; color: #374151; line-height: 1.5;">Measures how clearly your message is communicated. Higher scores indicate visitors instantly understand what you offer and why it matters.</p>
+                    </div>
+                    <div style="background: #f9fafb; padding: 15px; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                        <h4 style="color: #f59e0b; font-size: 14px; margin-bottom: 8px;">💫 Emotional Impact</h4>
+                        <p style="font-size: 13px; color: #374151; line-height: 1.5;">Evaluates how well your content connects emotionally with visitors. Strong emotional appeal drives engagement and action.</p>
+                    </div>
+                    <div style="background: #f9fafb; padding: 15px; border-radius: 8px; border-left: 4px solid #10b981;">
+                        <h4 style="color: #10b981; font-size: 14px; margin-bottom: 8px;">🎯 CTA Strength</h4>
+                        <p style="font-size: 13px; color: #374151; line-height: 1.5;">Assesses the effectiveness of your call-to-action buttons and prompts. Strong CTAs are clear, compelling, and strategically placed.</p>
+                    </div>
+                    <div style="background: #f9fafb; padding: 15px; border-radius: 8px; border-left: 4px solid #9333ea;">
+                        <h4 style="color: #9333ea; font-size: 14px; margin-bottom: 8px;">📖 Readability</h4>
+                        <p style="font-size: 13px; color: #374151; line-height: 1.5;">Measures how easy your content is to read and understand. Better readability keeps visitors engaged longer and improves comprehension.</p>
+                    </div>
+                    <div style="background: #f9fafb; padding: 15px; border-radius: 8px; border-left: 4px solid #d97706;">
+                        <h4 style="color: #d97706; font-size: 14px; margin-bottom: 8px;">⚡ Engagement</h4>
+                        <p style="font-size: 13px; color: #374151; line-height: 1.5;">Evaluates elements that encourage visitor interaction. High engagement means visitors are more likely to explore and take action.</p>
+                    </div>
+                    <div style="background: #f9fafb; padding: 15px; border-radius: 8px; border-left: 4px solid #0891b2;">
+                        <h4 style="color: #0891b2; font-size: 14px; margin-bottom: 8px;">🔒 Trust Signals</h4>
+                        <p style="font-size: 13px; color: #374151; line-height: 1.5;">Measures credibility indicators like testimonials, guarantees, and security features. Strong trust signals reduce hesitation and increase conversions.</p>
+                    </div>
+                </div>
+            </div><div class="section">
+                <h3 class="section-title">Recommendations</h3>
+                <ul class="recommendation-list"><li class="recommendation-item">
+                        <span class="recommendation-number">1</span>
+                        <span class="recommendation-text">Add a compelling testimonial section directly below the Hero Section.</span>
+                    </li><li class="recommendation-item">
+                        <span class="recommendation-number">2</span>
+                        <span class="recommendation-text">Revise the primary CTA to be more action-oriented.</span>
+                    </li><li class="recommendation-item">
+                        <span class="recommendation-number">3</span>
+                        <span class="recommendation-text">Incorporate high-quality images of completed projects in the Features Section.</span>
+                    </li></ul>
+            </div>
+            <div class="page-number">Page 3</div>
+        </div>
+        <div class="page content-page">
+            <div class="content-header">
+                <h2>Additional Features & Functionality</h2>
+                <span style="font-size: 14px; color: #6b7280;">February 12, 2026</span>
+            </div>
+            
+            <p style="font-size: 15px; color: #374151; margin-bottom: 30px; line-height: 1.8;">
+                Based on your page analysis and industry best practices, here are advanced features that could significantly improve your conversion rates and user experience.
+            </p><div class="feature-card">
+                    <h4 class="feature-title">Testimonials/Reviews System</h4>
+                    <p class="feature-desc">Integrates a dynamic testimonials section showcasing client reviews and ratings, enhancing trust and engagement.</p></div><div class="feature-card">
+                    <h4 class="feature-title">Live Chat Support</h4>
+                    <p class="feature-desc">Provides real-time assistance to visitors, answering questions about services and facilitating immediate engagement.</p></div><div class="feature-card">
+                    <h4 class="feature-title">Project Gallery/Portfolio</h4>
+                    <p class="feature-desc">A dedicated page showcasing a portfolio of completed projects, highlighting design styles and customization options.</p></div>
+            <div class="page-number">Page 4</div>
+        </div>
+        <div class="page thank-you-page">
+            <div class="thank-you-content">
+                <h1 class="thank-you-title">Thank You</h1>
+                
+                <p class="thank-you-text">
+                    We appreciate the opportunity to analyze your website and provide these insights. At Webtec, we're committed to helping businesses like yours achieve measurable growth through data-driven optimization.
+                </p>
+                
+                <p class="thank-you-text">
+                    If you have questions about this report or need assistance implementing these recommendations, our team is here to help.
+                </p>
+                
+                <a href="https://trywebtec.com/contact" class="thank-you-cta">
+                    Get Implementation Support
+                </a>
+                
+                <div class="thank-you-footer">
+                    <img src="data:image/png;base64,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" alt="Webtec" style="width: 90px; height: auto;" />
+                    <p style="margin-top: 20px;"><strong>Report Generated:</strong> February 12, 2026</p>
+                    <p style="margin-top: 15px;">
+                        <strong>Webtec Digital Solutions</strong><br>
+                        Email: support@trywebtec.com<br>
+                        Web: https://trywebtec.com
+                    </p>
+                </div>
+            </div>
+        </div></body></html>
