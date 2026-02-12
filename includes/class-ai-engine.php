@@ -538,8 +538,8 @@ Analyze the FULL CONTEXT of this specific business to recommend 4-6 features or 
    - Point to a gap you found in the content analysis
 
 3. DO NOT recommend generic features that apply to everyone
-   - ❌ BAD: \"Live Chat Support - helps engage visitors in real-time\"
-   - ✅ GOOD: \"Live Chat Support - Your service-based business with complex offerings (mentioned in business info) and low engagement score of 64 suggests visitors need immediate answers to proceed. Your target audience of {$audience} typically has questions before converting.\"
+   - BAD: Live Chat Support - helps engage visitors in real-time
+   - GOOD: Live Chat Support - Your service-based business with complex offerings (mentioned in business info) and low engagement score of 64 suggests visitors need immediate answers to proceed. Your target audience of {$audience} typically has questions before converting.
 
 4. VARIETY MATTERS: 
    - Don't recommend the same 4-5 features for different businesses
@@ -570,11 +570,11 @@ Every suggestion and recommendation MUST include:
 4. **Context**: Reference to audit findings, scores, or business goals that justify this recommendation
 
 Make recommendations DETAILED and ACTIONABLE:
-- ❌ BAD: 'Add testimonials to build trust'
-- ✅ GOOD: 'Add testimonials from satisfied clients in a dedicated section below the hero'
-  - Why: 'Your trust score of 58 is significantly below the industry average of 72, indicating visitors need social proof before converting'
-  - Impact: 'Expected to increase trust score by 15-20 points and reduce bounce rate'
-  - Implementation: 'Contact 3-5 recent satisfied clients for testimonials, create a testimonials section with photos and full names, place above the pricing table'
+- BAD: Add testimonials to build trust
+- GOOD: Add testimonials from satisfied clients in a dedicated section below the hero
+  - Why: Your trust score of 58 is significantly below the industry average of 72, indicating visitors need social proof before converting
+  - Impact: Expected to increase trust score by 15-20 points and reduce bounce rate
+  - Implementation: Contact 3-5 recent satisfied clients for testimonials, create a testimonials section with photos and full names, place above the pricing table
 
 Prioritize recommendations by:
 1. **Quick Wins**: High-impact, low-effort changes (1-2 days to implement)
@@ -589,44 +589,44 @@ The insights section is the FIRST thing clients read - make it valuable, specifi
    - Summarizes the overall conversion health based on audit scores
    - Highlights the #1 priority area that needs attention
    - Sets a positive, solution-focused tone (avoid being overly negative)
-   - Example: 'Your page shows strong foundations with clear messaging (clarity: 78), but trust-building elements are your biggest opportunity. With a trust score of 58, adding social proof and testimonials could increase conversions by 20-30%. The good news: these are quick wins that can be implemented within a week.'
+   - Example: Your page shows strong foundations with clear messaging (clarity: 78), but trust-building elements are your biggest opportunity. With a trust score of 58, adding social proof and testimonials could increase conversions by 20-30%. The good news: these are quick wins that can be implemented within a week.
 
 2. **Strengths**: List 2-3 specific things this page does WELL:
    - Reference actual content you analyzed (not generic observations)
-   - Connect to specific scores (e.g., 'Strong headline clarity (82/100)')
-   - Be specific about what's working (e.g., 'Your value proposition in the hero section clearly addresses {$audience}'s need for...')
-   - ❌ BAD: 'Good content quality'
-   - ✅ GOOD: 'Your feature descriptions effectively address {$pain_points}, creating strong emotional resonance (score: 84)'
+   - Connect to specific scores (e.g., Strong headline clarity 82/100)
+   - Be specific about what's working
+   - BAD: Good content quality
+   - GOOD: Your feature descriptions effectively address customer pain points, creating strong emotional resonance
 
 3. **Weaknesses**: Identify 2-3 critical gaps that hurt conversion:
    - Be constructive and solution-focused in tone
    - Reference specific audit scores that are below 70
    - Point to actual missing elements you identified
    - Frame in terms of missed opportunities, not just problems
-   - ❌ BAD: 'Poor trust signals'
-   - ✅ GOOD: 'Missing testimonials and client logos (trust score: 58) - your competitors showcase social proof prominently, and adding this could boost conversions significantly'
+   - BAD: Poor trust signals
+   - GOOD: Missing testimonials and client logos (trust score: 58) - your competitors showcase social proof prominently, and adding this could boost conversions significantly
 
 4. **Opportunities**: List 2-3 high-impact improvements presented positively:
    - Focus on what could be gained, not what's missing
    - Connect to business goals and expected outcomes
    - Make clients excited about the potential
-   - ❌ BAD: 'Need better CTAs'
-   - ✅ GOOD: 'Strengthening your CTA from 'Learn More' to action-driven copy like 'Start Your {$goal}' could increase click-through rates by 15-25%'
+   - BAD: Need better CTAs
+   - GOOD: Strengthening your CTA from Learn More to action-driven copy could increase click-through rates by 15-25%
 
 5. **Top Priority Insight**: A clear, client-friendly explanation of the #1 area to focus on:
    - Explain WHY this is the priority (reference the lowest score or biggest gap)
    - Explain the IMPACT of fixing it (expected conversion improvement)
    - Make it digestible for non-technical business owners
    - Set realistic timeframe and difficulty expectations
-   - ❌ BAD: 'Improve trust score'
-   - ✅ GOOD: 'Your trust score of 58 is your biggest opportunity. For {$industry} businesses targeting {$audience}, trust signals are critical - visitors need proof before converting. Adding client testimonials, trust badges, and case studies could lift your conversion rate by 25-30% within 2 weeks of implementation.'
+   - BAD: Improve trust score
+   - GOOD: Your trust score of 58 is your biggest opportunity. For this industry targeting this audience, trust signals are critical - visitors need proof before converting. Adding client testimonials, trust badges, and case studies could lift your conversion rate by 25-30% within 2 weeks of implementation.
 
 6. **Audience Alignment**: Specific analysis of how well the page speaks to {$audience}:
    - Reference actual language, tone, and messaging from the page
    - Identify gaps between current copy and audience expectations
    - Be specific about what resonates and what doesn't
-   - ❌ BAD: 'Good audience fit'
-   - ✅ GOOD: 'Your messaging resonates well with {$audience}, particularly the emphasis on {$pain_points}. However, the technical jargon in the features section may alienate non-technical decision-makers in your audience.'
+   - BAD: Good audience fit
+   - GOOD: Your messaging resonates well with the target audience, particularly the emphasis on their pain points. However, the technical jargon in the features section may alienate non-technical decision-makers.
 
 **Required Output (JSON only, no markdown):**
 {
