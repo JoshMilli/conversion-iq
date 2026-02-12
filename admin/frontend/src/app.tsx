@@ -4,6 +4,9 @@ import axios from 'axios';
 type Suggestion = {
   text: string;
   section?: string; // Page section (e.g., "Hero Section", "Features")
+  why?: string;
+  impact?: string;
+  implementation?: string;
 };
 
 type Audit = {
@@ -27,17 +30,20 @@ type Audit = {
   page_url?: string;
   ai_used?: boolean;
   created_at?: string;
+  content_changed?: boolean;
   insights?: {
     strengths?: string[];
     weaknesses?: string[];
     opportunities?: string[];
     audience_alignment?: string;
     tone_analysis?: string;
+    executive_summary?: string;
+    top_priority_insight?: string;
   };
   recommendations?: {
-    quick_wins?: string[];
-    long_term?: string[];
-    priority?: string;
+    quick_wins?: Array<string | { text: string; why?: string; impact?: string; difficulty?: string }>;
+    long_term?: Array<string | { text: string; why?: string; impact?: string; difficulty?: string; timeframe?: string }>;
+    priority?: string | { text: string; why?: string; impact?: string; next_steps?: string };
   };
 };
 
