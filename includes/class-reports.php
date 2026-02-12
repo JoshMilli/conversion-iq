@@ -869,13 +869,17 @@ class ConversionIQ_Reports {
         if (count($historical) > 1) {
             $html .= '<div class="section">
                 <h3 class="section-title">Performance Trend</h3>
-                <div style="background: #ffffff; padding: 30px; border-radius: 8px; border: 1px solid #e5e7eb; max-width: 700px; margin: 0 auto;">
-                    <p style="font-size: 14px; color: #6b7280; margin-bottom: 30px; text-align: center;">Historical performance based on your last '.count($historical).' audits</p>
-                    
-                    <!-- Chart Area with Grid -->
-                    <div style="position: relative; padding: 20px 0;">
-                        <!-- Y-axis labels -->
-                        <div style="position: absolute; left: -40px; top: 20px; bottom: 40px; display: flex; flex-direction: column; justify-content: space-between; text-align: right; font-size: 12px; color: #6b7280; width: 35px;">
+                <!-- Centered table container for better TCPDF rendering -->
+                <table cellpadding="0" cellspacing="0" style="width: 650px; margin: 0 auto; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 0;">
+                            <div style="background: #ffffff; padding: 30px 20px; border-radius: 8px; border: 1px solid #e5e7eb;">
+                                <p style="font-size: 14px; color: #6b7280; margin-bottom: 30px; text-align: center;">Historical performance based on your last '.count($historical).' audits</p>
+                                
+                                <!-- Chart Area with Grid -->
+                                <div style="position: relative; padding: 20px 0;">
+                                    <!-- Y-axis labels -->
+                                    <div style="position: absolute; left: -40px; top: 20px; bottom: 40px; display: flex; flex-direction: column; justify-content: space-between; text-align: right; font-size: 12px; color: #6b7280; width: 35px;">
                             <span>100</span>
                             <span>75</span>
                             <span>50</span>
@@ -927,8 +931,11 @@ class ConversionIQ_Reports {
             }
             
             $html .= '</div>
-                    </div>
-                </div>';
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </table>';
             
             // Calculate trend
             if (count($trend_data) >= 2) {
@@ -937,12 +944,18 @@ class ConversionIQ_Reports {
                 $change = $last_score - $first_score;
                 $change_percent = $first_score > 0 ? round(($change / $first_score) * 100) : 0;
                 
-                $html .= '<div style="margin-top: 25px; padding: 25px; background: '.($change >= 0 ? '#d1fae5' : '#fee2e2').'; border-radius: 8px; border-left: 4px solid '.($change >= 0 ? '#10b981' : '#ef4444').';">
+                $html .= '<table cellpadding="0" cellspacing="0" style="width: 650px; margin: 25px auto 0; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 0;">
+                            <div style="padding: 25px; background: '.($change >= 0 ? '#d1fae5' : '#fee2e2').'; border-radius: 8px; border-left: 4px solid '.($change >= 0 ? '#10b981' : '#ef4444').';">
                         <p style="font-size: 16px; color: #374151; margin: 0; line-height: 1.6;">
                             <strong>'.($change >= 0 ? 'Trend: Improving' : 'Trend: Declining').'</strong><br>
                             Your score has '.($change >= 0 ? 'increased' : 'decreased').' by <strong>'.abs($change).' points</strong> ('.($change >= 0 ? '+' : '').$change_percent.'%) since your first audit. '.($change >= 0 ? 'This positive trend indicates that previous optimization efforts are working effectively.' : 'This decline suggests a need to review recent changes and refocus on core conversion principles.').'
                         </p>
-                    </div>';
+                            </div>
+                        </td>
+                    </tr>
+                </table>';
             }
             
             $html .= '</div>
