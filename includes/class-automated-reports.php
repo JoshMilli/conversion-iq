@@ -514,7 +514,62 @@ class ConversionIQ_Automated_Reports {
         
         // If sending to Basecamp, create plain text version instead
         if ( $is_basecamp ) {
-            $message = \"CONVERSION IQ AUDIT REPORT\\n\";\n            $message .= \"=================================\";\n            $message .= \"\\n\\n\";\n            $message .= \"Hello,\\n\\n\";\n            $message .= \"Your automated Conversion IQ audit has been completed.\\n\";\n            $message .= \"We analyzed \" . $total_pages . \" page\" . ( $total_pages > 1 ? 's' : '' ) . \" on your website.\\n\\n\";\n            $message .= \"Feel free to book a quick chat if you have any questions:\\n\";\n            $message .= \"https://calendly.com/d/ct85-ktz-3wd/webtec-website-improvement-meeting\\n\\n\";\n            $message .= \"You can paste any recommendations directly into Basecamp and our Customer Success Team will get onto them right away.\\n\\n\";\n            $message .= \"Thanks,\\nWebTec\\n\\n\";\n            \n            $message .= \"OVERALL PERFORMANCE: \" . $overall_score . \"/100 - \" . $status . \"\\n\";\n            $message .= \"=================================\\n\\n\";\n            \n            $message .= \"PAGES ANALYZED:\\n\";\n            $message .= \"---------------------------------\\n\";\n            foreach ( $page_summaries as $summary ) {\n                $message .= \"* \" . $summary['title'] . \"\\n\";\n                $message .= \"  Score: \" . $summary['score'] . \"/100\\n\";\n                $message .= \"  URL: \" . $summary['url'] . \"\\n\";\n                $message .= \"  - Clarity: \" . $summary['scores']['clarity'] . \"/100\\n\";\n                $message .= \"  - Emotional: \" . $summary['scores']['emotional'] . \"/100\\n\";\n                $message .= \"  - CTA: \" . $summary['scores']['cta'] . \"/100\\n\";\n                $message .= \"  - Readability: \" . $summary['scores']['readability'] . \"/100\\n\";\n                $message .= \"  - Engagement: \" . $summary['scores']['engagement'] . \"/100\\n\";\n                $message .= \"  - Trust: \" . $summary['scores']['trust'] . \"/100\\n\\n\";\n            }\n            \n            $message .= \"KEY INSIGHTS:\\n\";\n            $message .= \"---------------------------------\\n\";\n            $message .= \"Top Performers: Your strongest areas are \" . ucfirst( $strongest_areas[0] ) . \" (averaging \" . $avg_scores[$strongest_areas[0]] . \"/100)\\n\";\n            $message .= \"                and \" . ucfirst( $strongest_areas[1] ) . \" (averaging \" . $avg_scores[$strongest_areas[1]] . \"/100)\\n\\n\";\n            $message .= \"Focus Areas: Prioritize improvements in \" . ucfirst( $weakest_areas[0] ) . \" (averaging \" . $avg_scores[$weakest_areas[0]] . \"/100)\\n\";\n            $message .= \"             and \" . ucfirst( $weakest_areas[1] ) . \" (averaging \" . $avg_scores[$weakest_areas[1]] . \"/100)\\n\\n\";\n            \n            $message .= \"NEXT STEPS:\\n\";\n            $message .= \"---------------------------------\\n\";\n            $message .= \"1. Review the attached PDF reports for detailed analysis and recommendations\\n\";\n            $message .= \"2. Prioritize changes based on the scores and suggestions provided\\n\";\n            $message .= \"3. Schedule implementation - Reach out to Webtec for a call to discuss and implement recommendations\\n\\n\";\n            \n            $message .= \"ATTACHED FILES:\\n\";\n            $message .= \"- \" . count( $attachments ) . \" detailed PDF report\" . ( count( $attachments ) !== 1 ? 's' : '' ) . \" with page-specific recommendations\\n\\n\";\n            \n            $message .= \"---\\n\";\n            $message .= \"Conversion IQ - Powered by Webtec\\n\";\n            $message .= \"Need help? Contact us at support@trywebtec.com\\n\";\n            \n            $headers = array(\n                'Content-Type: text/plain; charset=UTF-8',\n                'From: Conversion IQ - ' . $site_name . ' <noreply@' . parse_url( get_site_url(), PHP_URL_HOST ) . '>',\n                'Reply-To: Webtec Support <support@trywebtec.com>'\n            );\n        }\n        \n        error_log( '📧 Attempting to send email to: ' . implode( ', ', $valid_emails ) . ( $is_basecamp ? ' (Basecamp - Plain Text)' : ' (HTML)' ) );
+            $message = "CONVERSION IQ AUDIT REPORT\n";
+            $message .= "=================================\n";
+            $message .= "\n\n";
+            $message .= "Hello,\n\n";
+            $message .= "Your automated Conversion IQ audit has been completed.\n";
+            $message .= "We analyzed " . $total_pages . " page" . ( $total_pages > 1 ? 's' : '' ) . " on your website.\n\n";
+            $message .= "Feel free to book a quick chat if you have any questions:\n";
+            $message .= "https://calendly.com/d/ct85-ktz-3wd/webtec-website-improvement-meeting\n\n";
+            $message .= "You can paste any recommendations directly into Basecamp and our Customer Success Team will get onto them right away.\n\n";
+            $message .= "Thanks,\nWebTec\n\n";
+            
+            $message .= "OVERALL PERFORMANCE: " . $overall_score . "/100 - " . $status . "\n";
+            $message .= "=================================\n\n";
+            
+            $message .= "PAGES ANALYZED:\n";
+            $message .= "---------------------------------\n";
+            foreach ( $page_summaries as $summary ) {
+                $message .= "* " . $summary['title'] . "\n";
+                $message .= "  Score: " . $summary['score'] . "/100\n";
+                $message .= "  URL: " . $summary['url'] . "\n";
+                $message .= "  - Clarity: " . $summary['scores']['clarity'] . "/100\n";
+                $message .= "  - Emotional: " . $summary['scores']['emotional'] . "/100\n";
+                $message .= "  - CTA: " . $summary['scores']['cta'] . "/100\n";
+                $message .= "  - Readability: " . $summary['scores']['readability'] . "/100\n";
+                $message .= "  - Engagement: " . $summary['scores']['engagement'] . "/100\n";
+                $message .= "  - Trust: " . $summary['scores']['trust'] . "/100\n\n";
+            }
+            
+            $message .= "KEY INSIGHTS:\n";
+            $message .= "---------------------------------\n";
+            $message .= "Top Performers: Your strongest areas are " . ucfirst( $strongest_areas[0] ) . " (averaging " . $avg_scores[$strongest_areas[0]] . "/100)\n";
+            $message .= "                and " . ucfirst( $strongest_areas[1] ) . " (averaging " . $avg_scores[$strongest_areas[1]] . "/100)\n\n";
+            $message .= "Focus Areas: Prioritize improvements in " . ucfirst( $weakest_areas[0] ) . " (averaging " . $avg_scores[$weakest_areas[0]] . "/100)\n";
+            $message .= "             and " . ucfirst( $weakest_areas[1] ) . " (averaging " . $avg_scores[$weakest_areas[1]] . "/100)\n\n";
+            
+            $message .= "NEXT STEPS:\n";
+            $message .= "---------------------------------\n";
+            $message .= "1. Review the attached PDF reports for detailed analysis and recommendations\n";
+            $message .= "2. Prioritize changes based on the scores and suggestions provided\n";
+            $message .= "3. Schedule implementation - Reach out to Webtec for a call to discuss and implement recommendations\n\n";
+            
+            $message .= "ATTACHED FILES:\n";
+            $message .= "- " . count( $attachments ) . " detailed PDF report" . ( count( $attachments ) !== 1 ? 's' : '' ) . " with page-specific recommendations\n\n";
+            
+            $message .= "---\n";
+            $message .= "Conversion IQ - Powered by Webtec\n";
+            $message .= "Need help? Contact us at support@trywebtec.com\n";
+            
+            $headers = array(
+                'Content-Type: text/plain; charset=UTF-8',
+                'From: Conversion IQ - ' . $site_name . ' <noreply@' . parse_url( get_site_url(), PHP_URL_HOST ) . '>',
+                'Reply-To: Webtec Support <support@trywebtec.com>'
+            );
+        }
+        
+        error_log( 'Attempting to send email to: ' . implode( ', ', $valid_emails ) . ( $is_basecamp ? ' (Basecamp - Plain Text)' : ' (HTML)' ) );
         error_log( '📎 Attachments: ' . count( $attachments ) . ' PDF file(s)' );
         
         // Send email with PDF attachments to all recipients
