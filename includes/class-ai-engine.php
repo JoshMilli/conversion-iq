@@ -519,32 +519,47 @@ Your suggestions MUST be:
 - Be specific about what part of the page needs improvement
 - Follow the natural flow and structure of the page sections
 
-**IMPORTANT for Functionality Suggestions:**
-Based on the page analysis, audit scores, and business goals, recommend 4-6 specific features or integrations that would improve conversion rates. Choose from these common WordPress enhancements:
-- E-Commerce/Webshop Integration (for selling products/services)
-- Live Chat Support (for real-time customer engagement)
-- Email Marketing Integration (Mailchimp, etc. for lead nurturing)
-- Instagram/Social Media Feed (for social proof and trust)
-- Blog System (for content marketing and SEO)
-- Popup for lead capture and exit-intent 
-- CRM Integration (for managing customer relationships)
-- SEO Optimization (for better search rankings)
-- Newsletter Signup (for building email lists)
-- Multi-Language Support (for international audiences)
-- Conversion Popups (for lead capture and exit-intent)
-- Custom Sliders/Carousels (for showcasing multiple offerings)
-- Booking/Appointment System (for service-based businesses)
-- Membership/Login System (for restricted content)
-- Custom Forms (for lead generation)
-- Payment Gateway Integration (for accepting payments)
-- Analytics Dashboard (for data-driven decisions)
-- KnockKnock AI Visitor Intelligence (tracks visitor behavior in real-time, scores lead intent, engages hot prospects automatically with chat/voice, and connects high-intent leads to sales reps via instant video/phone calls - ideal for high-value B2B services, complex products, or businesses with active sales teams)
+**CRITICAL INSTRUCTIONS for Additional Features & Functionality:**
 
-For each functionality suggestion, explain WHY this specific business needs it based on:
-- Their audit scores (e.g., \"Your trust score of X suggests...\")
-- Their business goals (e.g., \"To achieve {$goal}, you need...\")
-- Their target audience needs
-- Identified weaknesses or gaps in current implementation
+Analyze the FULL CONTEXT of this specific business to recommend 4-6 features or integrations that would genuinely improve their conversion rates. 
+
+**YOU MUST:**
+1. Base recommendations ONLY on genuine needs identified from:
+   - Specific audit score weaknesses (e.g., low trust score = 65 needs testimonials/reviews system)
+   - Actual business goals and what's missing to achieve them
+   - Target audience behavior and expectations for this industry
+   - Page type and what's typically needed for that conversion goal
+   - Gaps or missing elements you identified in the page content/structure
+
+2. BE SPECIFIC about why this business needs each feature:
+   - Reference specific audit scores (e.g., \"Your trust score of 62 indicates...\")
+   - Connect to their stated business goal (e.g., \"To achieve {$goal}, you currently lack...\")
+   - Explain what problem it solves for their specific audience
+   - Point to a gap you found in the content analysis
+
+3. DO NOT recommend generic features that apply to everyone
+   - ❌ BAD: \"Live Chat Support - helps engage visitors in real-time\"
+   - ✅ GOOD: \"Live Chat Support - Your service-based business with complex offerings (mentioned in business info) and low engagement score of 64 suggests visitors need immediate answers to proceed. Your target audience of {$audience} typically has questions before converting.\"
+
+4. VARIETY MATTERS: 
+   - Don't recommend the same 4-5 features for different businesses
+   - Consider the unique combination of: page type, industry, audience, goals, and weaknesses
+   - A B2B software company needs different features than a local restaurant or e-commerce store
+
+5. ONLY recommend features that solve problems you actually found:
+   - If trust score is high, don't suggest testimonials system
+   - If they already have clear CTAs, don't suggest popup forms
+   - If single-location local business, skip multi-language support
+   - If simple product page, skip booking systems
+
+**Common feature categories to consider (choose relevant ones only):**
+E-Commerce Integration, Live Chat, Email Marketing, Social Media Integration, Blog/Content System, Lead Capture Forms, Booking/Appointment System, Testimonials/Reviews System, FAQ/Knowledge Base, Multi-Language Support, Analytics/Tracking Tools, Payment Gateways, Membership Systems, Search Functionality, Comparison Tools, Live Product Demos, Customer Portal, Chatbot/AI Assistant, Video Integration, Mobile App, Custom Calculators/Tools, Automated Follow-ups, Social Proof Widgets, Exit-Intent Technology
+
+For EACH recommendation, write a detailed "why" that includes:
+- Reference to specific audit score(s)
+- Connection to their business goal
+- How it addresses their target audience's needs
+- What gap or weakness it solves from your analysis
 
 **Required Output (JSON only, no markdown):**
 {
@@ -562,10 +577,10 @@ For each functionality suggestion, explain WHY this specific business needs it b
     ],
     \"functionality_suggestions\": [
         {
-            \"title\": \"Feature name (e.g., 'Live Chat Support', 'E-Commerce Integration', 'Multi-Language Support')\",
-            \"description\": \"Brief description of what this feature does and how it works\",
-            \"why\": \"Specific explanation of why this business needs this feature based on their audit scores, goals, and target audience. Reference specific weaknesses or opportunities from the analysis.\",
-            \"icon\": \"Single emoji that represents this feature (e.g., 💬, 🛒, 🌍, 📧, 📝, 🔔, 📱, 🎨)\"
+            \"title\": \"Specific feature name that addresses an identified gap\",
+            \"description\": \"What this feature does and how it works (2-3 sentences)\",
+            \"why\": \"Detailed, specific explanation referencing: (1) specific audit score weaknesses, (2) how it helps achieve their business goal '{$goal}', (3) why their target audience '{$audience}' needs this, (4) what problem/gap from your analysis it solves. Be specific and reference actual findings from this audit.\",
+            \"icon\": \"Single emoji representing the feature\"
         }
     ],
     \"rewrites\": {
