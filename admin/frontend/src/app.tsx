@@ -2679,9 +2679,27 @@ export default function App() {
                             </button>
                             {isExpanded && (
                               <div style={{ padding: '16px', background: '#f0f6ff', borderTop: '1px solid #e5e7eb' }}>
-                                <p style={{ margin: 0, color: '#374151', lineHeight: 1.6, fontSize: 14 }}>
+                                <p style={{ margin: 0, color: '#374151', lineHeight: 1.6, fontSize: 14, fontWeight: 600 }}>
                                   {suggestion.text}
                                 </p>
+                                {suggestion.why && (
+                                  <div style={{ marginTop: 12, padding: 12, background: '#fff', borderRadius: 6, borderLeft: '3px solid #7c3aed' }}>
+                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#7c3aed', marginBottom: 4, textTransform: 'uppercase' }}>Why This Matters</div>
+                                    <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5 }}>{suggestion.why}</p>
+                                  </div>
+                                )}
+                                {suggestion.impact && (
+                                  <div style={{ marginTop: 8, padding: 12, background: '#fff', borderRadius: 6, borderLeft: '3px solid #10b981' }}>
+                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#10b981', marginBottom: 4, textTransform: 'uppercase' }}>Expected Impact</div>
+                                    <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5 }}>{suggestion.impact}</p>
+                                  </div>
+                                )}
+                                {suggestion.implementation && (
+                                  <div style={{ marginTop: 8, padding: 12, background: '#fff', borderRadius: 6, borderLeft: '3px solid #f59e0b' }}>
+                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#f59e0b', marginBottom: 4, textTransform: 'uppercase' }}>How To Implement</div>
+                                    <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5 }}>{suggestion.implementation}</p>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -2692,29 +2710,103 @@ export default function App() {
                     {modal.audit.recommendations?.quick_wins && modal.audit.recommendations.quick_wins.length > 0 && (
                       <div style={{ marginTop: 24 }}>
                         <h4 style={{ color: '#27ae60' }}>⚡ Quick Wins</h4>
-                        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                          {modal.audit.recommendations.quick_wins.map((q, i) => (
-                            <li key={i} style={{ background: '#f0fdf4', padding: 12, borderRadius: 6, marginBottom: 8 }}>✓ {q}</li>
-                          ))}
-                        </ul>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          {modal.audit.recommendations.quick_wins.map((q, i) => {
+                            const quickWin = typeof q === 'string' ? { text: q } : q;
+                            return (
+                              <div key={i} style={{ background: '#f0fdf4', padding: 16, borderRadius: 8, borderLeft: '4px solid #27ae60' }}>
+                                <div style={{ fontSize: 15, fontWeight: 600, color: '#27ae60', marginBottom: 8 }}>✓ {quickWin.text}</div>
+                                {quickWin.why && (
+                                  <div style={{ fontSize: 13, color: '#374151', marginBottom: 6, lineHeight: 1.5 }}>
+                                    <strong style={{ color: '#059669' }}>Why:</strong> {quickWin.why}
+                                  </div>
+                                )}
+                                {quickWin.impact && (
+                                  <div style={{ fontSize: 13, color: '#374151', marginBottom: 6, lineHeight: 1.5 }}>
+                                    <strong style={{ color: '#059669' }}>Impact:</strong> {quickWin.impact}
+                                  </div>
+                                )}
+                                {quickWin.difficulty && (
+                                  <div style={{ display: 'inline-block', marginTop: 4, padding: '4px 10px', background: '#d1fae5', borderRadius: 4, fontSize: 12, fontWeight: 600, color: '#065f46' }}>
+                                    {quickWin.difficulty}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
 
                     {modal.audit.recommendations?.long_term && modal.audit.recommendations.long_term.length > 0 && (
                       <div style={{ marginTop: 24 }}>
                         <h4 style={{ color: '#9333ea' }}>🎯 Long-term Improvements</h4>
-                        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                          {modal.audit.recommendations.long_term.map((l, i) => (
-                            <li key={i} style={{ background: '#faf5ff', padding: 12, borderRadius: 6, marginBottom: 8 }}>→ {l}</li>
-                          ))}
-                        </ul>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          {modal.audit.recommendations.long_term.map((l, i) => {
+                            const longTerm = typeof l === 'string' ? { text: l } : l;
+                            return (
+                              <div key={i} style={{ background: '#faf5ff', padding: 16, borderRadius: 8, borderLeft: '4px solid #9333ea' }}>
+                                <div style={{ fontSize: 15, fontWeight: 600, color: '#9333ea', marginBottom: 8 }}>→ {longTerm.text}</div>
+                                {longTerm.why && (
+                                  <div style={{ fontSize: 13, color: '#374151', marginBottom: 6, lineHeight: 1.5 }}>
+                                    <strong style={{ color: '#7e22ce' }}>Why:</strong> {longTerm.why}
+                                  </div>
+                                )}
+                                {longTerm.impact && (
+                                  <div style={{ fontSize: 13, color: '#374151', marginBottom: 6, lineHeight: 1.5 }}>
+                                    <strong style={{ color: '#7e22ce' }}>Impact:</strong> {longTerm.impact}
+                                  </div>
+                                )}
+                                <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                                  {longTerm.difficulty && (
+                                    <div style={{ padding: '4px 10px', background: '#e9d5ff', borderRadius: 4, fontSize: 12, fontWeight: 600, color: '#6b21a8' }}>
+                                      {longTerm.difficulty}
+                                    </div>
+                                  )}
+                                  {longTerm.timeframe && (
+                                    <div style={{ padding: '4px 10px', background: '#e9d5ff', borderRadius: 4, fontSize: 12, fontWeight: 600, color: '#6b21a8' }}>
+                                      ⏱️ {longTerm.timeframe}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
 
                     {modal.audit.recommendations?.priority && (
-                      <div style={{ marginTop: 24, padding: 16, background: '#fff7ed', borderRadius: 8, borderLeft: '4px solid #f39c12' }}>
-                        <h4 style={{ marginTop: 0, color: '#f39c12' }}>🔥 Priority Recommendation</h4>
-                        <p style={{ margin: 0 }}>{modal.audit.recommendations.priority}</p>
+                      <div style={{ marginTop: 24, padding: 20, background: '#fff7ed', borderRadius: 12, borderLeft: '4px solid #f39c12', boxShadow: '0 2px 8px rgba(243, 156, 18, 0.1)' }}>
+                        <h4 style={{ marginTop: 0, marginBottom: 12, color: '#f39c12', fontSize: 18 }}>🔥 Priority Recommendation</h4>
+                        {(() => {
+                          const priority = typeof modal.audit.recommendations.priority === 'string' 
+                            ? { text: modal.audit.recommendations.priority } 
+                            : modal.audit.recommendations.priority;
+                          return (
+                            <>
+                              <p style={{ margin: '0 0 12px 0', fontSize: 15, fontWeight: 600, color: '#374151', lineHeight: 1.6 }}>{priority.text}</p>
+                              {priority.why && (
+                                <div style={{ marginTop: 12, padding: 12, background: '#fff', borderRadius: 6 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 600, color: '#ea580c', marginBottom: 4, textTransform: 'uppercase' }}>Why This Is Priority</div>
+                                  <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5 }}>{priority.why}</p>
+                                </div>
+                              )}
+                              {priority.impact && (
+                                <div style={{ marginTop: 8, padding: 12, background: '#fff', borderRadius: 6 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 600, color: '#ea580c', marginBottom: 4, textTransform: 'uppercase' }}>Expected Impact</div>
+                                  <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5 }}>{priority.impact}</p>
+                                </div>
+                              )}
+                              {priority.next_steps && (
+                                <div style={{ marginTop: 8, padding: 12, background: '#fff', borderRadius: 6 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 600, color: '#ea580c', marginBottom: 4, textTransform: 'uppercase' }}>Next Steps</div>
+                                  <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5, whiteSpace: 'pre-line' }}>{priority.next_steps}</p>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>

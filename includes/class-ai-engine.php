@@ -561,6 +561,26 @@ For EACH recommendation, write a detailed "why" that includes:
 - How it addresses their target audience's needs
 - What gap or weakness it solves from your analysis
 
+**CRITICAL INSTRUCTIONS for Recommendations & Suggestions:**
+
+Every suggestion and recommendation MUST include:
+1. **Why**: Clear reasoning explaining why this change matters for conversion
+2. **Impact**: Specific metrics that will improve (clarity, trust, CTA strength, etc.)
+3. **Implementation**: Practical guidance on how to implement this change
+4. **Context**: Reference to audit findings, scores, or business goals that justify this recommendation
+
+Make recommendations DETAILED and ACTIONABLE:
+- ❌ BAD: "Add testimonials to build trust"
+- ✅ GOOD: "Add testimonials from satisfied clients in a dedicated section below the hero"
+  - Why: "Your trust score of 58 is significantly below the industry average of 72, indicating visitors need social proof before converting"
+  - Impact: "Expected to increase trust score by 15-20 points and reduce bounce rate"
+  - Implementation: "Contact 3-5 recent satisfied clients for testimonials, create a testimonials section with photos and full names, place above the pricing table"
+
+Prioritize recommendations by:
+1. **Quick Wins**: High-impact, low-effort changes (1-2 days to implement)
+2. **Long-term**: Strategic improvements requiring more time/resources
+3. **Priority**: The ONE most critical change that addresses the biggest weakness
+
 **Required Output (JSON only, no markdown):**
 {
   \"clarity_score\": [0-100],
@@ -572,7 +592,10 @@ For EACH recommendation, write a detailed "why" that includes:
     \"suggestions\": [
         {
             \"text\": \"Specific, actionable suggestion based on page content and business context\",
-            \"section\": \"Section name (e.g., 'Hero Section', 'Features Section', 'CTA Section')\"
+            \"section\": \"Section name (e.g., 'Hero Section', 'Features Section', 'CTA Section')\",
+            \"why\": \"Explain why this change is important for conversion - reference specific weaknesses or opportunities you identified\",
+            \"impact\": \"Which metrics this will improve (e.g., 'Improves trust score and emotional resonance', 'Increases CTA strength and clarity')\",
+            \"implementation\": \"Brief guidance on how to implement this (e.g., 'Add a testimonials widget in the sidebar', 'Replace current headline with suggested rewrite')\"
         }
     ],
     \"functionality_suggestions\": [
@@ -604,9 +627,29 @@ For EACH recommendation, write a detailed "why" that includes:
     \"tone_analysis\": \"Tone analysis\"
   },
   \"recommendations\": {
-    \"quick_wins\": [\"Quick win 1\", \"Quick win 2\", \"Quick win 3\"],
-    \"long_term\": [\"Long-term 1\", \"Long-term 2\"],
-    \"priority\": \"Top priority recommendation\"
+    \"quick_wins\": [
+        {
+            \"text\": \"Quick win recommendation that can be implemented in 1-2 days\",
+            \"why\": \"Why this is a quick win - what immediate impact it has\",
+            \"impact\": \"Expected conversion improvement (e.g., '+5-10% trust score', 'Reduces bounce rate')\",
+            \"difficulty\": \"Easy\"
+        }
+    ],
+    \"long_term\": [
+        {
+            \"text\": \"Long-term strategic improvement\",
+            \"why\": \"Why this requires more time/resources and its strategic value\",
+            \"impact\": \"Expected long-term conversion improvement\",
+            \"difficulty\": \"Medium\" or \"Hard\",
+            \"timeframe\": \"Estimated implementation time (e.g., '2-4 weeks', '1-2 months')\"
+        }
+    ],
+    \"priority\": {
+        \"text\": \"Top priority recommendation that will have the biggest impact\",
+        \"why\": \"Why this is the #1 priority - reference the most critical weakness or opportunity\",
+        \"impact\": \"Expected conversion lift and which metrics will improve most\",
+        \"next_steps\": \"Specific first steps to take (e.g., '1. Research competitor testimonials, 2. Reach out to satisfied clients, 3. Design testimonial section')\"
+    }
   },
   \"ai_used\": true
 }
@@ -747,14 +790,16 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanatory te
                 array(
                     'text' => 'AI analysis unavailable - using fallback scores. Check WordPress debug.log for API error details.',
                     'section' => 'System Notice',
-                    'impact' => 'high',
-                    'difficulty' => 'n/a'
+                    'why' => 'The AI provider is not responding correctly, preventing detailed analysis.',
+                    'impact' => 'Unable to provide accurate conversion insights',
+                    'implementation' => 'Check debug.log at wp-content/debug.log for error details'
                 ),
                 array(
                     'text' => 'The audit could not be completed using AI. This may be due to API connectivity issues or invalid responses.',
                     'section' => 'Technical',
-                    'impact' => 'high',
-                    'difficulty' => 'n/a'
+                    'why' => 'AI integration is required for personalized recommendations.',
+                    'impact' => 'Cannot generate custom suggestions for your business',
+                    'implementation' => 'Verify Abacus.ai API key in wp-config.php and check network connectivity'
                 )
             ),
             'functionality_suggestions' => array(
@@ -775,9 +820,29 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanatory te
                 'tone_analysis' => 'Unable to analyze without AI'
             ),
             'recommendations' => array(
-                'quick_wins' => array( 'Check WordPress debug.log at wp-content/debug.log' ),
-                'long_term' => array( 'Verify Abacus.ai API key and connectivity' ),
-                'priority' => 'Fix AI integration to get real audit data'
+                'quick_wins' => array(
+                    array(
+                        'text' => 'Check WordPress debug.log at wp-content/debug.log',
+                        'why' => 'The log file contains detailed error messages about why AI analysis failed',
+                        'impact' => 'Identifies the root cause of AI integration issues',
+                        'difficulty' => 'Easy'
+                    )
+                ),
+                'long_term' => array(
+                    array(
+                        'text' => 'Verify Abacus.ai API key and connectivity',
+                        'why' => 'Valid API credentials are required for AI-powered audit analysis',
+                        'impact' => 'Enables full AI functionality and personalized recommendations',
+                        'difficulty' => 'Easy',
+                        'timeframe' => '30 minutes'
+                    )
+                ),
+                'priority' => array(
+                    'text' => 'Fix AI integration to get real audit data',
+                    'why' => 'Without AI analysis, you are only seeing fallback scores that do not reflect your actual page content or business context',
+                    'impact' => 'Full access to personalized conversion insights and recommendations',
+                    'next_steps' => '1. Check debug.log for error messages, 2. Verify CONVERSIONIQ_ABACUS_KEY in wp-config.php, 3. Test API connectivity, 4. Re-run audit'
+                )
             )
         );
     }
