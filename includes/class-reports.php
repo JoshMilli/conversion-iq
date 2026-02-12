@@ -804,31 +804,27 @@ class ConversionIQ_Reports {
         // Display competitive context if available - EXPANDED
         if (!empty($competitive_context)) {
             $html .= '<div style="background: #f0f9ff; padding: 20px; border-radius: 8px; border-left: 4px solid #0891b2; margin-bottom: 20px;">
-                <h5 style="color: #0891b2; font-size: 15px; margin: 0 0 12px 0; font-weight: 700;">📊 Competitive Landscape</h5>
-                <p style="font-size: 14px; color: #1e293b; line-height: 1.7; margin-bottom: 12px;">'.nl2br(esc_html($competitive_context)).'</p>';
+                <h5 style="color: #0891b2; font-size: 15px; margin: 0 0 12px 0; font-weight: 700;">Competitive Landscape</h5>
+                <p style="font-size: 14px; color: #1e293b; line-height: 1.7; margin-bottom: 0;">'.nl2br(esc_html($competitive_context)).'</p>';
             
-            // Add industry-specific context if available
+            // Add industry-specific context if available - integrated naturally
             if (!empty($business['industry'])) {
-                $html .= '<div style="background: white; padding: 12px; border-radius: 6px; margin-top: 12px; border-left: 3px solid #0891b2;">
-                    <p style="font-size: 13px; color: #475569; line-height: 1.6; margin: 0;">
-                        <strong>Industry Context:</strong> In the '.esc_html($business['industry']).' sector, top-performing websites typically excel in trust-building elements, clear value propositions, and streamlined conversion paths. Your score of '.$overall_score.' compared to the industry average of '.$industry_avg.' indicates '.($overall_score >= $industry_avg ? 'strong competitive positioning' : 'significant opportunities for improvement').' relative to market standards.
-                    </p>
-                </div>';
+                $html .= '<p style="font-size: 14px; color: #1e293b; line-height: 1.7; margin: 14px 0 0 0;">
+                    In the '.esc_html($business['industry']).' sector, leading websites distinguish themselves through exceptional trust-building elements, compelling value propositions, and frictionless conversion pathways. With your score of <strong>'.$overall_score.'</strong> compared to the industry average of <strong>'.$industry_avg.'</strong>, you are '.($overall_score >= $industry_avg ? 'demonstrating strong competitive positioning' : 'well-positioned to capture significant market share through strategic optimization').'. The performance gap between average competitors ('.$industry_avg.') and top-tier performers ('.$top_performers.'+) represents a measurable opportunity for differentiation in your market.
+                </p>';
             }
             
             $html .= '</div>';
         } elseif (!empty($business['industry'])) {
             // Fallback competitive landscape if AI didn't provide one
             $html .= '<div style="background: #f0f9ff; padding: 20px; border-radius: 8px; border-left: 4px solid #0891b2; margin-bottom: 20px;">
-                <h5 style="color: #0891b2; font-size: 15px; margin: 0 0 12px 0; font-weight: 700;">📊 Competitive Landscape</h5>
-                <p style="font-size: 14px; color: #1e293b; line-height: 1.7; margin-bottom: 12px;">
-                    Within the <strong>'.esc_html($business['industry']).' industry</strong>, conversion optimization and user experience are critical differentiators. Analysis of competitive websites in this sector reveals that successful businesses focus on building immediate trust, presenting clear value propositions, and removing friction from the conversion process.
+                <h5 style="color: #0891b2; font-size: 15px; margin: 0 0 12px 0; font-weight: 700;">Competitive Landscape</h5>
+                <p style="font-size: 14px; color: #1e293b; line-height: 1.7; margin-bottom: 14px;">
+                    The <strong>'.esc_html($business['industry']).' industry</strong> is characterized by intense competition for visitor attention and trust. Research across competitive websites in this sector reveals that market leaders consistently prioritize three core elements: immediate credibility establishment, crystal-clear value communication, and streamlined user journeys that minimize conversion friction.
                 </p>
-                <div style="background: white; padding: 12px; border-radius: 6px; margin-top: 12px; border-left: 3px solid #0891b2;">
-                    <p style="font-size: 13px; color: #475569; line-height: 1.6; margin: 0;">
-                        <strong>Your Position:</strong> With a score of '.$overall_score.' against an industry average of '.$industry_avg.', you are '.($overall_score >= $industry_avg ? 'performing above typical '.esc_html($business['industry']).' competitors' : 'positioned to gain significant competitive advantage through focused optimization').'. The gap between average performers ('.$industry_avg.') and top performers ('.$top_performers.'+) in your industry represents substantial market opportunity.
-                    </p>
-                </div>
+                <p style="font-size: 14px; color: #1e293b; line-height: 1.7; margin: 0;">
+                    Your current score of <strong>'.$overall_score.'</strong> positions you '.($overall_score >= $industry_avg ? 'above the industry benchmark of '.$industry_avg.', placing you in the upper tier of '.esc_html($business['industry']).' competitors' : 'below the industry benchmark of '.$industry_avg.', indicating significant headroom for competitive gains').'. Analysis shows that businesses scoring in the '.$top_performers.'+ range typically capture disproportionate market share through compound advantages in credibility, clarity, and conversion effectiveness. The '.abs($top_performers - $overall_score).'-point gap to top-performer status represents your most direct path to measurable competitive advantage.
+                </p>
             </div>';
         }
         
@@ -873,8 +869,8 @@ class ConversionIQ_Reports {
         if (count($historical) > 1) {
             $html .= '<div class="section">
                 <h3 class="section-title">Performance Trend</h3>
-                <div style="background: #ffffff; padding: 40px; border-radius: 8px; border: 1px solid #e5e7eb;">
-                    <p style="font-size: 14px; color: #6b7280; margin-bottom: 30px;">Historical performance based on your last '.count($historical).' audits</p>
+                <div style="background: #ffffff; padding: 30px; border-radius: 8px; border: 1px solid #e5e7eb; max-width: 700px; margin: 0 auto;">
+                    <p style="font-size: 14px; color: #6b7280; margin-bottom: 30px; text-align: center;">Historical performance based on your last '.count($historical).' audits</p>
                     
                     <!-- Chart Area with Grid -->
                     <div style="position: relative; padding: 20px 0;">
