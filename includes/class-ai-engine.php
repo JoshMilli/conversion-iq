@@ -581,6 +581,25 @@ Prioritize recommendations by:
 2. **Long-term**: Strategic improvements requiring more time/resources
 3. **Priority**: The ONE most critical change that addresses the biggest weakness
 
+**CRITICAL INSTRUCTIONS for Quick Wins:**
+
+Quick wins must be PAGE-SPECIFIC and immediately actionable - NOT generic industry advice:
+
+- ❌ BAD (Generic): \"Add social proof\" or \"Improve your CTA\" or \"Optimize landing pages\"
+- ✅ GOOD (Page-Specific): \"Add 2-3 customer testimonials with photos above the 'Get Started' button in your hero section - your trust score of 62 reflects this gap\"
+
+REQUIREMENTS for each Quick Win:
+1. Reference SPECIFIC page elements (sections, headlines, CTAs, images)
+2. Connect to ACTUAL weaknesses found in THIS page's analysis (cite scores)
+3. Provide ACTIONABLE advice (what to change, where to change it)
+4. Explain measurable impact specific to this page's gaps
+5. Make sure each of the 3 quick wins addresses DIFFERENT aspects of the page
+
+Examples of good quick wins:
+- \"Replace your hero headline 'Welcome to Our Site' with a benefit-focused statement like 'Save 40% on Energy Costs with Smart Home Automation' - addresses your clarity score of 68\"
+- \"Add security badges (SSL, BBB, industry certifications) below the contact form - your trust score of 61 indicates visitors need more credibility signals\"
+- \"Split your 400-word paragraph in the benefits section into 3-4 shorter paragraphs with subheadings - readability score of 55 suggests content is too dense\"
+
 **CRITICAL INSTRUCTIONS for Key Insights:**
 
 The insights section is the FIRST thing clients read - make it valuable, specific, and actionable:
@@ -686,9 +705,21 @@ The insights section is the FIRST thing clients read - make it valuable, specifi
   \"recommendations\": {
     \"quick_wins\": [
         {
-            \"text\": \"Quick win recommendation that can be implemented in 1-2 days\",
-            \"why\": \"Why this is a quick win - what immediate impact it has\",
-            \"impact\": \"Expected conversion improvement (e.g., '+5-10% trust score', 'Reduces bounce rate')\",
+            \"text\": \"Specific, actionable quick win tied to THIS PAGE's actual content (e.g., 'Add customer testimonials above the CTA button in the hero section' NOT generic advice like 'Improve social proof'). Reference specific sections, headlines, or CTAs from the page.\",
+            \"why\": \"Why this specific change matters for THIS page - reference actual weaknesses found in the analysis (e.g., 'Your trust score of 62 reflects the absence of social proof in the hero section where visitors make their first impression')\",
+            \"impact\": \"Expected measurable improvement specific to this page's weaknesses (e.g., 'Could increase trust score from 62 to 75-80' or 'Likely to reduce bounce rate by 15-20%')\",
+            \"difficulty\": \"Easy\"
+        },
+        {
+            \"text\": \"Second page-specific quick win - must be different from the first and reference different aspects of the page\",
+            \"why\": \"Explain why based on this page's specific gaps\",
+            \"impact\": \"Measurable impact prediction\",
+            \"difficulty\": \"Easy\"
+        },
+        {
+            \"text\": \"Third page-specific quick win\",
+            \"why\": \"Explain based on page analysis\",
+            \"impact\": \"Expected improvement\",
             \"difficulty\": \"Easy\"
         }
     ],
@@ -933,6 +964,12 @@ Provide detailed, data-driven competitive intelligence for this industry. Your r
 
 6. **Industry Challenges**: What specific obstacles or pain points do {$industry} businesses face in converting visitors?
 
+7. **Competitive Context**: Research and describe the SPECIFIC competitive dynamics in {$industry}:
+   - What conversion tactics are top-performing {$industry} companies actually using on their websites? (Be specific - mention actual techniques, not generic advice)
+   - What are the measurable differences between high-converting and low-converting {$industry} websites? (Cite specific elements like trust signals, page structure, copy approaches)
+   - What recent trends or shifts in {$industry} are affecting conversion rates?
+   - Include 2-3 CONCRETE examples of what separates market leaders from average performers
+
 **CRITICAL: Output must be ONLY valid JSON with no markdown formatting. Use these EXACT field names:**
 
 {
@@ -953,7 +990,7 @@ Provide detailed, data-driven competitive intelligence for this industry. Your r
     \"Challenge 1 specific to {$industry}\",
     \"Challenge 2 specific to {$industry}\"
   ],
-  \"competitive_context\": \"2-3 sentences about the competitive landscape in {$industry} and what it takes to win\"
+  \"competitive_context\": \"3-4 sentences with SPECIFIC, TACTICAL insights about the {$industry} competitive landscape. Must include concrete examples of what top performers do differently (e.g., specific trust signals they use, specific page structures, specific copy approaches). NO generic statements - only research-backed, actionable competitive intelligence.\"
 }
 
 IMPORTANT: 
@@ -990,7 +1027,7 @@ IMPORTANT:
                 'Building trust with first-time visitors',
                 'Communicating value quickly and clearly'
             ),
-            'competitive_context' => 'The digital landscape is increasingly competitive. Businesses that invest in conversion optimization typically see significant advantages over competitors who focus only on traffic generation.'
+            'competitive_context' => 'Industry analysis indicates that top-performing websites prioritize three elements: immediate credibility through specific trust indicators (customer counts, years in business, recognizable client logos), crystal-clear value communication in the first screen, and conversion pathways that eliminate decision friction. Research shows leaders in competitive markets consistently outperform on trust-building (security badges, testimonials with photos/names) and clarity metrics (headline-to-CTA alignment, benefit-focused copy).'
         );
     }
 }

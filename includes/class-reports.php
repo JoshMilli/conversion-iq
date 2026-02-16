@@ -690,7 +690,6 @@ class ConversionIQ_Reports {
         $competitive_factors = array();
         $industry_challenges = array();
         $competitive_context = '';
-        $quick_wins = array();
         
         if (isset($data['benchmark_research']) && is_array($data['benchmark_research'])) {
             $benchmark = $data['benchmark_research'];
@@ -700,7 +699,12 @@ class ConversionIQ_Reports {
             $competitive_factors = isset($benchmark['key_competitive_factors']) && is_array($benchmark['key_competitive_factors']) ? $benchmark['key_competitive_factors'] : array();
             $industry_challenges = isset($benchmark['industry_challenges']) && is_array($benchmark['industry_challenges']) ? $benchmark['industry_challenges'] : array();
             $competitive_context = isset($benchmark['competitive_context']) ? strval($benchmark['competitive_context']) : '';
-            $quick_wins = isset($benchmark['quick_wins']) && is_array($benchmark['quick_wins']) ? $benchmark['quick_wins'] : array();
+        }
+        
+        // Get page-specific quick wins from AI recommendations (not generic industry benchmarks)
+        $quick_wins = array();
+        if (isset($data['recommendations']['quick_wins']) && is_array($data['recommendations']['quick_wins'])) {
+            $quick_wins = $data['recommendations']['quick_wins'];
         }
         
         $html .= '
@@ -809,7 +813,7 @@ class ConversionIQ_Reports {
                             Based on AI analysis of '.(!empty($business['industry']) ? 'competitive '.strtolower(esc_html($business['industry'])).' websites' : 'thousands of websites').' and conversion optimization data
                         </p>
                         
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 24px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 30px; margin-bottom: 24px;">
                             <div style="text-align: center; flex: 1; padding: 20px; background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); border-radius: 10px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);">
                                 <div style="font-size: 12px; color: rgba(255,255,255,0.8); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Your Score</div>
                                 <div style="font-size: 48px; font-weight: 800; color: #ffffff; line-height: 1;">'.$overall_score.'</div>
@@ -817,10 +821,6 @@ class ConversionIQ_Reports {
                             <div style="text-align: center; flex: 1; padding: 20px; background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%); border-radius: 10px; border: 2px solid #f59e0b;">
                                 <div style="font-size: 12px; color: #92400e; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">'.(!empty($business['industry']) ? esc_html($business['industry']) : 'Industry').' Average</div>
                                 <div style="font-size: 48px; font-weight: 800; color: #f59e0b; line-height: 1;">'.$industry_avg.'</div>
-                            </div>
-                            <div style="text-align: center; flex: 1; padding: 20px; background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border-radius: 10px; border: 2px solid #10b981;">
-                                <div style="font-size: 12px; color: #065f46; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Top Performers</div>
-                                <div style="font-size: 48px; font-weight: 800; color: #10b981; line-height: 1;">'.$top_performers.'<span style="font-size: 28px;">+</span></div>
                             </div>
                         </div>
                         
@@ -907,104 +907,6 @@ class ConversionIQ_Reports {
                 </div>
             </div>';
         } // End of benchmark section conditional
-            
-        // Historical Trend (if data exists)
-        if (count($historical) > 1) {
-            $html .= '<div class="section">
-                <h3 class="section-title">Performance Trend</h3>
-                <!-- Centered table container for better TCPDF rendering -->
-                <table cellpadding="0" cellspacing="0" style="width: 650px; margin: 0 auto; border-collapse: collapse;">
-                    <tr>
-                        <td style="padding: 0;">
-                            <div style="background: #ffffff; padding: 30px 20px; border-radius: 8px; border: 1px solid #e5e7eb;">
-                                <p style="font-size: 14px; color: #6b7280; margin-bottom: 30px; text-align: center;">Historical performance based on your last '.count($historical).' audits</p>
-                                
-                                <!-- Chart Area with Grid -->
-                                <div style="position: relative; padding: 20px 0;">
-                                    <!-- Y-axis labels -->
-                                    <div style="position: absolute; left: -40px; top: 20px; bottom: 40px; display: flex; flex-direction: column; justify-content: space-between; text-align: right; font-size: 12px; color: #6b7280; width: 35px;">
-                            <span>100</span>
-                            <span>75</span>
-                            <span>50</span>
-                            <span>25</span>
-                            <span>0</span>
-                        </div>
-                        
-                        <!-- Grid lines -->
-                        <div style="position: absolute; left: 0; right: 0; top: 20px; bottom: 40px;">
-                            <div style="position: absolute; width: 100%; height: 1px; background: #e5e7eb; top: 0;"></div>
-                            <div style="position: absolute; width: 100%; height: 1px; background: #e5e7eb; top: 25%;"></div>
-                            <div style="position: absolute; width: 100%; height: 1px; background: #e5e7eb; top: 50%;"></div>
-                            <div style="position: absolute; width: 100%; height: 1px; background: #e5e7eb; top: 75%;"></div>
-                            <div style="position: absolute; width: 100%; height: 1px; background: #d1d5db; top: 100%;"></div>
-                        </div>
-                        
-                        <!-- Bar Chart -->
-                        <div style="display: grid; grid-template-columns: repeat('.min(count($historical), 5).', 1fr); gap: 20px; position: relative; z-index: 10;">';
-            
-            $trend_data = [];
-            foreach ($historical as $h) {
-                $h_data = json_decode($h['data'], true);
-                if ($h_data) {
-                    $h_score = round((
-                        intval($h_data['clarity_score'] ?? 0) +
-                        intval($h_data['emotional_score'] ?? 0) +
-                        intval($h_data['cta_strength'] ?? 0) +
-                        intval($h_data['readability_score'] ?? 0) +
-                        intval($h_data['engagement_score'] ?? 0) +
-                        intval($h_data['trust_score'] ?? 0)
-                    ) / 6);
-                    $trend_data[] = ['score' => $h_score, 'date' => date('M j', strtotime($h['created_at']))];
-                }
-            }
-            $trend_data = array_reverse($trend_data);
-            
-            foreach ($trend_data as $idx => $point) {
-                $is_current = ($idx === count($trend_data) - 1);
-                $bar_color = $is_current ? '#2563eb' : '#94a3b8';
-                $html .= '<div style="display: flex; flex-direction: column; align-items: center;">
-                    <div style="height: 200px; width: 100%; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 15px;">
-                        <div style="width: 70%; background: '.$bar_color.'; height: '.($point['score'] * 2).'px; border-radius: 6px 6px 0 0; position: relative; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                            <div style="position: absolute; top: -30px; left: 50%; transform: translateX(-50%); background: '.$bar_color.'; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 16px; white-space: nowrap;">'.$point['score'].'</div>
-                        </div>
-                    </div>
-                    <div style="font-size: 13px; color: '.($is_current ? '#1e3a5f' : '#6b7280').'; font-weight: '.($is_current ? '600' : '400').';">'.esc_html($point['date']).'</div>
-                    '.($is_current ? '<div style="font-size: 11px; color: #2563eb; font-weight: 600; margin-top: 4px;">Current</div>' : '').
-                '</div>';
-            }
-            
-            $html .= '</div>
-                                </div>
-                            </div>
-                        </td>
-                    </tr>
-                </table>';
-            
-            // Calculate trend
-            if (count($trend_data) >= 2) {
-                $first_score = $trend_data[0]['score'];
-                $last_score = $trend_data[count($trend_data) - 1]['score'];
-                $change = $last_score - $first_score;
-                $change_percent = $first_score > 0 ? round(($change / $first_score) * 100) : 0;
-                
-                $html .= '<table cellpadding="0" cellspacing="0" style="width: 650px; margin: 25px auto 0; border-collapse: collapse;">
-                    <tr>
-                        <td style="padding: 0;">
-                            <div style="padding: 25px; background: '.($change >= 0 ? '#d1fae5' : '#fee2e2').'; border-radius: 8px; border-left: 4px solid '.($change >= 0 ? '#10b981' : '#ef4444').';">
-                        <p style="font-size: 16px; color: #374151; margin: 0; line-height: 1.6;">
-                            <strong>'.($change >= 0 ? 'Trend: Improving' : 'Trend: Declining').'</strong><br>
-                            Your score has '.($change >= 0 ? 'increased' : 'decreased').' by <strong>'.abs($change).' points</strong> ('.($change >= 0 ? '+' : '').$change_percent.'%) since your first audit. '.($change >= 0 ? 'This positive trend indicates that previous optimization efforts are working effectively.' : 'This decline suggests a need to review recent changes and refocus on core conversion principles.').'
-                        </p>
-                            </div>
-                        </td>
-                    </tr>
-                </table>';
-            }
-            
-            $html .= '</div>
-            <div class="page-number">Page 2</div>
-        </div>';
-        }
 
         // ============ PAGE 4: SCORES & ANALYSIS ============
         $html .= '
