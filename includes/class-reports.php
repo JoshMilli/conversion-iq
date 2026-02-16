@@ -879,17 +879,25 @@ class ConversionIQ_Reports {
             
             $win_number = 1;
             foreach ($quick_wins as $win) {
-                if (isset($win['tactic'])) {
-                    $tactic = esc_html($win['tactic']);
+                // Support both old format (tactic) and new format (text)
+                $text = isset($win['text']) ? $win['text'] : (isset($win['tactic']) ? $win['tactic'] : '');
+                
+                if (!empty($text)) {
+                    $text_escaped = esc_html($text);
                     $impact = isset($win['impact']) ? esc_html($win['impact']) : '';
+                    $why = isset($win['why']) ? esc_html($win['why']) : '';
                     
                     $html .= '<div style="background: white; padding: 14px; border-radius: 6px; border: 1px solid #e5e7eb; display: flex; align-items: start; gap: 10px;">
                         <div style="background: #2563eb; color: white; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex-shrink: 0;">'.$win_number.'</div>
                         <div style="flex: 1;">
-                            <div style="font-weight: 600; color: #1e3a5f; font-size: 13px; line-height: 1.4;">'.$tactic.'</div>';
+                            <div style="font-weight: 600; color: #1e3a5f; font-size: 13px; line-height: 1.4;">'.$text_escaped.'</div>';
+                    
+                    if (!empty($why)) {
+                        $html .= '<div style="font-size: 12px; color: #6b7280; margin-top: 4px; line-height: 1.4;">'.$why.'</div>';
+                    }
                     
                     if (!empty($impact)) {
-                        $html .= '<div style="font-size: 12px; color: #059669; margin-top: 4px;">Impact: '.$impact.'</div>';
+                        $html .= '<div style="font-size: 12px; color: #059669; margin-top: 4px; font-weight: 600;">Impact: '.$impact.'</div>';
                     }
                     
                     $html .= '</div>
