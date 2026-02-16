@@ -701,12 +701,6 @@ class ConversionIQ_Reports {
             $competitive_context = isset($benchmark['competitive_context']) ? strval($benchmark['competitive_context']) : '';
         }
         
-        // Get page-specific quick wins from AI recommendations (not generic industry benchmarks)
-        $quick_wins = array();
-        if (isset($data['recommendations']['quick_wins']) && is_array($data['recommendations']['quick_wins'])) {
-            $quick_wins = $data['recommendations']['quick_wins'];
-        }
-        
         $html .= '
         <div class="page content-page">
             <div class="content-header">
@@ -868,46 +862,6 @@ class ConversionIQ_Reports {
                 <p style="font-size: 14px; color: #1e293b; line-height: 1.7; margin: 0;">
                     Your current score of <strong>'.$overall_score.'</strong> positions you '.($overall_score >= $industry_avg ? 'above the industry benchmark of '.$industry_avg.', placing you in the upper tier of '.esc_html($business['industry']).' competitors' : 'below the industry benchmark of '.$industry_avg.', indicating significant headroom for competitive gains').'. Analysis shows that businesses scoring in the '.$top_performers.'+ range typically capture disproportionate market share through compound advantages in credibility, clarity, and conversion effectiveness. The '.abs($top_performers - $overall_score).'-point gap to top-performer status represents your most direct path to measurable competitive advantage.
                 </p>
-            </div>';
-        }
-        
-        // Display quick wins if available - MORE COMPACT
-        if (!empty($quick_wins) && is_array($quick_wins)) {
-            $html .= '<div style="margin-top: 20px;">
-                <h5 style="color: #1e3a5f; font-size: 15px; margin: 0 0 12px 0; font-weight: 700;">⚡ Quick Wins</h5>
-                <div style="display: grid; gap: 10px;">';
-            
-            $win_number = 1;
-            foreach ($quick_wins as $win) {
-                // Support both old format (tactic) and new format (text)
-                $text = isset($win['text']) ? $win['text'] : (isset($win['tactic']) ? $win['tactic'] : '');
-                
-                if (!empty($text)) {
-                    $text_escaped = esc_html($text);
-                    $impact = isset($win['impact']) ? esc_html($win['impact']) : '';
-                    $why = isset($win['why']) ? esc_html($win['why']) : '';
-                    
-                    $html .= '<div style="background: white; padding: 14px; border-radius: 6px; border: 1px solid #e5e7eb; display: flex; align-items: start; gap: 10px;">
-                        <div style="background: #2563eb; color: white; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex-shrink: 0;">'.$win_number.'</div>
-                        <div style="flex: 1;">
-                            <div style="font-weight: 600; color: #1e3a5f; font-size: 13px; line-height: 1.4;">'.$text_escaped.'</div>';
-                    
-                    if (!empty($why)) {
-                        $html .= '<div style="font-size: 12px; color: #6b7280; margin-top: 4px; line-height: 1.4;">'.$why.'</div>';
-                    }
-                    
-                    if (!empty($impact)) {
-                        $html .= '<div style="font-size: 12px; color: #059669; margin-top: 4px; font-weight: 600;">Impact: '.$impact.'</div>';
-                    }
-                    
-                    $html .= '</div>
-                    </div>';
-                    
-                    $win_number++;
-                }
-            }
-            
-            $html .= '</div>
             </div>';
         }
         
