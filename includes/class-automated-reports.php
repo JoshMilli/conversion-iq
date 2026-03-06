@@ -1,181 +1,199 @@
 <?php
-if ( ! defined( 'ABSPATH' ) ) {
+if (!defined('ABSPATH')) {
     exit;
 }
 
 /**
  * Handles automated audit scheduling and email reporting
  */
-class ConversionIQ_Automated_Reports {
-    
+class ConversionIQ_Automated_Reports
+{
+
     /**
      * Initialize automated reports functionality
      */
-    public static function init() {
+    public static function init()
+    {
         // Register custom cron schedules
-        add_filter( 'cron_schedules', array( __CLASS__, 'add_cron_schedules' ) );
-        
+        add_filter('cron_schedules', array(__CLASS__, 'add_cron_schedules'));
+
         // Register the cron hook
-        add_action( 'conversioniq_automated_audit', array( __CLASS__, 'run_automated_audit' ) );
-        
+        add_action('conversioniq_automated_audit', array(__CLASS__, 'run_automated_audit'));
+
         // Cleanup on plugin deactivation
-        register_deactivation_hook( CONVERSION_IQ_FILE, array( __CLASS__, 'deactivate' ) );
+        register_deactivation_hook(CONVERSION_IQ_FILE, array(__CLASS__, 'deactivate'));
     }
-    
+
     /**
      * Add custom cron schedules
      */
-    public static function add_cron_schedules( $schedules ) {
+    public static function add_cron_schedules($schedules)
+    {
         $schedules['conversioniq_weekly'] = array(
             'interval' => WEEK_IN_SECONDS,
-            'display'  => __( 'Weekly (Monday)', 'conversion-iq' )
+            'display' => __('Weekly (Monday)', 'conversion-iq')
         );
-        
+
         $schedules['conversioniq_monthly'] = array(
             'interval' => 30 * DAY_IN_SECONDS, // Approximate
-            'display'  => __( 'Monthly', 'conversion-iq' )
+            'display' => __('Monthly', 'conversion-iq')
         );
-        
+
         $schedules['conversioniq_bimonthly'] = array(
             'interval' => 60 * DAY_IN_SECONDS, // Approximate
-            'display'  => __( 'Bi-Monthly', 'conversion-iq' )
+            'display' => __('Bi-Monthly', 'conversion-iq')
         );
-        
+
         return $schedules;
     }
-    
+
     /**
      * Run automated audit and send email report
      */
-    public static function run_automated_audit() {
-        error_log( '🤖 ConversionIQ: Starting automated audit...' );
-        
-        $settings = get_option( 'conversion_iq_automated_reports', array() );
-        
-        if ( empty( $settings['enabled'] ) || empty( $settings['defaultPages'] ) || empty( $settings['email'] ) ) {
-            error_log( '⚠️ Automated audit cancelled: invalid settings' );
+    public static function run_automated_audit()
+    {
+        error_log('🤖 ConversionIQ: Starting automated audit...');
+
+        $settings = get_option('conversion_iq_automated_reports', array());
+
+        if (empty($settings['enabled']) || empty($settings['defaultPages']) || empty($settings['email'])) {
+            error_log('⚠️ Automated audit cancelled: invalid settings');
             return;
         }
-        
-        $business = json_decode( get_option( 'conversion_iq_settings', '{}' ), true );
+
+        $business = json_decode(get_option('conversion_iq_settings', '{}'), true);
         $results = array();
-        
-        foreach ( $settings['defaultPages'] as $page_id ) {
-            $post = get_post( intval( $page_id ) );
-            if ( ! $post ) {
+
+        foreach ($settings['defaultPages'] as $page_id) {
+            $post = get_post(intval($page_id));
+            if (!$post) {
                 continue;
             }
-            
+
             // Get page content
             $content = $post->post_content;
-            $content = strip_shortcodes( $content );
-            $content = wp_strip_all_tags( $content );
-            
+            $content = strip_shortcodes($content);
+            $content = wp_strip_all_tags($content);
+
             // Fetch HTML structure
-            $page_url = get_permalink( $post );
+            $page_url = get_permalink($post);
             $html_structure = '';
-            
-            $response = wp_remote_get( $page_url, array(
+
+            $response = wp_remote_get($page_url, array(
                 'timeout' => 10,
                 'sslverify' => false,
-            ) );
-            
-            if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
-                $html = wp_remote_retrieve_body( $response );
-                $html_structure = conversioniq_extract_html_structure( $html );
+            ));
+
+            if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+                $html = wp_remote_retrieve_body($response);
+                $html_structure = conversioniq_extract_html_structure($html);
             }
-            
+
+            $company_id = isset($business['knockknock_company_id']) ? $business['knockknock_company_id'] : '';
+            if (!empty($company_id)) {
+                error_log('🎣 Automated Audit: Fetching recent webhook leads for company: ' . $company_id);
+                $page_leads = ConversionIQ_DB::get_recent_webhooks($company_id, $page_url, 15);
+                $site_leads = ConversionIQ_DB::get_recent_webhooks($company_id, null, 15);
+                $business['recent_leads'] = array(
+                    'page_specific_leads' => $page_leads,
+                    'site_wide_leads' => $site_leads
+                );
+            }
+
             $payload = array(
                 'business' => $business,
                 'page' => array(
                     'title' => $post->post_title,
                     'content' => $content,
                     'url' => $page_url,
-                    'word_count' => str_word_count( $content ),
+                    'word_count' => str_word_count($content),
                     'html_structure' => $html_structure,
                 ),
             );
-            
-            error_log( '📄 Automated audit: ' . $post->post_title );
-            
+
+            error_log('📄 Automated audit: ' . $post->post_title);
+
             try {
                 // Always run a fresh audit analysis
-                $ai = ConversionIQ_AI::analyze( $payload );
-                
-                if ( is_array( $ai ) ) {
+                $ai = ConversionIQ_AI::analyze($payload);
+
+                if (is_array($ai)) {
                     // Save the fresh audit to database
-                    $insert_id = ConversionIQ_DB::insert_audit( $post->ID, $post->post_title, $ai );
+                    $insert_id = ConversionIQ_DB::insert_audit($post->ID, $post->post_title, $ai);
                     $ai['insert_id'] = $insert_id;
                     $ai['page_id'] = $post->ID;
                     $ai['page_title'] = $post->post_title;
                     $ai['page_url'] = $page_url;
-                    $ai['created_at'] = current_time( 'mysql' );
+                    $ai['created_at'] = current_time('mysql');
                     $results[] = $ai;
-                    
-                    error_log( '✅ Fresh audit completed for: ' . $post->post_title . ' (Audit ID: ' . $insert_id . ')' );
-                    
+
+                    error_log('✅ Fresh audit completed for: ' . $post->post_title . ' (Audit ID: ' . $insert_id . ')');
+
                     // Send to webhook if configured
-                    if ( function_exists( 'conversioniq_send_webhook' ) ) {
-                        conversioniq_send_webhook( $ai );
+                    if (function_exists('conversioniq_send_webhook')) {
+                        conversioniq_send_webhook($ai);
                     }
-                } else {
-                    error_log( '⚠️ Audit analysis returned non-array result for: ' . $post->post_title );
                 }
-            } catch ( Exception $e ) {
-                error_log( '❌ Automated audit error for ' . $post->post_title . ': ' . $e->getMessage() );
+                else {
+                    error_log('⚠️ Audit analysis returned non-array result for: ' . $post->post_title);
+                }
+            }
+            catch (Exception $e) {
+                error_log('❌ Automated audit error for ' . $post->post_title . ': ' . $e->getMessage());
             }
         }
-        
-        if ( empty( $results ) ) {
-            error_log( '⚠️ No audit results to email' );
+
+        if (empty($results)) {
+            error_log('⚠️ No audit results to email');
             return;
         }
-        
-        error_log( '✅ Automated audits completed. Generated ' . count( $results ) . ' fresh audit(s) for scheduled report' );
-        
+
+        error_log('✅ Automated audits completed. Generated ' . count($results) . ' fresh audit(s) for scheduled report');
+
         // Send email with results
-        self::send_email_report( $settings['email'], $results, $business );
-        
-        error_log( '📧 Automated report emailed to ' . $settings['email'] . ' with ' . count( $results ) . ' page(s)' );
+        self::send_email_report($settings['email'], $results, $business);
+
+        error_log('📧 Automated report emailed to ' . $settings['email'] . ' with ' . count($results) . ' page(s)');
     }
-    
+
     /**
      * Send email report with audit results
      * @param string $email Comma-separated email addresses
      */
-    private static function send_email_report( $email, $results, $business ) {
+    private static function send_email_report($email, $results, $business)
+    {
         // Parse comma-separated emails
-        $email_list = array_map( 'trim', explode( ',', $email ) );
-        $valid_emails = array_filter( $email_list, 'is_email' );
-        
-        if ( empty( $valid_emails ) ) {
-            error_log( '❌ No valid email addresses provided' );
+        $email_list = array_map('trim', explode(',', $email));
+        $valid_emails = array_filter($email_list, 'is_email');
+
+        if (empty($valid_emails)) {
+            error_log('❌ No valid email addresses provided');
             return false;
         }
-        
-        $site_name = get_bloginfo( 'name' );
+
+        $site_name = get_bloginfo('name');
         $site_url = get_home_url();
-        $total_pages = count( $results );
-        
+        $total_pages = count($results);
+
         // Calculate average scores and collect page summaries
         $total_score = 0;
         $page_summaries = array();
         $attachments = array();
-        
-        foreach ( $results as $result ) {
-            $clarity = intval( $result['clarity_score'] ?? 0 );
-            $emotional = intval( $result['emotional_score'] ?? 0 );
-            $cta = intval( $result['cta_strength'] ?? 0 );
-            $readability = intval( $result['readability_score'] ?? 0 );
-            $engagement = intval( $result['engagement_score'] ?? 0 );
-            $trust = intval( $result['trust_score'] ?? 0 );
-            
-            $page_score = round( ( $clarity + $emotional + $cta + $readability + $engagement + $trust ) / 6 );
+
+        foreach ($results as $result) {
+            $clarity = intval($result['clarity_score'] ?? 0);
+            $emotional = intval($result['emotional_score'] ?? 0);
+            $cta = intval($result['cta_strength'] ?? 0);
+            $readability = intval($result['readability_score'] ?? 0);
+            $engagement = intval($result['engagement_score'] ?? 0);
+            $trust = intval($result['trust_score'] ?? 0);
+
+            $page_score = round(($clarity + $emotional + $cta + $readability + $engagement + $trust) / 6);
             $total_score += $page_score;
-            
+
             $page_summaries[] = array(
-                'title' => esc_html( $result['page_title'] ?? 'Unknown Page' ),
-                'url' => esc_url( $result['page_url'] ?? '' ),
+                'title' => esc_html($result['page_title'] ?? 'Unknown Page'),
+                'url' => esc_url($result['page_url'] ?? ''),
                 'score' => $page_score,
                 'scores' => array(
                     'clarity' => $clarity,
@@ -186,46 +204,50 @@ class ConversionIQ_Automated_Reports {
                     'trust' => $trust
                 )
             );
-            
+
             // Generate PDF report for this audit if it exists
-            if ( isset( $result['insert_id'] ) ) {
+            if (isset($result['insert_id'])) {
                 global $wpdb;
                 $table = $wpdb->prefix . 'conversioniq_audits';
-                $audit = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id = %d", $result['insert_id'] ), ARRAY_A );
-                
-                if ( $audit ) {
-                    $audit['data'] = json_decode( $audit['data'], true );
-                    error_log( '📄 Generating PDF for audit ID: ' . $result['insert_id'] );
-                    $pdf_result = ConversionIQ_Reports::generate_pdf_for_audit( $audit );
-                    
-                    if ( $pdf_result['success'] && isset( $pdf_result['path'] ) && file_exists( $pdf_result['path'] ) ) {
+                $audit = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $result['insert_id']), ARRAY_A);
+
+                if ($audit) {
+                    $audit['data'] = json_decode($audit['data'], true);
+                    error_log('📄 Generating PDF for audit ID: ' . $result['insert_id']);
+                    $pdf_result = ConversionIQ_Reports::generate_pdf_for_audit($audit);
+
+                    if ($pdf_result['success'] && isset($pdf_result['path']) && file_exists($pdf_result['path'])) {
                         $attachments[] = $pdf_result['path'];
-                        error_log( '✅ PDF generated: ' . $pdf_result['path'] );
-                    } else {
-                        error_log( '⚠️ PDF generation failed or file not found for audit ID: ' . $result['insert_id'] );
+                        error_log('✅ PDF generated: ' . $pdf_result['path']);
                     }
-                } else {
-                    error_log( '⚠️ Audit record not found for ID: ' . $result['insert_id'] );
+                    else {
+                        error_log('⚠️ PDF generation failed or file not found for audit ID: ' . $result['insert_id']);
+                    }
+                }
+                else {
+                    error_log('⚠️ Audit record not found for ID: ' . $result['insert_id']);
                 }
             }
         }
-        
-        $overall_score = $total_pages > 0 ? round( $total_score / $total_pages ) : 0;
-        $status = $overall_score >= 85 ? 'Excellent' : ( $overall_score >= 75 ? 'Good' : ( $overall_score >= 60 ? 'Fair' : 'Needs Improvement' ) );
-        $status_color = $overall_score >= 85 ? '#10b981' : ( $overall_score >= 75 ? '#2563eb' : ( $overall_score >= 60 ? '#f59e0b' : '#ef4444' ) );
-        
+
+        $overall_score = $total_pages > 0 ? round($total_score / $total_pages) : 0;
+        $status = $overall_score >= 85 ? 'Excellent' : ($overall_score >= 75 ? 'Good' : ($overall_score >= 60 ? 'Fair' : 'Needs Improvement'));
+        $status_color = $overall_score >= 85 ? '#10b981' : ($overall_score >= 75 ? '#2563eb' : ($overall_score >= 60 ? '#f59e0b' : '#ef4444'));
+
         // Webtec logo - convert to base64 for email embedding
         $logo_base64 = '';
         $logo_path = CONVERSION_IQ_DIR . 'assets/images/Webtec.png';
-        if ( file_exists( $logo_path ) ) {
-            $logo_data = file_get_contents( $logo_path );
-            $logo_base64 = 'data:image/png;base64,' . base64_encode( $logo_data );
+        if (file_exists($logo_path)) {
+            $logo_data = file_get_contents($logo_path);
+            $logo_base64 = 'data:image/png;base64,' . base64_encode($logo_data);
         }
-        
+
         // Calculate insights
-        $low_scoring_pages = array_filter( $page_summaries, function( $p ) { return $p['score'] < 60; } );
-        $high_scoring_pages = array_filter( $page_summaries, function( $p ) { return $p['score'] >= 75; } );
-        
+        $low_scoring_pages = array_filter($page_summaries, function ($p) {
+            return $p['score'] < 60; });
+        $high_scoring_pages = array_filter($page_summaries, function ($p) {
+            return $p['score'] >= 75; });
+
         // Find weakest areas
         $avg_scores = array(
             'clarity' => 0,
@@ -235,28 +257,28 @@ class ConversionIQ_Automated_Reports {
             'engagement' => 0,
             'trust' => 0
         );
-        foreach ( $page_summaries as $page ) {
-            foreach ( $avg_scores as $key => $val ) {
+        foreach ($page_summaries as $page) {
+            foreach ($avg_scores as $key => $val) {
                 $avg_scores[$key] += $page['scores'][$key];
             }
         }
-        foreach ( $avg_scores as $key => $val ) {
-            $avg_scores[$key] = round( $val / $total_pages );
+        foreach ($avg_scores as $key => $val) {
+            $avg_scores[$key] = round($val / $total_pages);
         }
-        arsort( $avg_scores );
-        $weakest_areas = array_values( array_slice( array_keys( $avg_scores ), -2, 2 ) );
-        $strongest_areas = array_values( array_slice( array_keys( $avg_scores ), 0, 2 ) );
-        
+        arsort($avg_scores);
+        $weakest_areas = array_values(array_slice(array_keys($avg_scores), -2, 2));
+        $strongest_areas = array_values(array_slice(array_keys($avg_scores), 0, 2));
+
         // Build email subject
-        $subject = sprintf( '[%s] Conversion Audit Report - Score: %d/100', $site_name, $overall_score );
-        
+        $subject = sprintf('[%s] Conversion Audit Report - Score: %d/100', $site_name, $overall_score);
+
         // Check if any recipient email contains 'basecamp'
-        $is_basecamp = conversioniq_has_basecamp_email( $valid_emails );
-        
+        $is_basecamp = conversioniq_has_basecamp_email($valid_emails);
+
         // Build HTML page list
         $page_list_html = '';
-        foreach ( $page_summaries as $summary ) {
-            $score_color = $summary['score'] >= 75 ? '#10b981' : ( $summary['score'] >= 60 ? '#f59e0b' : '#ef4444' );
+        foreach ($page_summaries as $summary) {
+            $score_color = $summary['score'] >= 75 ? '#10b981' : ($summary['score'] >= 60 ? '#f59e0b' : '#ef4444');
             $page_list_html .= sprintf(
                 '<tr>
                     <td style="padding: 12px 16px; border-bottom: 1px solid #e5e7eb;">
@@ -266,22 +288,21 @@ class ConversionIQ_Automated_Reports {
                         <span style="color: %s; font-weight: 700; font-size: 16px;">%d</span><span style="color: #6b7280; font-size: 14px;">/100</span>
                     </td>
                 </tr>',
-                esc_url( $summary['url'] ),
-                esc_html( $summary['title'] ),
+                esc_url($summary['url']),
+                esc_html($summary['title']),
                 $score_color,
                 $summary['score']
             );
         }
-        
+
         // Build logo HTML if available
         $logo_html = '';
-        if ( ! empty( $logo_base64 ) ) {
+        if (!empty($logo_base64)) {
             $logo_html = '<img src="' . $logo_base64 . '" alt="Webtec" style="height: 60px; width: auto; display: block; margin: 0 auto;" />';
         }
-        
+
         // Build HTML email with professional styling
-        $message = sprintf(
-'<!DOCTYPE html>
+        $message = sprintf(            '<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -494,43 +515,43 @@ class ConversionIQ_Automated_Reports {
             $overall_score,
             $status,
             $page_list_html,
-            ucfirst( $strongest_areas[0] ),
+            ucfirst($strongest_areas[0]),
             $avg_scores[$strongest_areas[0]],
-            ucfirst( $strongest_areas[1] ),
+            ucfirst($strongest_areas[1]),
             $avg_scores[$strongest_areas[1]],
-            ucfirst( $weakest_areas[0] ),
+            ucfirst($weakest_areas[0]),
             $avg_scores[$weakest_areas[0]],
-            ucfirst( $weakest_areas[1] ),
+            ucfirst($weakest_areas[1]),
             $avg_scores[$weakest_areas[1]],
-            count( $attachments ),
-            count( $attachments ) !== 1 ? 's' : ''
+            count($attachments),
+            count($attachments) !== 1 ? 's' : ''
         );
-        
+
         $headers = array(
             'Content-Type: text/html; charset=UTF-8',
-            'From: Conversion IQ - ' . $site_name . ' <noreply@' . parse_url( get_site_url(), PHP_URL_HOST ) . '>',
+            'From: Conversion IQ - ' . $site_name . ' <noreply@' . parse_url(get_site_url(), PHP_URL_HOST) . '>',
             'Reply-To: Webtec Support <support@trywebtec.com>'
         );
-        
+
         // If sending to Basecamp, create plain text version instead
-        if ( $is_basecamp ) {
+        if ($is_basecamp) {
             $message = "CONVERSION IQ AUDIT REPORT\n";
             $message .= "=================================\n";
             $message .= "\n\n";
             $message .= "Hello,\n\n";
             $message .= "Your automated Conversion IQ audit has been completed.\n";
-            $message .= "We analyzed " . $total_pages . " page" . ( $total_pages > 1 ? 's' : '' ) . " on your website.\n\n";
+            $message .= "We analyzed " . $total_pages . " page" . ($total_pages > 1 ? 's' : '') . " on your website.\n\n";
             $message .= "Feel free to book a quick chat if you have any questions:\n";
             $message .= "https://calendly.com/d/ct85-ktz-3wd/webtec-website-improvement-meeting\n\n";
             $message .= "You can paste any recommendations directly into Basecamp and our Customer Success Team will get onto them right away.\n\n";
             $message .= "Thanks,\nWebTec\n\n";
-            
+
             $message .= "OVERALL PERFORMANCE: " . $overall_score . "/100 - " . $status . "\n";
             $message .= "=================================\n\n";
-            
+
             $message .= "PAGES ANALYZED:\n";
             $message .= "---------------------------------\n";
-            foreach ( $page_summaries as $summary ) {
+            foreach ($page_summaries as $summary) {
                 $message .= "* " . $summary['title'] . "\n";
                 $message .= "  Score: " . $summary['score'] . "/100\n";
                 $message .= "  URL: " . $summary['url'] . "\n";
@@ -541,60 +562,62 @@ class ConversionIQ_Automated_Reports {
                 $message .= "  - Engagement: " . $summary['scores']['engagement'] . "/100\n";
                 $message .= "  - Trust: " . $summary['scores']['trust'] . "/100\n\n";
             }
-            
+
             $message .= "KEY INSIGHTS:\n";
             $message .= "---------------------------------\n";
-            $message .= "Top Performers: Your strongest areas are " . ucfirst( $strongest_areas[0] ) . " (averaging " . $avg_scores[$strongest_areas[0]] . "/100)\n";
-            $message .= "                and " . ucfirst( $strongest_areas[1] ) . " (averaging " . $avg_scores[$strongest_areas[1]] . "/100)\n\n";
-            $message .= "Focus Areas: Prioritize improvements in " . ucfirst( $weakest_areas[0] ) . " (averaging " . $avg_scores[$weakest_areas[0]] . "/100)\n";
-            $message .= "             and " . ucfirst( $weakest_areas[1] ) . " (averaging " . $avg_scores[$weakest_areas[1]] . "/100)\n\n";
-            
+            $message .= "Top Performers: Your strongest areas are " . ucfirst($strongest_areas[0]) . " (averaging " . $avg_scores[$strongest_areas[0]] . "/100)\n";
+            $message .= "                and " . ucfirst($strongest_areas[1]) . " (averaging " . $avg_scores[$strongest_areas[1]] . "/100)\n\n";
+            $message .= "Focus Areas: Prioritize improvements in " . ucfirst($weakest_areas[0]) . " (averaging " . $avg_scores[$weakest_areas[0]] . "/100)\n";
+            $message .= "             and " . ucfirst($weakest_areas[1]) . " (averaging " . $avg_scores[$weakest_areas[1]] . "/100)\n\n";
+
             $message .= "NEXT STEPS:\n";
             $message .= "---------------------------------\n";
             $message .= "1. Review the attached PDF reports for detailed analysis and recommendations\n";
             $message .= "2. Prioritize changes based on the scores and suggestions provided\n";
             $message .= "3. Schedule implementation - Reach out to Webtec for a call to discuss and implement recommendations\n\n";
-            
+
             $message .= "ATTACHED FILES:\n";
-            $message .= "- " . count( $attachments ) . " detailed PDF report" . ( count( $attachments ) !== 1 ? 's' : '' ) . " with page-specific recommendations\n\n";
-            
+            $message .= "- " . count($attachments) . " detailed PDF report" . (count($attachments) !== 1 ? 's' : '') . " with page-specific recommendations\n\n";
+
             $message .= "---\n";
             $message .= "Conversion IQ - Powered by Webtec\n";
             $message .= "Need help? Contact us at support@trywebtec.com\n";
-            
+
             $headers = array(
                 'Content-Type: text/plain; charset=UTF-8',
-                'From: Conversion IQ - ' . $site_name . ' <noreply@' . parse_url( get_site_url(), PHP_URL_HOST ) . '>',
+                'From: Conversion IQ - ' . $site_name . ' <noreply@' . parse_url(get_site_url(), PHP_URL_HOST) . '>',
                 'Reply-To: Webtec Support <support@trywebtec.com>'
             );
         }
-        
-        error_log( 'Attempting to send email to: ' . implode( ', ', $valid_emails ) . ( $is_basecamp ? ' (Basecamp - Plain Text)' : ' (HTML)' ) );
-        error_log( '📎 Attachments: ' . count( $attachments ) . ' PDF file(s)' );
-        
+
+        error_log('Attempting to send email to: ' . implode(', ', $valid_emails) . ($is_basecamp ? ' (Basecamp - Plain Text)' : ' (HTML)'));
+        error_log('📎 Attachments: ' . count($attachments) . ' PDF file(s)');
+
         // Send email with PDF attachments to all recipients
-        $sent = wp_mail( $valid_emails, $subject, $message, $headers, $attachments );
-        
-        if ( $sent ) {
-            error_log( '✅ Automated report email sent to ' . count( $valid_emails ) . ' recipient(s): ' . implode( ', ', $valid_emails ) . ' with ' . count( $attachments ) . ' PDF attachments' );
-        } else {
-            error_log( '❌ Failed to send automated report email to: ' . implode( ', ', $valid_emails ) );
+        $sent = wp_mail($valid_emails, $subject, $message, $headers, $attachments);
+
+        if ($sent) {
+            error_log('✅ Automated report email sent to ' . count($valid_emails) . ' recipient(s): ' . implode(', ', $valid_emails) . ' with ' . count($attachments) . ' PDF attachments');
+        }
+        else {
+            error_log('❌ Failed to send automated report email to: ' . implode(', ', $valid_emails));
             global $phpmailer;
-            if ( isset( $phpmailer ) && is_object( $phpmailer ) ) {
-                error_log( '❌ PHPMailer Error: ' . $phpmailer->ErrorInfo );
+            if (isset($phpmailer) && is_object($phpmailer)) {
+                error_log('❌ PHPMailer Error: ' . $phpmailer->ErrorInfo);
             }
         }
-        
+
         return $sent;
     }
-    
+
     /**
      * Deactivate scheduled events
      */
-    public static function deactivate() {
-        $timestamp = wp_next_scheduled( 'conversioniq_automated_audit' );
-        if ( $timestamp ) {
-            wp_unschedule_event( $timestamp, 'conversioniq_automated_audit' );
+    public static function deactivate()
+    {
+        $timestamp = wp_next_scheduled('conversioniq_automated_audit');
+        if ($timestamp) {
+            wp_unschedule_event($timestamp, 'conversioniq_automated_audit');
         }
     }
 }

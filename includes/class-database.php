@@ -9,6 +9,11 @@ class ConversionIQ_DB {
         return $wpdb->prefix . 'conversioniq_audits';
     }
 
+    public static function get_webhooks_table_name() {
+        global $wpdb;
+        return $wpdb->prefix . 'conversioniq_webhooks';
+    }
+
     public static function create_tables() {
         global $wpdb;
         $table_name = self::get_table_name();
@@ -29,8 +34,24 @@ class ConversionIQ_DB {
             KEY content_hash (content_hash)
         ) $charset_collate;";
 
+        $webhooks_table_name = self::get_webhooks_table_name();
+        $sql2 = "CREATE TABLE IF NOT EXISTS $webhooks_table_name (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            received_at DATETIME NOT NULL,
+            event_type VARCHAR(100) NULL,
+            source_url VARCHAR(255) NULL,
+            data LONGTEXT NOT NULL,
+            signature_valid TINYINT(1) DEFAULT 0,
+            company_id VARCHAR(100) NULL,
+            PRIMARY KEY  (id),
+            KEY received_at (received_at),
+            KEY company_id (company_id),
+            KEY source_url (source_url(191))
+        ) $charset_collate;";
+
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         dbDelta( $sql );
+        dbDelta( $sql2 );
         
         // Add missing columns if they don't exist (for existing installations)
         $columns = $wpdb->get_col( "DESCRIBE $table_name" );
@@ -134,5 +155,50 @@ class ConversionIQ_DB {
         }
         
         return $current['content_hash'] !== $previous['content_hash'];
+    }
+
+    public static function insert_webhook( $event_type, $source_url, $data, $signature_valid, $company_id ) {
+        global $wpdb;
+        $table = self::get_webhooks_table_name();
+        $wpdb->insert( $table, array(
+            'received_at' => current_time( 'mysql', 1 ),
+            'event_type' => $event_type,
+            'source_url' => $source_url,
+            'data' => wp_json_encode( $data ),
+            'signature_valid' => $signature_valid ? 1 : 0,
+            'company_id' => $company_id,
+        ), array('%s','%s','%s','%s','%d','%s') );
+        return $wpdb->insert_id;
+    }
+
+    public static function get_recent_webhooks( $company_id, $page_url = null, $limit = 50 ) {
+        global $wpdb;
+        $table = self::get_webhooks_table_name();
+        
+        if ( $page_url ) {
+            // Strip trailing slashes and query params for a more robust match
+            $clean_url = strtok(rtrim($page_url, '/'), '?');
+            $like_url = '%' . $wpdb->esc_like( $clean_url ) . '%';
+            
+            $query = $wpdb->prepare( 
+                "SELECT * FROM $table WHERE company_id = %s AND source_url LIKE %s ORDER BY received_at DESC LIMIT %d", 
+                $company_id, $like_url, $limit 
+            );
+        } else {
+            $query = $wpdb->prepare( 
+                "SELECT * FROM $table WHERE company_id = %s ORDER BY received_at DESC LIMIT %d", 
+                $company_id, $limit 
+            );
+        }
+        
+        $rows = $wpdb->get_results( $query, ARRAY_A );
+        if ( ! is_array( $rows ) ) {
+            return array();
+        }
+        
+        foreach ( $rows as &$r ) {
+            $r['data'] = json_decode( $r['data'], true );
+        }
+        return $rows;
     }
 }
