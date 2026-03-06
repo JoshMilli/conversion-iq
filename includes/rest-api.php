@@ -1782,6 +1782,15 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
 
     // Call the send_email_report method using reflection since it's private
     $log[] = '📧 Preparing email with attachments...';
+    
+    // Add error handler to capture wp_mail errors
+    $mail_error = '';
+    add_action('wp_mail_failed', function($wp_error) use (&$mail_error, &$log) {
+        $mail_error = $wp_error->get_error_message();
+        $log[] = '❌ Email error: ' . $mail_error;
+        error_log('❌ wp_mail error: ' . $mail_error);
+    });
+    
     $reflection = new ReflectionClass('ConversionIQ_Automated_Reports');
     $method = $reflection->getMethod('send_email_report');
     $method->setAccessible(true);
@@ -1789,20 +1798,37 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
     $sent = $method->invoke(null, $email, $results, $business_context);
 
     if ($sent) {
-        $log[] = '✅ Email sent successfully!';
-        error_log('✅ Manual audit report sent to: ' . $email . ' with ' . count($results) . ' page(s)');
+        $log[] = '✅ Email sent successfully via wp_mail()';
+        $log[] = '📬 Email queued for delivery to: ' . $email;
+        $log[] = 'ℹ️ If you don\'t receive the email, check:';
+        $log[] = '  - Your spam/junk folder';
+        $log[] = '  - WordPress email configuration';
+        $log[] = '  - Server email sending limits';
+        $log[] = '  - PDF attachment size (might be rejected by email server)';
+        
+        error_log('✅ Manual audit report queued for delivery to: ' . $email . ' with ' . count($results) . ' page(s)');
         return rest_ensure_response(array(
             'success' => true,
-            'message' => 'Audit report sent successfully to ' . $email . ' with ' . count($results) . ' page(s)',
+            'message' => 'Audit report queued for delivery to ' . $email . ' with ' . count($results) . ' page(s). Check your inbox and spam folder.',
             'log' => $log
         ));
     }
     else {
-        $log[] = '❌ Failed to send email - check WordPress email configuration';
-        error_log('❌ Failed to send manual audit report');
+        $log[] = '❌ wp_mail() returned false - email not sent';
+        if (!empty($mail_error)) {
+            $log[] = '❌ Error details: ' . $mail_error;
+        }
+        $log[] = '💡 Troubleshooting steps:';
+        $log[] = '  1. Test email delivery works (confirm this first)';
+        $log[] = '  2. Check if PDFs are being generated';
+        $log[] = '  3. Try sending to one page at a time';
+        $log[] = '  4. Contact your hosting provider about email sending';
+        
+        error_log('❌ Failed to send manual audit report to: ' . $email . ($mail_error ? ' - Error: ' . $mail_error : ''));
+        
         return new WP_REST_Response(array(
             'success' => false,
-            'message' => 'Failed to send audit report. Check your WordPress email configuration.',
+            'message' => 'Failed to send audit report. ' . ($mail_error ? 'Error: ' . $mail_error : 'Check WordPress email configuration.'),
             'log' => $log
         ), 500);
     }
