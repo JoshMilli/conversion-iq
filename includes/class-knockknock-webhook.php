@@ -282,14 +282,17 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         $data = $payload['data'] ?? [];
         error_log("ConversionIQ: Data keys: " . json_encode(array_keys($data)));
         
-        $user_session = $data['user_session'] ?? [];
-        $contact_info = $data['contact_information'] ?? [];
+        // KnockKnock actual structure: data.contact.{firstName, lastName, businessEmail, etc}
+        $contact = $data['contact'] ?? [];
+        $contact_info = $data['contact_information'] ?? []; // Fallback for different structure
         
-        error_log("ConversionIQ: User session keys: " . json_encode(array_keys($user_session)));
-        error_log("ConversionIQ: Contact info keys: " . json_encode(array_keys($contact_info)));
+        error_log("ConversionIQ: Contact keys: " . json_encode(array_keys($contact)));
         
-        $page_url = $user_session['page_url'] ?? '';
-        $email = $contact_info['email'] ?? $user_session['email'] ?? '';
+        // Extract email (try multiple sources)
+        $email = $contact['businessEmail'] ?? $contact['personalEmail'] ?? $contact['email'] ?? $contact_info['email'] ?? '';
+        
+        // Extract page URL (might be in different places)
+        $page_url = $data['page_url'] ?? $contact['workspaceName'] ?? '';
         
         if (empty($email)) {
             error_log('ConversionIQ: ERROR - No email in lead data, cannot save lead');
@@ -297,16 +300,16 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
             return;
         }
         
-        // Prepare lead data
+        // Prepare lead data (handle both camelCase from KnockKnock and snake_case)
         $lead_data = [
             'webhook_log_id' => $log_id,
-            'first_name' => $user_session['first_name'] ?? $this->parse_first_name($contact_info['name'] ?? ''),
-            'last_name' => $user_session['last_name'] ?? $this->parse_last_name($contact_info['name'] ?? ''),
+            'first_name' => $contact['firstName'] ?? $contact['first_name'] ?? $this->parse_first_name($contact_info['name'] ?? ''),
+            'last_name' => $contact['lastName'] ?? $contact['last_name'] ?? $this->parse_last_name($contact_info['name'] ?? ''),
             'email' => $email,
-            'phone' => $contact_info['phone'] ?? null,
+            'phone' => $contact['phone'] ?? $contact_info['phone'] ?? null,
             'page_url' => $page_url,
-            'page_title' => null, // Will be enriched later if needed
-            'user_session_id' => $user_session['_id'] ?? '',
+            'page_title' => null,
+            'user_session_id' => $data['user_session_id'] ?? $data['user_session']['_id'] ?? '',
             'converted_at' => gmdate('Y-m-d H:i:s', $payload['timestamp'] ?? time()),
             'created_at' => current_time('mysql')
         ];
@@ -337,30 +340,52 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
     private function process_new_user($log_id, $payload) {
         global $wpdb;
         
-        $data = $payload['data'] ?? [];
-        $user_session = $data['user_session'] ?? [];
+        error_log("ConversionIQ: process_new_user called - Log ID: {$log_id}");
         
-        $user_session_id = $user_session['_id'] ?? '';
-        $page_url = $user_session['page_url'] ?? '';
+        $data = $payload['data'] ?? [];
+        error_log("ConversionIQ: Data keys: " . json_encode(array_keys($data)));
+        
+        // KnockKnock actual structure: data.user_session_id at root, data.contact with user info
+        $contact = $data['contact'] ?? [];
+        $user_session_id = $data['user_session_id'] ?? $data['user_session']['_id'] ?? '';
         
         if (empty($user_session_id)) {
-            error_log('ConversionIQ: No user_session_id in identified user data');
+            error_log('ConversionIQ: ERROR - No user_session_id in identified user data');
+            error_log('ConversionIQ: Full payload: ' . json_encode($payload));
             return;
         }
         
-        // Insert or update visitor session
-        $wpdb->replace($this->table_sessions, [
+        // Extract email (prefer business, fallback to personal)
+        $email = $contact['businessEmail'] ?? $contact['personalEmail'] ?? $contact['email'] ?? null;
+        
+        // Extract page URL
+        $page_url = $data['page_url'] ?? $contact['workspaceName'] ?? '';
+        
+        error_log("ConversionIQ: User session ID: {$user_session_id}, Email: {$email}, Page: {$page_url}");
+        
+        // Prepare session data (handle both camelCase and snake_case)
+        $session_data = [
             'webhook_log_id' => $log_id,
             'user_session_id' => $user_session_id,
-            'first_name' => $user_session['first_name'] ?? null,
-            'last_name' => $user_session['last_name'] ?? null,
-            'email' => $user_session['email'] ?? null,
+            'first_name' => $contact['firstName'] ?? $contact['first_name'] ?? null,
+            'last_name' => $contact['lastName'] ?? $contact['last_name'] ?? null,
+            'email' => $email,
             'page_url' => $page_url,
             'identified_at' => gmdate('Y-m-d H:i:s', $payload['timestamp'] ?? time()),
             'created_at' => current_time('mysql')
-        ]);
+        ];
         
-        error_log("ConversionIQ: Visitor identified - Session: {$user_session_id}, Page: {$page_url}");
+        error_log("ConversionIQ: Attempting to save visitor session: " . json_encode($session_data));
+        
+        // Insert or update visitor session
+        $result = $wpdb->replace($this->table_sessions, $session_data);
+        
+        if ($result === false) {
+            error_log("ConversionIQ: ERROR - Failed to save visitor session");
+            error_log("ConversionIQ: wpdb->last_error: " . $wpdb->last_error);
+        } else {
+            error_log("ConversionIQ: SUCCESS - Visitor identified - Session: {$user_session_id}, Email: {$email}");
+        }
         
         // Update page analytics
         if ($page_url) {
