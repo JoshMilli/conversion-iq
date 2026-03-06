@@ -1312,7 +1312,7 @@ export default function App() {
                 transition: 'all 0.2s'
               }}
             >
-              🔔 KnockKnock
+              � Growth Machine
             </button>
             <button
               onClick={() => setActiveTab('account')}
@@ -2041,10 +2041,10 @@ export default function App() {
           <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
             <div style={{ marginBottom: 32 }}>
               <h2 style={{ margin: '0 0 8px 0', fontSize: 28, fontWeight: 700, color: '#111827' }}>
-                🔔 KnockKnock Integration
+                � Growth Machine
               </h2>
               <p style={{ color: '#6b7280', fontSize: 15, margin: 0 }}>
-                Track real visitors and leads from KnockKnock with webhook integration
+                Track visitor engagement and lead conversion with advanced analytics and real-time insights
               </p>
             </div>
 
@@ -2763,60 +2763,13 @@ export default function App() {
               )}
             </div>
 
-            <div style={{ background: '#fef3c7', borderRadius: 12, padding: 24, marginBottom: 24, border: '1px solid #fde68a' }}>
-              <h3 style={{ margin: '0 0 8px 0', fontSize: 18, fontWeight: 600, color: '#92400e' }}>🔑 Your API Key</h3>
-              <p style={{ fontSize: 14, color: '#78350f', marginBottom: 16 }}>
-                This key is automatically generated for webhook authentication. Keep it secure!
-              </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <input
-                  type="text"
-                  value={account?.api_key || 'Loading...'}
-                  readOnly
-                  style={{
-                    flex: 1,
-                    padding: '12px 16px',
-                    background: '#fff',
-                    border: '1px solid #fbbf24',
-                    borderRadius: 8,
-                    fontSize: 14,
-                    fontFamily: 'monospace',
-                    color: '#111827'
-                  }}
-                />
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(account?.api_key || '');
-                    setNotice('✅ API Key copied to clipboard!');
-                    setTimeout(() => setNotice(null), 2000);
-                  }}
-                  style={{
-                    padding: '12px 20px',
-                    background: '#f59e0b',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 8,
-                    fontSize: 14,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  Copy Key
-                </button>
-              </div>
-              <p style={{ fontSize: 12, color: '#78350f', marginTop: 12, marginBottom: 0 }}>
-                💡 Use this key in your support portal's webhook configuration (WEBHOOK_API_KEY environment variable)
-              </p>
-            </div>
-
-            {/* KnockKnock Webhook Integration */}
+            {/* Growth Machine Webhook Integration */}
             <div style={{ marginTop: 32, paddingTop: 32, borderTop: '2px solid #e5e7eb' }}>
               <h2 style={{ margin: '0 0 8px 0', fontSize: 24, fontWeight: 700, color: '#111827' }}>
-                🔔 KnockKnock Webhook Integration
+                🚀 Growth Machine Integration
               </h2>
               <p style={{ color: '#6b7280', marginBottom: 24, fontSize: 15 }}>
-                Connect KnockKnock to receive real visitor and lead data, enabling data-driven insights in your reports.
+                Connect your visitor tracking platform to receive real-time lead data and enable data-driven insights in your reports.
               </p>
 
               {/* Settings Configuration */}
@@ -3079,189 +3032,6 @@ export default function App() {
                     </div>
                   )}
                 </div>
-            </div>
-
-            {/* Google Analytics Integration */}
-            <div style={{ marginTop: 32, paddingTop: 32, borderTop: '2px solid #e5e7eb' }}>
-              <h2 style={{ margin: '0 0 8px 0', fontSize: 24, fontWeight: 700, color: '#111827' }}>
-                📊 Google Analytics Integration
-              </h2>
-              <p style={{ color: '#6b7280', marginBottom: 24, fontSize: 15 }}>
-                Connect Google Analytics to pull real conversion data and enhance audit insights with actual performance metrics.
-              </p>
-
-              {!gaStatus.connected ? (
-                <>
-                  {!gaStatus.has_credentials ? (
-                    <div style={{ background: '#f3f4f6', padding: 24, borderRadius: 12, marginBottom: 20 }}>
-                      <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600, color: '#111827' }}>
-                        Step 1: Configure Google API Credentials
-                      </h3>
-                      <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 16 }}>
-                        Create OAuth credentials in{' '}
-                        <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style={{ color: '#7c3aed', textDecoration: 'none', fontWeight: 600 }}>
-                          Google Cloud Console
-                        </a>
-                        {' '}and enter them below.
-                      </p>
-                      <div style={{ marginBottom: 16 }}>
-                        <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>
-                          Client ID
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Enter Google OAuth Client ID"
-                          value={gaClientId}
-                          onChange={(e) => setGaClientId(e.target.value)}
-                          style={{ width: '100%', padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }}
-                          onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
-                          onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                        />
-                      </div>
-                      <div style={{ marginBottom: 16 }}>
-                        <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>
-                          Client Secret
-                        </label>
-                        <input
-                          type="password"
-                          placeholder="Enter Google OAuth Client Secret"
-                          value={gaClientSecret}
-                          onChange={(e) => setGaClientSecret(e.target.value)}
-                          style={{ width: '100%', padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }}
-                          onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
-                          onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                        />
-                      </div>
-                      <button
-                        onClick={handleGaSaveCredentials}
-                        disabled={gaLoading}
-                        style={{
-                          padding: '12px 24px',
-                          background: gaLoading ? '#d1d5db' : '#7c3aed',
-                          color: '#fff',
-                          border: 'none',
-                          borderRadius: 8,
-                          fontSize: 15,
-                          fontWeight: 600,
-                          cursor: gaLoading ? 'not-allowed' : 'pointer',
-                          transition: 'all 0.2s'
-                        }}
-                      >
-                        {gaLoading ? 'Saving...' : 'Save Credentials'}
-                      </button>
-                    </div>
-                  ) : gaProperties.length === 0 ? (
-                    <div style={{ background: '#f3f4f6', padding: 24, borderRadius: 12 }}>
-                      <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600, color: '#111827' }}>
-                        Step 2: Connect to Google Analytics
-                      </h3>
-                      <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 16 }}>
-                        Click the button below to authorize access to your Google Analytics account.
-                      </p>
-                      <button
-                        onClick={handleGaConnect}
-                        style={{
-                          padding: '12px 24px',
-                          background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)',
-                          color: '#fff',
-                          border: 'none',
-                          borderRadius: 8,
-                          fontSize: 15,
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          boxShadow: '0 4px 12px rgba(124, 58, 237, 0.3)',
-                          transition: 'transform 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-                        onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-                      >
-                        🔗 Connect to Google Analytics
-                      </button>
-                    </div>
-                  ) : (
-                    <div style={{ background: '#f3f4f6', padding: 24, borderRadius: 12 }}>
-                      <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600, color: '#111827' }}>
-                        Step 3: Select a Property
-                      </h3>
-                      <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 16 }}>
-                        Choose which Google Analytics property to use:
-                      </p>
-                      <div style={{ maxHeight: 300, overflow: 'auto' }}>
-                        {gaProperties.map((prop: any) => (
-                          <div
-                            key={prop.id}
-                            onClick={() => handleGaSelectProperty(prop.id, prop.name)}
-                            style={{
-                              padding: 16,
-                              background: '#fff',
-                              border: '1px solid #d1d5db',
-                              borderRadius: 8,
-                              marginBottom: 12,
-                              cursor: 'pointer',
-                              transition: 'all 0.2s'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.borderColor = '#7c3aed';
-                              e.currentTarget.style.background = '#f3e8ff';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.borderColor = '#d1d5db';
-                              e.currentTarget.style.background = '#fff';
-                            }}
-                          >
-                            <div style={{ fontWeight: 600, color: '#111827', marginBottom: 4 }}>
-                              {prop.name}
-                            </div>
-                            <div style={{ fontSize: 13, color: '#6b7280' }}>
-                              Account: {prop.account}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div style={{ background: '#d1fae5', padding: 24, borderRadius: 12, border: '2px solid #10b981' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 16 }}>
-                    <div>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: '#065f46', marginBottom: 8 }}>
-                        ✅ Connected to Google Analytics
-                      </div>
-                      <div style={{ fontSize: 15, color: '#059669' }}>
-                        Property: <strong>{gaStatus.property_name || gaStatus.property_id}</strong>
-                      </div>
-                    </div>
-                    <button
-                      onClick={handleGaDisconnect}
-                      disabled={gaLoading}
-                      style={{
-                        padding: '8px 16px',
-                        background: '#fff',
-                        color: '#dc2626',
-                        border: '1px solid #dc2626',
-                        borderRadius: 6,
-                        fontSize: 13,
-                        fontWeight: 600,
-                        cursor: gaLoading ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                      onMouseEnter={(e) => !gaLoading && (e.currentTarget.style.background = '#fef2f2')}
-                      onMouseLeave={(e) => !gaLoading && (e.currentTarget.style.background = '#fff')}
-                    >
-                      Disconnect
-                    </button>
-                  </div>
-                  <div style={{ fontSize: 14, color: '#059669', lineHeight: 1.6 }}>
-                    Real conversion data will now be included in audit reports. The plugin will automatically pull metrics like:
-                    <ul style={{ marginTop: 8, marginBottom: 0, paddingLeft: 24 }}>
-                      <li>Page views and conversion rates</li>
-                      <li>Bounce rate and engagement metrics</li>
-                      <li>Average session duration</li>
-                    </ul>
-                  </div>
-                </div>
-              )}
             </div>
 
             <button
