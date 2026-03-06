@@ -127,19 +127,25 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         error_log("ConversionIQ: Webhook logged with ID: {$log_id}");
         
         // Process based on event type
+        error_log("ConversionIQ: Processing event type: " . var_export($event_type, true));
+        error_log("ConversionIQ: Event type comparison: 'new_lead'=" . ($event_type === 'new_lead' ? 'TRUE' : 'FALSE') . ", 'new_user_identified'=" . ($event_type === 'new_user_identified' ? 'TRUE' : 'FALSE'));
+        
         switch ($event_type) {
             case 'new_lead':
+                error_log("ConversionIQ: → Calling process_new_lead()");
                 $this->process_new_lead($log_id, $payload);
-                error_log("ConversionIQ: Processed new_lead event - Log ID: {$log_id}");
+                error_log("ConversionIQ: ✓ Completed processing new_lead event");
                 break;
                 
             case 'new_user_identified':
+                error_log("ConversionIQ: → Calling process_new_user()");
                 $this->process_new_user($log_id, $payload);
-                error_log("ConversionIQ: Processed new_user_identified event - Log ID: {$log_id}");
+                error_log("ConversionIQ: ✓ Completed processing new_user_identified event");
                 break;
                 
             default:
-                error_log("ConversionIQ: Unknown event type: {$event_type}");
+                error_log("ConversionIQ: ⚠ UNHANDLED EVENT TYPE: '{$event_type}'");
+                error_log("ConversionIQ: Event type is: " . gettype($event_type) . " with length: " . strlen((string)$event_type));
         }
         
         // Verify data was saved
@@ -197,6 +203,17 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         $log_count = $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_logs}");
         error_log("ConversionIQ: Total webhook logs in database: {$log_count}");
         
+        // Get recent webhook logs to debug what's coming in
+        $webhook_logs = $wpdb->get_results($wpdb->prepare(
+            "SELECT id, event_type, webhook_id, company_id, timestamp, created_at, 
+                    LEFT(raw_payload, 200) as payload_preview
+            FROM {$this->table_logs}
+            ORDER BY created_at DESC
+            LIMIT %d",
+            10
+        ), ARRAY_A);
+        error_log("ConversionIQ: Recent webhook logs: " . json_encode($webhook_logs));
+        
         return new WP_REST_Response([
             'success' => true,
             'leads' => $leads,
@@ -204,7 +221,8 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
             'debug' => [
                 'table_exists' => $table_exists,
                 'total_logs' => $log_count,
-                'query' => $wpdb->last_query
+                'leads_query' => $wpdb->last_query,
+                'recent_webhooks' => $webhook_logs
             ]
         ], 200);
     }
@@ -258,20 +276,29 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
     private function process_new_lead($log_id, $payload) {
         global $wpdb;
         
+        error_log("ConversionIQ: process_new_lead called - Log ID: {$log_id}");
+        error_log("ConversionIQ: Lead payload structure: " . json_encode(array_keys($payload)));
+        
         $data = $payload['data'] ?? [];
+        error_log("ConversionIQ: Data keys: " . json_encode(array_keys($data)));
+        
         $user_session = $data['user_session'] ?? [];
         $contact_info = $data['contact_information'] ?? [];
+        
+        error_log("ConversionIQ: User session keys: " . json_encode(array_keys($user_session)));
+        error_log("ConversionIQ: Contact info keys: " . json_encode(array_keys($contact_info)));
         
         $page_url = $user_session['page_url'] ?? '';
         $email = $contact_info['email'] ?? $user_session['email'] ?? '';
         
         if (empty($email)) {
-            error_log('ConversionIQ: No email in lead data');
+            error_log('ConversionIQ: ERROR - No email in lead data, cannot save lead');
+            error_log('ConversionIQ: Full payload: ' . json_encode($payload));
             return;
         }
         
-        // Insert lead
-        $wpdb->insert($this->table_leads, [
+        // Prepare lead data
+        $lead_data = [
             'webhook_log_id' => $log_id,
             'first_name' => $user_session['first_name'] ?? $this->parse_first_name($contact_info['name'] ?? ''),
             'last_name' => $user_session['last_name'] ?? $this->parse_last_name($contact_info['name'] ?? ''),
@@ -282,9 +309,21 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
             'user_session_id' => $user_session['_id'] ?? '',
             'converted_at' => gmdate('Y-m-d H:i:s', $payload['timestamp'] ?? time()),
             'created_at' => current_time('mysql')
-        ]);
+        ];
         
-        error_log("ConversionIQ: Lead saved - Email: {$email}, Page: {$page_url}");
+        error_log("ConversionIQ: Attempting to insert lead: " . json_encode($lead_data));
+        
+        // Insert lead
+        $result = $wpdb->insert($this->table_leads, $lead_data);
+        
+        if ($result === false) {
+            error_log("ConversionIQ: ERROR - Failed to insert lead into database");
+            error_log("ConversionIQ: wpdb->last_error: " . $wpdb->last_error);
+            error_log("ConversionIQ: wpdb->last_query: " . $wpdb->last_query);
+        } else {
+            $insert_id = $wpdb->insert_id;
+            error_log("ConversionIQ: SUCCESS - Lead saved with ID: {$insert_id} - Email: {$email}, Page: {$page_url}");
+        }
         
         // Update page analytics
         if ($page_url) {
