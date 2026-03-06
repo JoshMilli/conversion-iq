@@ -41,10 +41,12 @@ class ConversionIQ_Reports
 
             error_log('📁 Upload directory: ' . $dir);
 
-            // Generate clean filename: ConversionIQ-Audit-PageName-Date
-            $page_slug = sanitize_title($audit['page_title']);
+            // Generate clean filename without special characters
+            // Use audit ID and page ID to avoid issues with non-ASCII characters in email attachments
             $date_stamp = date('Y-m-d');
-            $filename = 'ConversionIQ-Audit-' . $page_slug . '-' . $date_stamp . '.pdf';
+            $audit_id = isset($audit['id']) ? $audit['id'] : time();
+            $page_id = isset($audit['page_id']) ? $audit['page_id'] : 'unknown';
+            $filename = 'ConversionIQ-Audit-' . $page_id . '-' . $audit_id . '-' . $date_stamp . '.pdf';
             $path = $dir . $filename;
 
             $data = $audit['data'];

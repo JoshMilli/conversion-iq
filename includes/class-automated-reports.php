@@ -207,7 +207,7 @@ class ConversionIQ_Automated_Reports
 
                 if ($audit) {
                     $audit['data'] = json_decode($audit['data'], true);
-                    $msg = '📄 Generating PDF for audit ID: ' . $result['insert_id'];
+                    $msg = '📄 Generating PDF for audit ID: ' . $result['insert_id'] . ' (' . $result['page_name'] . ')';
                     error_log($msg);
                     $messages[] = $msg;
                     
