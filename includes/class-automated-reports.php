@@ -360,7 +360,7 @@ class ConversionIQ_Automated_Reports
                             </p>
                             
                             <p style="margin: 0 0 12px; color: #4b5563; font-size: 15px;">
-                                Feel free to book a quick chat if you have any questions on: <a href="https://calendly.com/d/ct85-ktz-3wd/webtec-website-improvement-meeting" style="color: #2563eb; text-decoration: none;">https://calendly.com/d/ct85-ktz-3wd/webtec-website-improvement-meeting</a>
+                                Feel free to book a quick chat if you have any questions: <a href="https://calendly.com/webtec-website/success-meeting" style="color: #2563eb; text-decoration: none;">https://calendly.com/webtec-website/success-meeting</a>
                             </p>
                             
                             <p style="margin: 0 0 24px; color: #4b5563; font-size: 15px;">
@@ -560,7 +560,7 @@ class ConversionIQ_Automated_Reports
             $message .= "Your automated Conversion IQ audit has been completed.\n";
             $message .= "We analyzed " . $total_pages . " page" . ($total_pages > 1 ? 's' : '') . " on your website.\n\n";
             $message .= "Feel free to book a quick chat if you have any questions:\n";
-            $message .= "https://calendly.com/d/ct85-ktz-3wd/webtec-website-improvement-meeting\n\n";
+            $message .= "https://calendly.com/webtec-website/success-meeting\n\n";
             $message .= "You can paste any recommendations directly into Basecamp and our Customer Success Team will get onto them right away.\n\n";
             $message .= "Thanks,\nWebTec\n\n";
 
