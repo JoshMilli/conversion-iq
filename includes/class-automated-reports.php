@@ -89,17 +89,6 @@ class ConversionIQ_Automated_Reports
                 $html_structure = conversioniq_extract_html_structure($html);
             }
 
-            $company_id = isset($business['knockknock_company_id']) ? $business['knockknock_company_id'] : '';
-            if (!empty($company_id)) {
-                error_log('🎣 Automated Audit: Fetching recent webhook leads for company: ' . $company_id);
-                $page_leads = ConversionIQ_DB::get_recent_webhooks($company_id, $page_url, 15);
-                $site_leads = ConversionIQ_DB::get_recent_webhooks($company_id, null, 15);
-                $business['recent_leads'] = array(
-                    'page_specific_leads' => $page_leads,
-                    'site_wide_leads' => $site_leads
-                );
-            }
-
             $payload = array(
                 'business' => $business,
                 'page' => array(

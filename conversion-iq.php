@@ -79,6 +79,7 @@ require_once CONVERSION_IQ_DIR . 'includes/class-google-analytics.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-reports.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-automated-reports.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-supabase-sync.php';
+require_once CONVERSION_IQ_DIR . 'includes/class-knockknock-webhook.php';
 
 // Initialize automated reports after WordPress loads
 add_action( 'init', function() {

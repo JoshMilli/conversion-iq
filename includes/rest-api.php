@@ -73,32 +73,28 @@ add_action('rest_api_init', function () {
         'methods' => 'GET',
         'callback' => 'conversioniq_auth_status',
         'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         register_rest_route('conversioniq/v1', '/auth/login', array(
             'methods' => 'POST',
             'callback' => 'conversioniq_auth_login',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         register_rest_route('conversioniq/v1', '/auth/register', array(
             'methods' => 'POST',
             'callback' => 'conversioniq_auth_register',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         register_rest_route('conversioniq/v1', '/auth/logout', array(
             'methods' => 'POST',
             'callback' => 'conversioniq_auth_logout',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         // Account update route
@@ -106,8 +102,7 @@ add_action('rest_api_init', function () {
             'methods' => 'POST',
             'callback' => 'conversioniq_update_account',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         register_rest_route('conversioniq/v1', '/settings', array(
@@ -115,15 +110,13 @@ add_action('rest_api_init', function () {
                 'methods' => 'POST',
                 'callback' => 'conversioniq_save_settings',
                 'permission_callback' => function () {
-                return current_user_can('manage_options');
-            }
+                return current_user_can('manage_options'); }
                 ),
                     array(
                     'methods' => 'GET',
                     'callback' => 'conversioniq_get_settings',
                     'permission_callback' => function () {
-                return current_user_can('manage_options');
-            }
+                return current_user_can('manage_options'); }
                 ),
             ));
 
@@ -131,16 +124,14 @@ add_action('rest_api_init', function () {
                 'methods' => 'POST',
                 'callback' => 'conversioniq_run_audit',
                 'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         register_rest_route('conversioniq/v1', '/audits', array(
             'methods' => 'GET',
             'callback' => 'conversioniq_list_audits',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         // Return published pages (id, title, permalink)
@@ -148,8 +139,7 @@ add_action('rest_api_init', function () {
             'methods' => 'GET',
             'callback' => 'conversioniq_list_pages',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         // Get single page content for AI analysis
@@ -157,16 +147,14 @@ add_action('rest_api_init', function () {
             'methods' => 'GET',
             'callback' => 'conversioniq_get_page_content',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         register_rest_route('conversioniq/v1', '/report', array(
             'methods' => 'POST',
             'callback' => 'conversioniq_generate_report',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         // Automated reporting settings
@@ -174,16 +162,14 @@ add_action('rest_api_init', function () {
             'methods' => 'GET',
             'callback' => 'conversioniq_get_automated_settings',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         register_rest_route('conversioniq/v1', '/automated-settings', array(
             'methods' => 'POST',
             'callback' => 'conversioniq_save_automated_settings',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         // Auto-fill business information by analyzing homepage
@@ -191,8 +177,7 @@ add_action('rest_api_init', function () {
             'methods' => 'POST',
             'callback' => 'conversioniq_guess_business_info',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         // Test email endpoint
@@ -200,8 +185,7 @@ add_action('rest_api_init', function () {
             'methods' => 'POST',
             'callback' => 'conversioniq_test_email',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         // Send manual audit report email
@@ -209,8 +193,7 @@ add_action('rest_api_init', function () {
             'methods' => 'POST',
             'callback' => 'conversioniq_send_manual_report',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         // Google Analytics endpoints
@@ -218,196 +201,58 @@ add_action('rest_api_init', function () {
             'methods' => 'GET',
             'callback' => 'conversioniq_ga_status',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         register_rest_route('conversioniq/v1', '/ga/save-credentials', array(
             'methods' => 'POST',
             'callback' => 'conversioniq_ga_save_credentials',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         register_rest_route('conversioniq/v1', '/ga/auth-url', array(
             'methods' => 'GET',
             'callback' => 'conversioniq_ga_auth_url',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         register_rest_route('conversioniq/v1', '/ga/properties', array(
             'methods' => 'GET',
             'callback' => 'conversioniq_ga_properties',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         register_rest_route('conversioniq/v1', '/ga/save-property', array(
             'methods' => 'POST',
             'callback' => 'conversioniq_ga_save_property',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         register_rest_route('conversioniq/v1', '/ga/disconnect', array(
             'methods' => 'POST',
             'callback' => 'conversioniq_ga_disconnect',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         register_rest_route('conversioniq/v1', '/ga/page-data', array(
             'methods' => 'POST',
             'callback' => 'conversioniq_ga_page_data',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
+            return current_user_can('manage_options'); }
         ));
 
         register_rest_route('conversioniq/v1', '/ga/top-pages', array(
             'methods' => 'GET',
             'callback' => 'conversioniq_ga_top_pages',
             'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
-        ));
+            return current_user_can('manage_options'); }
+        ));    });
 
-        // Webhook receiver endpoint
-        register_rest_route('conversioniq/v1', '/webhook', array(
-            'methods' => 'POST',
-            'callback' => 'conversioniq_receive_webhook',
-            'permission_callback' => '__return_true', // Open endpoint for webhook provider
-        ));
-
-        // Get webhooks endpoint
-        register_rest_route('conversioniq/v1', '/webhooks', array(
-            'methods' => 'GET',
-            'callback' => 'conversioniq_get_webhooks',
-            'permission_callback' => function () {
-            return current_user_can('manage_options');
-        }
-        ));
-    });
-
-
-function conversioniq_receive_webhook(WP_REST_Request $request)
-{
-    error_log('=== ConversionIQ: Webhook Received ===');
-
-    // Get headers
-    $signature = $request->get_header('x_webhook_signature');
-    $timestamp = $request->get_header('x_webhook_timestamp');
-
-    // Fallback if headers are empty (useful for some servers that strip or lowercase headers)
-    if (!$signature) {
-        $signature = $request->get_header('x-webhook-signature');
-    }
-    if (!$timestamp) {
-        $timestamp = $request->get_header('x-webhook-timestamp');
-    }
-
-    // Required headers check
-    if (!$signature || !$timestamp) {
-        error_log('❌ Missing signature or timestamp');
-        return new WP_REST_Response(array('success' => false, 'message' => 'Missing security headers'), 401);
-    }
-
-    // Replay protection (5 minutes = 300 seconds)
-    $now = time();
-    $timestamp_int = intval($timestamp);
-    if (abs($now - $timestamp_int) > 300) {
-        error_log("❌ Stale webhook request. Now: $now, Timestamp: $timestamp_int");
-        return new WP_REST_Response(array('success' => false, 'message' => 'Request too old or timestamp invalid'), 400);
-    }
-
-    // Validate secret is configured
-    $settings = json_decode(get_option('conversion_iq_settings', '{}'), true);
-    $secret = isset($settings['knockknock_webhook_secret']) ? trim($settings['knockknock_webhook_secret']) : '';
-
-    if (empty($secret)) {
-        error_log('❌ Webhook secret not configured in settings');
-        return new WP_REST_Response(array('success' => false, 'message' => 'Webhook secret not configured'), 500);
-    }
-
-    // Get raw body for verification
-    $raw_body = $request->get_body();
-
-    // Build the message strictly as "{timestamp}.{raw_body}"
-    $message = $timestamp . '.' . $raw_body;
-
-    // Compute HMAC SHA256
-    $computed_signature = hash_hmac('sha256', $message, $secret);
-
-    // Verify signature
-    $is_valid = hash_equals($signature, $computed_signature);
-
-    if (!$is_valid) {
-        error_log("❌ Invalid signature. Computed: $computed_signature, Received: $signature");
-        return new WP_REST_Response(array('success' => false, 'message' => 'Invalid signature'), 401);
-    }
-
-    error_log('✅ Webhook signature verified successfully!');
-
-    // Process payload
-    $payload = json_decode($raw_body, true);
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        error_log('❌ Invalid JSON body');
-        return new WP_REST_Response(array('success' => false, 'message' => 'Invalid JSON body'), 400);
-    }
-
-    $event_type = isset($payload['event']) ? sanitize_text_field($payload['event']) : 'unknown';
-    $company_id = isset($settings['knockknock_company_id']) ? sanitize_text_field($settings['knockknock_company_id']) : '';
-
-    // Determine source URL if provided in lead data
-    $source_url = '';
-    if (isset($payload['data']['source_url'])) {
-        $source_url = array_map('sanitize_text_field', (array)$payload['data']['source_url'])[0];
-    }
-    elseif (isset($payload['data']['custom_fields']['recent_conversions_URL'])) {
-        $source_url = sanitize_text_field($payload['data']['custom_fields']['recent_conversions_URL']);
-    }
-    elseif (isset($payload['data']['url'])) {
-        $source_url = sanitize_text_field($payload['data']['url']);
-    }
-
-    // Insert into database
-    $insert_id = ConversionIQ_DB::insert_webhook(
-        $event_type,
-        $source_url,
-        $payload,
-        $is_valid,
-        $company_id
-    );
-
-    return rest_ensure_response(array(
-        'success' => true,
-        'message' => 'Webhook received and verified',
-        'id' => $insert_id
-    ));
-}
-
-function conversioniq_get_webhooks(WP_REST_Request $request)
-{
-    $settings = json_decode(get_option('conversion_iq_settings', '{}'), true);
-    $company_id = isset($settings['knockknock_company_id']) ? sanitize_text_field($settings['knockknock_company_id']) : '';
-
-    if (empty($company_id)) {
-        return new WP_REST_Response(array('success' => false, 'message' => 'Company ID not configured'), 400);
-    }
-
-    $limit = $request->get_param('limit') ? intval($request->get_param('limit')) : 50;
-    $page_url = $request->get_param('page_url') ? sanitize_text_field($request->get_param('page_url')) : null;
-
-    $rows = ConversionIQ_DB::get_recent_webhooks($company_id, $page_url, $limit);
-
-    return rest_ensure_response(array('success' => true, 'data' => $rows));
-}
 
 function conversioniq_save_settings(WP_REST_Request $request)
 {
@@ -420,6 +265,17 @@ function conversioniq_save_settings(WP_REST_Request $request)
         update_option('conversioniq_api_key', sanitize_text_field($params['openai_api_key']));
         unset($params['openai_api_key']);
     }
+
+    // Save KnockKnock settings separately
+    if (isset($params['knockknock_company_id'])) {
+        update_option('conversioniq_knockknock_company_id', sanitize_text_field($params['knockknock_company_id']));
+        unset($params['knockknock_company_id']);
+    }
+    if (isset($params['knockknock_webhook_secret'])) {
+        update_option('conversioniq_knockknock_webhook_secret', sanitize_text_field($params['knockknock_webhook_secret']));
+        unset($params['knockknock_webhook_secret']);
+    }
+
     update_option('conversion_iq_settings', wp_json_encode($params));
 
     // Sync business information to Supabase
@@ -507,6 +363,11 @@ function conversioniq_get_settings()
             }
         }
     }
+
+    // Add KnockKnock settings
+    $decoded['knockknock_company_id'] = get_option('conversioniq_knockknock_company_id', '');
+    $decoded['knockknock_webhook_secret'] = get_option('conversioniq_knockknock_webhook_secret', '');
+    $decoded['knockknock_webhook_url'] = home_url('/wp-json/conversioniq/v1/webhook');
 
     return rest_ensure_response($decoded);
 }
@@ -628,17 +489,6 @@ function conversioniq_run_audit(WP_REST_Request $request)
         }
         else {
             error_log('⚠️ Could not fetch HTML: ' . (is_wp_error($response) ? $response->get_error_message() : 'HTTP error'));
-        }
-
-        $company_id = isset($business['knockknock_company_id']) ? $business['knockknock_company_id'] : '';
-        if (!empty($company_id)) {
-            error_log('🎣 Fetching recent webhook leads for company: ' . $company_id);
-            $page_leads = ConversionIQ_DB::get_recent_webhooks($company_id, $page_url, 15);
-            $site_leads = ConversionIQ_DB::get_recent_webhooks($company_id, null, 15);
-            $business['recent_leads'] = array(
-                'page_specific_leads' => $page_leads,
-                'site_wide_leads' => $site_leads
-            );
         }
 
         $payload = array(

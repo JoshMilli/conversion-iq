@@ -120,6 +120,14 @@ export default function App() {
   const [gaProperties, setGaProperties] = useState<any[]>([]);
   const [gaLoading, setGaLoading] = useState(false);
 
+  // KnockKnock Webhook state
+  const [knockKnockCompanyId, setKnockKnockCompanyId] = useState('');
+  const [knockKnockWebhookSecret, setKnockKnockWebhookSecret] = useState('');
+  const [knockKnockWebhookUrl, setKnockKnockWebhookUrl] = useState('');
+  const [showKnockKnockSecret, setShowKnockKnockSecret] = useState(false);
+  const [knockKnockLeads, setKnockKnockLeads] = useState<any[]>([]);
+  const [knockKnockLeadsLoading, setKnockKnockLeadsLoading] = useState(false);
+
   // Check authentication status on mount
   useEffect(() => {
     console.log('=== Conversion IQ: Authentication Check Started ===');
@@ -181,6 +189,10 @@ export default function App() {
       .then(r => {
         console.log('✓ Settings loaded');
         setSettings(r.data);
+        // Load KnockKnock settings
+        setKnockKnockCompanyId(r.data.knockknock_company_id || '');
+        setKnockKnockWebhookSecret(r.data.knockknock_webhook_secret || '');
+        setKnockKnockWebhookUrl(r.data.knockknock_webhook_url || '');
       })
       .catch(err => console.error('✗ Failed to load settings:', err));
     
@@ -626,6 +638,62 @@ export default function App() {
       setGaLoading(false);
     }
   };
+
+  // KnockKnock webhook functions
+  const handleSaveKnockKnockSettings = async () => {
+    if (!knockKnockCompanyId.trim()) {
+      setNotice('❌ Please enter a Company ID');
+      setTimeout(() => setNotice(null), 3000);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await axios.post(api('settings'), {
+        ...settings,
+        knockknock_company_id: knockKnockCompanyId,
+        knockknock_webhook_secret: knockKnockWebhookSecret
+      }, { headers: { 'X-WP-Nonce': nonce } });
+
+      if (response.data.success) {
+        setNotice('✅ KnockKnock settings saved successfully!');
+      } else {
+        setNotice('❌ Failed to save KnockKnock settings');
+      }
+    } catch (err: any) {
+      setNotice('❌ Failed to save: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setLoading(false);
+      setTimeout(() => setNotice(null), 3000);
+    }
+  };
+
+  const fetchKnockKnockLeads = async () => {
+    setKnockKnockLeadsLoading(true);
+    try {
+      const response = await axios.get(api('webhooks'), { headers: { 'X-WP-Nonce': nonce } });
+      if (response.data.success) {
+        setKnockKnockLeads(response.data.leads || []);
+      }
+    } catch (err: any) {
+      console.error('Failed to load KnockKnock leads:', err);
+    } finally {
+      setKnockKnockLeadsLoading(false);
+    }
+  };
+
+  const copyKnockKnockUrl = () => {
+    navigator.clipboard.writeText(knockKnockWebhookUrl);
+    setNotice('✅ Webhook URL copied to clipboard!');
+    setTimeout(() => setNotice(null), 2000);
+  };
+
+  // Load KnockKnock leads when account tab is opened
+  useEffect(() => {
+    if (activeTab === 'account' && isAuthenticated && knockKnockCompanyId) {
+      fetchKnockKnockLeads();
+    }
+  }, [activeTab, isAuthenticated, knockKnockCompanyId]);
 
   const handlePageSelect = (id: number) => {
     setSelectedPages(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
@@ -2156,6 +2224,254 @@ export default function App() {
               <p style={{ fontSize: 12, color: '#78350f', marginTop: 12, marginBottom: 0 }}>
                 💡 Use this key in your support portal's webhook configuration (WEBHOOK_API_KEY environment variable)
               </p>
+            </div>
+
+            {/* KnockKnock Webhook Integration */}
+            <div style={{ marginTop: 32, paddingTop: 32, borderTop: '2px solid #e5e7eb' }}>
+              <h2 style={{ margin: '0 0 8px 0', fontSize: 24, fontWeight: 700, color: '#111827' }}>
+                🔔 KnockKnock Webhook Integration
+              </h2>
+              <p style={{ color: '#6b7280', marginBottom: 24, fontSize: 15 }}>
+                Connect KnockKnock to receive real visitor and lead data, enabling data-driven insights in your reports.
+              </p>
+
+              {/* Settings Configuration */}
+              <div style={{ background: '#f9fafb', borderRadius: 12, padding: 24, marginBottom: 24, border: '1px solid #e5e7eb' }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600, color: '#111827' }}>Configuration</h3>
+                
+                <div style={{ display: 'grid', gap: 16 }}>
+                  {/* Company ID */}
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>
+                      Client Company ID <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Enter your KnockKnock Company ID"
+                      value={knockKnockCompanyId}
+                      onChange={(e) => setKnockKnockCompanyId(e.target.value)}
+                      style={{ 
+                        width: '100%', 
+                        padding: '12px 16px', 
+                        border: '1px solid #d1d5db', 
+                        borderRadius: 8, 
+                        fontSize: 14, 
+                        outline: 'none', 
+                        transition: 'border 0.2s',
+                        background: '#fff',
+                        color: '#111827'
+                      }}
+                      onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
+                      onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                    />
+                    <p style={{ fontSize: 12, color: '#6b7280', marginTop: 6, marginBottom: 0 }}>
+                      Your unique KnockKnock company identifier
+                    </p>
+                  </div>
+
+                  {/* Webhook Secret */}
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>
+                      Webhook Secret Key
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type={showKnockKnockSecret ? 'text' : 'password'}
+                        placeholder="Enter webhook secret for HMAC validation"
+                        value={knockKnockWebhookSecret}
+                        onChange={(e) => setKnockKnockWebhookSecret(e.target.value)}
+                        style={{ 
+                          width: '100%', 
+                          padding: '12px 40px 12px 16px', 
+                          border: '1px solid #d1d5db', 
+                          borderRadius: 8, 
+                          fontSize: 14, 
+                          outline: 'none', 
+                          transition: 'border 0.2s',
+                          background: '#fff',
+                          color: '#111827',
+                          fontFamily: showKnockKnockSecret ? 'monospace' : 'inherit'
+                        }}
+                        onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
+                        onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                      />
+                      <button
+                        onClick={() => setShowKnockKnockSecret(!showKnockKnockSecret)}
+                        style={{
+                          position: 'absolute',
+                          right: 12,
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: 4,
+                          fontSize: 18,
+                          color: '#6b7280'
+                        }}
+                        title={showKnockKnockSecret ? 'Hide' : 'Show'}
+                      >
+                        {showKnockKnockSecret ? '👁️' : '👁️‍🗨️'}
+                      </button>
+                    </div>
+                    <p style={{ fontSize: 12, color: '#6b7280', marginTop: 6, marginBottom: 0 }}>
+                      Optional but recommended for secure webhook validation
+                    </p>
+                  </div>
+
+                  {/* Webhook URL */}
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>
+                      Webhook Endpoint URL
+                    </label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        type="text"
+                        value={knockKnockWebhookUrl}
+                        readOnly
+                        style={{ 
+                          flex: 1, 
+                          padding: '12px 16px', 
+                          border: '1px solid #d1d5db', 
+                          borderRadius: 8, 
+                          fontSize: 14, 
+                          background: '#f9fafb',
+                          color: '#111827',
+                          fontFamily: 'monospace'
+                        }}
+                      />
+                      <button
+                        onClick={copyKnockKnockUrl}
+                        style={{
+                          padding: '12px 20px',
+                          background: '#7c3aed',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 8,
+                          fontSize: 14,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          transition: 'background 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#6d28d9'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = '#7c3aed'}
+                      >
+                        📋 Copy
+                      </button>
+                    </div>
+                    <p style={{ fontSize: 12, color: '#6b7280', marginTop: 6, marginBottom: 0 }}>
+                      Use this URL when configuring your webhook in KnockKnock
+                    </p>
+                  </div>
+
+                  {/* Save Button */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                    <button
+                      onClick={handleSaveKnockKnockSettings}
+                      disabled={loading}
+                      style={{
+                        padding: '12px 24px',
+                        background: loading ? '#d1d5db' : '#10b981',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 8,
+                        fontSize: 15,
+                        fontWeight: 600,
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => !loading && (e.currentTarget.style.background = '#059669')}
+                      onMouseLeave={(e) => !loading && (e.currentTarget.style.background = '#10b981')}
+                    >
+                      {loading ? 'Saving...' : '💾 Save Settings'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recent Leads */}
+              {knockKnockCompanyId && (
+                <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid #e5e7eb' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#111827' }}>Recent Leads</h3>
+                    <button
+                      onClick={fetchKnockKnockLeads}
+                      disabled={knockKnockLeadsLoading}
+                      style={{
+                        padding: '8px 16px',
+                        background: '#f3f4f6',
+                        color: '#6b7280',
+                        border: '1px solid #d1d5db',
+                        borderRadius: 6,
+                        fontSize: 14,
+                        fontWeight: 600,
+                        cursor: knockKnockLeadsLoading ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => !knockKnockLeadsLoading && (e.currentTarget.style.background = '#e5e7eb')}
+                      onMouseLeave={(e) => !knockKnockLeadsLoading && (e.currentTarget.style.background = '#f3f4f6')}
+                    >
+                      {knockKnockLeadsLoading ? '⏳ Loading...' : '🔄 Refresh'}
+                    </button>
+                  </div>
+
+                  {knockKnockLeadsLoading ? (
+                    <div style={{ textAlign: 'center', padding: 32, color: '#6b7280' }}>
+                      <div style={{ fontSize: 24, marginBottom: 8 }}>⏳</div>
+                      <div>Loading leads...</div>
+                    </div>
+                  ) : knockKnockLeads.length === 0 ? (
+                    <div style={{ background: '#eff6ff', borderRadius: 8, padding: 24, textAlign: 'center', border: '1px solid #dbeafe' }}>
+                      <div style={{ fontSize: 24, marginBottom: 8 }}>📭</div>
+                      <div style={{ fontSize: 16, fontWeight: 600, color: '#1e40af', marginBottom: 4 }}>
+                        No webhook data received yet
+                      </div>
+                      <div style={{ fontSize: 14, color: '#3b82f6' }}>
+                        Configure your endpoint in KnockKnock and send a test event
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                        <thead>
+                          <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>Lead Name</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>Email</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>Source URL</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>Received</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {knockKnockLeads.map((lead, idx) => (
+                            <tr key={lead.id || idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                              <td style={{ padding: '12px 16px', color: '#111827' }}>
+                                {lead.first_name && lead.last_name ? `${lead.first_name} ${lead.last_name}` : lead.first_name || lead.last_name || 'N/A'}
+                              </td>
+                              <td style={{ padding: '12px 16px', color: '#111827' }}>{lead.email || 'N/A'}</td>
+                              <td style={{ padding: '12px 16px' }}>
+                                {lead.page_url ? (
+                                  <a 
+                                    href={lead.page_url} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    style={{ color: '#7c3aed', textDecoration: 'none', fontWeight: 500 }}
+                                  >
+                                    {new URL(lead.page_url).pathname}
+                                  </a>
+                                ) : 'N/A'}
+                              </td>
+                              <td style={{ padding: '12px 16px', color: '#6b7280', fontSize: 13 }}>
+                                {lead.converted_at ? new Date(lead.converted_at).toLocaleString() : 'N/A'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Google Analytics Integration */}
