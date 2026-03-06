@@ -148,15 +148,18 @@ class ConversionIQ_Automated_Reports
     /**
      * Send email report with audit results
      * @param string $email Comma-separated email addresses
+     * @param array $log Optional log array to append messages to
      */
-    private static function send_email_report($email, $results, $business)
+    private static function send_email_report($email, $results, $business, &$log = null)
     {
         // Parse comma-separated emails
         $email_list = array_map('trim', explode(',', $email));
         $valid_emails = array_filter($email_list, 'is_email');
 
         if (empty($valid_emails)) {
-            error_log('❌ No valid email addresses provided');
+            $msg = '❌ No valid email addresses provided';
+            error_log($msg);
+            if ($log !== null) $log[] = $msg;
             return false;
         }
 
@@ -202,7 +205,10 @@ class ConversionIQ_Automated_Reports
 
                 if ($audit) {
                     $audit['data'] = json_decode($audit['data'], true);
-                    error_log('📄 Generating PDF for audit ID: ' . $result['insert_id']);
+                    $msg = '📄 Generating PDF for audit ID: ' . $result['insert_id'];
+                    error_log($msg);
+                    if ($log !== null) $log[] = $msg;
+                    
                     $pdf_result = ConversionIQ_Reports::generate_pdf_for_audit($audit);
 
                     if ($pdf_result['success'] && isset($pdf_result['path']) && file_exists($pdf_result['path'])) {
@@ -210,21 +216,32 @@ class ConversionIQ_Automated_Reports
                         $file_size = filesize($pdf_result['path']);
                         if ($file_size > 0) {
                             $attachments[] = $pdf_result['path'];
-                            error_log('✅ PDF generated: ' . $pdf_result['path'] . ' (Size: ' . round($file_size / 1024, 2) . ' KB)');
+                            $msg = '✅ PDF generated: ' . basename($pdf_result['path']) . ' (Size: ' . round($file_size / 1024, 2) . ' KB)';
+                            error_log($msg);
+                            if ($log !== null) $log[] = $msg;
                         }
                         else {
-                            error_log('⚠️ PDF file is empty (0 bytes): ' . $pdf_result['path']);
+                            $msg = '⚠️ PDF file is empty (0 bytes): ' . basename($pdf_result['path']);
+                            error_log($msg);
+                            if ($log !== null) $log[] = $msg;
                         }
                     }
                     else {
-                        error_log('⚠️ PDF generation failed or file not found for audit ID: ' . $result['insert_id']);
+                        $msg = '⚠️ PDF generation failed or file not found for audit ID: ' . $result['insert_id'];
+                        error_log($msg);
+                        if ($log !== null) $log[] = $msg;
+                        
                         if (isset($pdf_result['error'])) {
-                            error_log('   Error: ' . $pdf_result['error']);
+                            $msg = '   Error: ' . $pdf_result['error'];
+                            error_log($msg);
+                            if ($log !== null) $log[] = $msg;
                         }
                     }
                 }
                 else {
-                    error_log('⚠️ Audit record not found for ID: ' . $result['insert_id']);
+                    $msg = '⚠️ Audit record not found for ID: ' . $result['insert_id'];
+                    error_log($msg);
+                    if ($log !== null) $log[] = $msg;
                 }
             }
         }
@@ -589,42 +606,65 @@ class ConversionIQ_Automated_Reports
             );
         }
 
-        error_log('📧 Preparing to send email to: ' . implode(', ', $valid_emails) . ($is_basecamp ? ' (Basecamp - Plain Text)' : ' (HTML)'));
-        error_log('📎 Total attachments: ' . count($attachments) . ' PDF file(s)');
+        $msg = '📧 Preparing to send email to: ' . implode(', ', $valid_emails) . ($is_basecamp ? ' (Basecamp - Plain Text)' : ' (HTML)');
+        error_log($msg);
+        if ($log !== null) $log[] = $msg;
+        
+        $msg = '📎 Total attachments: ' . count($attachments) . ' PDF file(s)';
+        error_log($msg);
+        if ($log !== null) $log[] = $msg;
         
         if (count($attachments) > 0) {
+            if ($log !== null) $log[] = '📎 Attachment details:';
             error_log('📎 Attachment details:');
             $total_size = 0;
             foreach ($attachments as $idx => $file) {
                 $size = file_exists($file) ? filesize($file) : 0;
                 $total_size += $size;
-                error_log('   ' . ($idx + 1) . '. ' . basename($file) . ' (' . round($size / 1024, 2) . ' KB)');
+                $msg = '   ' . ($idx + 1) . '. ' . basename($file) . ' (' . round($size / 1024, 2) . ' KB)';
+                error_log($msg);
+                if ($log !== null) $log[] = $msg;
             }
-            error_log('📎 Total attachment size: ' . round($total_size / 1024, 2) . ' KB');
+            $msg = '📎 Total attachment size: ' . round($total_size / 1024, 2) . ' KB';
+            error_log($msg);
+            if ($log !== null) $log[] = $msg;
             
             // Warn if total size is large
             if ($total_size > 10 * 1024 * 1024) { // 10 MB
-                error_log('⚠️ Warning: Total attachment size exceeds 10MB - may be rejected by some email servers');
+                $msg = '⚠️ Warning: Total attachment size exceeds 10MB - may be rejected by some email servers';
+                error_log($msg);
+                if ($log !== null) $log[] = $msg;
             }
         }
         else {
-            error_log('⚠️ No PDF attachments generated - email will be sent without reports');
+            $msg = '⚠️ No PDF attachments generated - email will be sent without reports';
+            error_log($msg);
+            if ($log !== null) $log[] = $msg;
         }
 
         // Send email with PDF attachments to all recipients
         $sent = wp_mail($valid_emails, $subject, $message, $headers, $attachments);
 
         if ($sent) {
-            error_log('✅ Automated report email sent successfully to ' . count($valid_emails) . ' recipient(s): ' . implode(', ', $valid_emails));
+            $msg = '✅ Email queued successfully for ' . count($valid_emails) . ' recipient(s): ' . implode(', ', $valid_emails);
+            error_log($msg);
+            if ($log !== null) $log[] = $msg;
         }
         else {
-            error_log('❌ Failed to send automated report email to: ' . implode(', ', $valid_emails));
+            $msg = '❌ Failed to send email to: ' . implode(', ', $valid_emails);
+            error_log($msg);
+            if ($log !== null) $log[] = $msg;
+            
             global $phpmailer;
             if (isset($phpmailer) && is_object($phpmailer)) {
-                error_log('❌ PHPMailer Error: ' . $phpmailer->ErrorInfo);
+                $msg = '❌ PHPMailer Error: ' . $phpmailer->ErrorInfo;
+                error_log($msg);
+                if ($log !== null) $log[] = $msg;
             }
             else {
-                error_log('❌ PHPMailer object not available for debugging');
+                $msg = '❌ PHPMailer object not available for debugging';
+                error_log($msg);
+                if ($log !== null) $log[] = $msg;
             }
         }
 

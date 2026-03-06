@@ -1795,7 +1795,7 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
     $method = $reflection->getMethod('send_email_report');
     $method->setAccessible(true);
 
-    $sent = $method->invoke(null, $email, $results, $business_context);
+    $sent = $method->invoke(null, $email, $results, $business_context, $log);
 
     if ($sent) {
         $log[] = '✅ Email sent successfully via wp_mail()';
