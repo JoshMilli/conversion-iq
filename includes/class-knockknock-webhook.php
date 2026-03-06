@@ -85,21 +85,42 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         error_log("ConversionIQ: Configured company ID: {$configured_company_id}");
         error_log("ConversionIQ: Webhook secret configured: " . ($webhook_secret ? 'YES' : 'NO'));
         
-        // Verify this webhook is for this account
-        if ($company_id !== $configured_company_id) {
-            error_log("ConversionIQ: Company ID mismatch. Expected: {$configured_company_id}, Got: {$company_id}");
-            return new WP_REST_Response(['error' => 'Company ID mismatch'], 403);
+        // Security Strategy:
+        // 1. If webhook secret is set -> verify HMAC signature (recommended, secure)
+        // 2. If no secret but company ID configured -> verify company ID match (basic routing)
+        // 3. If neither configured -> reject (must configure at least one)
+        
+        if ($webhook_secret) {
+            // SECURE: Verify HMAC signature
+            if (!$this->verify_signature($signature, $timestamp, $raw_body, $webhook_secret)) {
+                error_log("ConversionIQ: Invalid webhook signature");
+                return new WP_REST_Response(['error' => 'Invalid signature'], 403);
+            }
+            error_log('ConversionIQ: Webhook signature verified successfully (HMAC)');
+            
+            // Company ID is just for reference/logging when using HMAC
+            if ($company_id && $configured_company_id && $company_id !== $configured_company_id) {
+                error_log("ConversionIQ: WARNING - Company ID mismatch but allowing due to valid HMAC. Expected: {$configured_company_id}, Got: {$company_id}");
+            }
+            
+        } else if ($configured_company_id) {
+            // BASIC: Fall back to company ID verification if no secret
+            error_log('ConversionIQ: No webhook secret configured, using Company ID verification (less secure)');
+            
+            if ($company_id !== $configured_company_id) {
+                error_log("ConversionIQ: Company ID mismatch. Expected: {$configured_company_id}, Got: {$company_id}");
+                return new WP_REST_Response(['error' => 'Company ID mismatch'], 403);
+            }
+            error_log('ConversionIQ: Company ID verified successfully (basic auth)');
+            
+        } else {
+            // REJECTED: Neither authentication method configured
+            error_log('ConversionIQ: REJECTED - No webhook secret or company ID configured');
+            return new WP_REST_Response([
+                'error' => 'Authentication not configured',
+                'message' => 'Please configure either a webhook secret (recommended) or company ID in plugin settings'
+            ], 403);
         }
-        
-        error_log('ConversionIQ: Company ID verified successfully');
-        
-        // Verify signature if secret is configured
-        if ($webhook_secret && !$this->verify_signature($signature, $timestamp, $raw_body, $webhook_secret)) {
-            error_log("ConversionIQ: Invalid webhook signature");
-            return new WP_REST_Response(['error' => 'Invalid signature'], 403);
-        }
-        
-        error_log('ConversionIQ: Webhook verified successfully');
         
         // Log the webhook event
         $log_id = $this->log_webhook_event($payload, $event_type);

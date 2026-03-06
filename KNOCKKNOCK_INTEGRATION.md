@@ -21,10 +21,16 @@ The KnockKnock webhook integration enables Conversion IQ to receive real-time vi
 
 1. Navigate to **Conversion IQ → Account Tab**
 2. Scroll to the **KnockKnock Webhook Integration** section
-3. Enter your **Client Company ID** (required)
-4. Enter your **Webhook Secret Key** (optional but recommended for security)
-5. Copy the **Webhook Endpoint URL**
-6. Click **Save Settings**
+3. Configure authentication (at least one required):
+   - **Webhook Secret Key** (recommended) - Enables HMAC signature verification
+   - **Client Company ID** (optional) - For basic routing if secret not configured
+4. Copy the **Webhook Endpoint URL**
+5. Click **Save Settings**
+
+**Authentication Methods:**
+- **Secure** (recommended): Use Webhook Secret for HMAC-SHA256 signature verification
+- **Basic**: Use Company ID for basic payload matching
+- **Both**: For maximum security, configure both methods
 
 ### 2. Configure in KnockKnock
 
@@ -170,21 +176,32 @@ Triggered when a previously anonymous visitor is identified.
 
 ## Security
 
-### HMAC Signature Verification
+### Three-Tier Authentication Strategy
 
-All webhooks are verified using HMAC-SHA256:
+The webhook handler uses a flexible authentication approach:
 
-```php
-$signature = HMAC-SHA256(secret, "{timestamp}.{json_body}")
-```
+**Tier 1: HMAC Signature (Secure - Recommended)**
+- If Webhook Secret is configured, HMAC-SHA256 signature verification is used
+- Signature algorithm: `HMAC-SHA256(secret, "{timestamp}.{json_body}")`
+- Includes timestamp validation (5-minute window to prevent replay attacks)
+- Uses timing-safe comparison to prevent timing attacks
 
-**Verification Steps:**
+**Tier 2: Company ID (Basic Fallback)**
+- If no Webhook Secret is set, validates `company_id` from payload
+- Matches against stored `knockknock_company_id` option
+- Less secure than HMAC but useful for simple routing
+
+**Tier 3: Rejection**
+- If neither authentication method is configured, webhook is rejected
+- Returns 401 Unauthorized error
+
+### HMAC Verification Steps:
 1. Extract `X-Webhook-Signature` and `X-Webhook-Timestamp` headers
 2. Reject if timestamp is >5 minutes old (prevents replay attacks)
 3. Compute expected signature
-4. Compare using timing-safe equality
+4. Compare using timing-safe equality (`hash_equals()`)
 
-**Headers Required:**
+**Headers Required for HMAC:**
 - `Content-Type: application/json`
 - `X-Webhook-Signature` - HMAC signature
 - `X-Webhook-Timestamp` - Unix timestamp
@@ -283,11 +300,13 @@ The KnockKnock data will be used to enhance audit reports:
 
 ### Webhook Not Receiving Data
 
-1. **Check Company ID** - Must match between WordPress and KnockKnock
+1. **Check Authentication** - At least one method must be configured:
+   - Either Webhook Secret (preferred) OR Company ID
 2. **Verify Endpoint URL** - Should be publicly accessible
 3. **Test with test-knockknock-webhook.php** - Simulates webhook locally
 4. **Check Error Logs** - Look in WordPress debug.log for errors
-5. **Verify Secret** - Must match if configured (case-sensitive)
+5. **If using Webhook Secret** - Must match exactly (case-sensitive)
+6. **If using Company ID** - Must match the ID in webhook payload
 
 ### Signature Verification Failing
 
@@ -332,6 +351,13 @@ For issues or questions:
 ---
 
 ## Version History
+
+### v1.8.4
+- Improved authentication flexibility
+- Webhook Secret now primary authentication method (HMAC-SHA256)
+- Company ID optional, used as fallback if secret not configured
+- Enhanced UI to reflect optional fields
+- Added extensive debugging logs
 
 ### v1.8.3
 - Initial KnockKnock webhook integration

@@ -641,9 +641,10 @@ export default function App() {
 
   // KnockKnock webhook functions
   const handleSaveKnockKnockSettings = async () => {
-    if (!knockKnockCompanyId.trim()) {
-      setNotice('❌ Please enter a Company ID');
-      setTimeout(() => setNotice(null), 3000);
+    // Require at least one authentication method
+    if (!knockKnockCompanyId.trim() && !knockKnockWebhookSecret.trim()) {
+      setNotice('❌ Please enter either a Company ID or Webhook Secret (or both)');
+      setTimeout(() => setNotice(null), 4000);
       return;
     }
 
@@ -702,20 +703,23 @@ export default function App() {
 
   // Load KnockKnock leads when account tab is opened
   useEffect(() => {
+    const hasAuth = knockKnockCompanyId || knockKnockWebhookSecret;
     console.log('KnockKnock useEffect triggered:', {
       activeTab,
       isAuthenticated,
       knockKnockCompanyId,
-      shouldFetch: activeTab === 'account' && isAuthenticated && knockKnockCompanyId
+      knockKnockWebhookSecret: knockKnockWebhookSecret ? 'SET' : 'NOT SET',
+      hasAuth,
+      shouldFetch: activeTab === 'account' && isAuthenticated && hasAuth
     });
     
-    if (activeTab === 'account' && isAuthenticated && knockKnockCompanyId) {
+    if (activeTab === 'account' && isAuthenticated && hasAuth) {
       console.log('Conditions met, fetching leads...');
       fetchKnockKnockLeads();
     } else {
       console.log('Conditions not met for fetching leads');
     }
-  }, [activeTab, isAuthenticated, knockKnockCompanyId]);
+  }, [activeTab, isAuthenticated, knockKnockCompanyId, knockKnockWebhookSecret]);
 
   const handlePageSelect = (id: number) => {
     setSelectedPages(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
@@ -2265,11 +2269,11 @@ export default function App() {
                   {/* Company ID */}
                   <div>
                     <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>
-                      Client Company ID <span style={{ color: '#ef4444' }}>*</span>
+                      Client Company ID {!knockKnockWebhookSecret && <span style={{ color: '#ef4444' }}>*</span>}
                     </label>
                     <input
                       type="text"
-                      placeholder="Enter your KnockKnock Company ID"
+                      placeholder="Enter your KnockKnock Company ID (optional if using webhook secret)"
                       value={knockKnockCompanyId}
                       onChange={(e) => setKnockKnockCompanyId(e.target.value)}
                       style={{ 
@@ -2287,14 +2291,14 @@ export default function App() {
                       onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
                     />
                     <p style={{ fontSize: 12, color: '#6b7280', marginTop: 6, marginBottom: 0 }}>
-                      Your unique KnockKnock company identifier
+                      Your KnockKnock company identifier (optional if webhook secret is configured)
                     </p>
                   </div>
 
                   {/* Webhook Secret */}
                   <div>
                     <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>
-                      Webhook Secret Key
+                      Webhook Secret Key {!knockKnockCompanyId && <span style={{ color: '#ef4444' }}>*</span>}
                     </label>
                     <div style={{ position: 'relative' }}>
                       <input
@@ -2337,7 +2341,7 @@ export default function App() {
                       </button>
                     </div>
                     <p style={{ fontSize: 12, color: '#6b7280', marginTop: 6, marginBottom: 0 }}>
-                      Optional but recommended for secure webhook validation
+                      <strong>Highly recommended</strong> for secure HMAC signature validation (or use Company ID for basic routing)
                     </p>
                   </div>
 
@@ -2418,7 +2422,7 @@ export default function App() {
                   <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#111827' }}>Recent Leads</h3>
                   <button
                     onClick={fetchKnockKnockLeads}
-                    disabled={knockKnockLeadsLoading || !knockKnockCompanyId}
+                    disabled={knockKnockLeadsLoading || (!knockKnockCompanyId && !knockKnockWebhookSecret)}
                     style={{
                       padding: '8px 16px',
                       background: '#f3f4f6',
@@ -2427,25 +2431,25 @@ export default function App() {
                       borderRadius: 6,
                       fontSize: 14,
                       fontWeight: 600,
-                      cursor: (knockKnockLeadsLoading || !knockKnockCompanyId) ? 'not-allowed' : 'pointer',
+                      cursor: (knockKnockLeadsLoading || (!knockKnockCompanyId && !knockKnockWebhookSecret)) ? 'not-allowed' : 'pointer',
                       transition: 'all 0.2s',
-                      opacity: !knockKnockCompanyId ? 0.5 : 1
+                      opacity: (!knockKnockCompanyId && !knockKnockWebhookSecret) ? 0.5 : 1
                     }}
-                    onMouseEnter={(e) => !knockKnockLeadsLoading && knockKnockCompanyId && (e.currentTarget.style.background = '#e5e7eb')}
-                    onMouseLeave={(e) => !knockKnockLeadsLoading && knockKnockCompanyId && (e.currentTarget.style.background = '#f3f4f6')}
+                    onMouseEnter={(e) => !knockKnockLeadsLoading && (knockKnockCompanyId || knockKnockWebhookSecret) && (e.currentTarget.style.background = '#e5e7eb')}
+                    onMouseLeave={(e) => !knockKnockLeadsLoading && (knockKnockCompanyId || knockKnockWebhookSecret) && (e.currentTarget.style.background = '#f3f4f6')}
                   >
                     {knockKnockLeadsLoading ? '⏳ Loading...' : '🔄 Refresh'}
                   </button>
                 </div>
 
-                {!knockKnockCompanyId ? (
+                {(!knockKnockCompanyId && !knockKnockWebhookSecret) ? (
                   <div style={{ background: '#fef3c7', borderRadius: 8, padding: 24, textAlign: 'center', border: '1px solid #fde68a' }}>
                     <div style={{ fontSize: 24, marginBottom: 8 }}>⚠️</div>
                     <div style={{ fontSize: 16, fontWeight: 600, color: '#92400e', marginBottom: 4 }}>
-                      Company ID Required
+                      Authentication Required
                     </div>
                     <div style={{ fontSize: 14, color: '#78350f' }}>
-                      Please save your Company ID above first, then refresh this section
+                      Please configure either a Company ID or Webhook Secret above, then refresh this section
                     </div>
                   </div>
                 ) : knockKnockLeadsLoading ? (
