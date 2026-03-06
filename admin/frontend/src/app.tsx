@@ -82,7 +82,7 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [modal, setModal] = useState<{ audit?: Audit; open: boolean; tab?: string; gaData?: any }>({ open: false, tab: 'overview' });
   const [expandedSuggestions, setExpandedSuggestions] = useState<Set<number>>(new Set([0])); // First suggestion expanded by default
-  const [activeTab, setActiveTab] = useState<'settings' | 'automated' | 'audits' | 'account' | 'faq'>('settings');
+  const [activeTab, setActiveTab] = useState<'settings' | 'automated' | 'audits' | 'knockknock' | 'account' | 'faq'>('settings');
   const [automatedReporting, setAutomatedReporting] = useState({
     enabled: false,
     frequency: 'weekly',
@@ -127,6 +127,12 @@ export default function App() {
   const [showKnockKnockSecret, setShowKnockKnockSecret] = useState(false);
   const [knockKnockLeads, setKnockKnockLeads] = useState<any[]>([]);
   const [knockKnockLeadsLoading, setKnockKnockLeadsLoading] = useState(false);
+  const [knockKnockSearchQuery, setKnockKnockSearchQuery] = useState('');
+  const [knockKnockTypeFilter, setKnockKnockTypeFilter] = useState<'all' | 'lead' | 'visitor'>('all');
+  const [knockKnockCurrentPage, setKnockKnockCurrentPage] = useState(1);
+  const [knockKnockViewMode, setKnockKnockViewMode] = useState<'table' | 'cards'>('table');
+  const knockKnockItemsPerPage = 20;
+  const [knockKnockStats, setKnockKnockStats] = useState({ totalLeads: 0, totalVisitors: 0, totalToday: 0 });
 
   // Check authentication status on mount
   useEffect(() => {
@@ -1292,6 +1298,23 @@ export default function App() {
               Audits
             </button>
             <button
+              onClick={() => setActiveTab('knockknock')}
+              style={{
+                flex: 1,
+                padding: '16px 24px',
+                background: activeTab === 'knockknock' ? '#7c3aed' : '#fff',
+                color: activeTab === 'knockknock' ? '#fff' : '#6b7280',
+                border: 'none',
+                borderBottom: activeTab === 'knockknock' ? '3px solid #5b21b6' : '3px solid transparent',
+                cursor: 'pointer',
+                fontSize: 16,
+                fontWeight: 600,
+                transition: 'all 0.2s'
+              }}
+            >
+              🔔 KnockKnock
+            </button>
+            <button
               onClick={() => setActiveTab('account')}
               style={{
                 flex: 1,
@@ -2011,6 +2034,44 @@ export default function App() {
               })()}
             </section>
           </>
+        )}
+
+        {/* KnockKnock Tab - Placeholder for Enhanced UI */}
+        {activeTab === 'knockknock' && (
+          <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
+            <h2 style={{ margin: '0 0 8px 0', fontSize: 24, fontWeight: 700, color: '#111827' }}>🔔 KnockKnock Integration</h2>
+            <p style={{ color: '#6b7280', marginBottom: 32, fontSize: 15 }}>
+              Track real visitors and leads with webhook integration
+            </p>
+            
+            <div style={{ background: '#fef3c7', borderRadius: 12, padding: 24, marginBottom: 32, border: '1px solid #fde68a', textAlign: 'center' }}>
+              <div style={{ fontSize: 32, marginBottom: 12 }}>🚧</div>
+              <div style={{ fontSize: 18, fontWeight: 600, color: '#92400e', marginBottom: 8 }}>
+                Enhanced UI Coming Soon
+              </div>
+              <div style={{ fontSize: 14, color: '#78350f' }}>
+                Advanced features with statistics, search, pagination and modern views are being finalized. For now, use the Account tab.
+              </div>
+            </div>
+            
+            <div style={{ textAlign: 'center' }}>
+              <button
+                onClick={() => setActiveTab('account')}
+                style={{
+                  padding: '12px 32px',
+                  background: '#7c3aed',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 8,
+                  fontSize: 15,
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                → Go to Account Tab
+              </button>
+            </div>
+          </section>
         )}
 
         {/* Account Tab */}
