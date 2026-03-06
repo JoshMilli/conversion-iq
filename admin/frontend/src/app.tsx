@@ -669,16 +669,28 @@ export default function App() {
   };
 
   const fetchKnockKnockLeads = async () => {
+    console.log('=== Fetching KnockKnock Leads ===');
     setKnockKnockLeadsLoading(true);
     try {
-      const response = await axios.get(api('webhooks'), { headers: { 'X-WP-Nonce': nonce } });
+      const url = api('webhooks');
+      console.log('Fetching from:', url);
+      const response = await axios.get(url, { headers: { 'X-WP-Nonce': nonce } });
+      console.log('Response status:', response.status);
+      console.log('Response data:', response.data);
+      
       if (response.data.success) {
+        console.log('Leads found:', response.data.leads?.length || 0);
+        console.log('Lead data:', response.data.leads);
         setKnockKnockLeads(response.data.leads || []);
+      } else {
+        console.warn('Success flag is false:', response.data);
       }
     } catch (err: any) {
       console.error('Failed to load KnockKnock leads:', err);
+      console.error('Error response:', err.response?.data);
     } finally {
       setKnockKnockLeadsLoading(false);
+      console.log('=== Fetch Complete ===');
     }
   };
 
@@ -690,8 +702,18 @@ export default function App() {
 
   // Load KnockKnock leads when account tab is opened
   useEffect(() => {
+    console.log('KnockKnock useEffect triggered:', {
+      activeTab,
+      isAuthenticated,
+      knockKnockCompanyId,
+      shouldFetch: activeTab === 'account' && isAuthenticated && knockKnockCompanyId
+    });
+    
     if (activeTab === 'account' && isAuthenticated && knockKnockCompanyId) {
+      console.log('Conditions met, fetching leads...');
       fetchKnockKnockLeads();
+    } else {
+      console.log('Conditions not met for fetching leads');
     }
   }, [activeTab, isAuthenticated, knockKnockCompanyId]);
 
@@ -2390,33 +2412,43 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Recent Leads */}
-              {knockKnockCompanyId && (
-                <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid #e5e7eb' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                    <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#111827' }}>Recent Leads</h3>
-                    <button
-                      onClick={fetchKnockKnockLeads}
-                      disabled={knockKnockLeadsLoading}
-                      style={{
-                        padding: '8px 16px',
-                        background: '#f3f4f6',
-                        color: '#6b7280',
-                        border: '1px solid #d1d5db',
-                        borderRadius: 6,
-                        fontSize: 14,
-                        fontWeight: 600,
-                        cursor: knockKnockLeadsLoading ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                      onMouseEnter={(e) => !knockKnockLeadsLoading && (e.currentTarget.style.background = '#e5e7eb')}
-                      onMouseLeave={(e) => !knockKnockLeadsLoading && (e.currentTarget.style.background = '#f3f4f6')}
-                    >
-                      {knockKnockLeadsLoading ? '⏳ Loading...' : '🔄 Refresh'}
-                    </button>
-                  </div>
+              {/* Recent Leads - Always show, with state-based messages */}
+              <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid #e5e7eb' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#111827' }}>Recent Leads</h3>
+                  <button
+                    onClick={fetchKnockKnockLeads}
+                    disabled={knockKnockLeadsLoading || !knockKnockCompanyId}
+                    style={{
+                      padding: '8px 16px',
+                      background: '#f3f4f6',
+                      color: '#6b7280',
+                      border: '1px solid #d1d5db',
+                      borderRadius: 6,
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: (knockKnockLeadsLoading || !knockKnockCompanyId) ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.2s',
+                      opacity: !knockKnockCompanyId ? 0.5 : 1
+                    }}
+                    onMouseEnter={(e) => !knockKnockLeadsLoading && knockKnockCompanyId && (e.currentTarget.style.background = '#e5e7eb')}
+                    onMouseLeave={(e) => !knockKnockLeadsLoading && knockKnockCompanyId && (e.currentTarget.style.background = '#f3f4f6')}
+                  >
+                    {knockKnockLeadsLoading ? '⏳ Loading...' : '🔄 Refresh'}
+                  </button>
+                </div>
 
-                  {knockKnockLeadsLoading ? (
+                {!knockKnockCompanyId ? (
+                  <div style={{ background: '#fef3c7', borderRadius: 8, padding: 24, textAlign: 'center', border: '1px solid #fde68a' }}>
+                    <div style={{ fontSize: 24, marginBottom: 8 }}>⚠️</div>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: '#92400e', marginBottom: 4 }}>
+                      Company ID Required
+                    </div>
+                    <div style={{ fontSize: 14, color: '#78350f' }}>
+                      Please save your Company ID above first, then refresh this section
+                    </div>
+                  </div>
+                ) : knockKnockLeadsLoading ? (
                     <div style={{ textAlign: 'center', padding: 32, color: '#6b7280' }}>
                       <div style={{ fontSize: 24, marginBottom: 8 }}>⏳</div>
                       <div>Loading leads...</div>
@@ -2471,7 +2503,6 @@ export default function App() {
                     </div>
                   )}
                 </div>
-              )}
             </div>
 
             {/* Google Analytics Integration */}

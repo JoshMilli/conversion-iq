@@ -50,28 +50,40 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
     public function handle_webhook(WP_REST_Request $request) {
         global $wpdb;
         
-        error_log('ConversionIQ: Webhook received');
+        error_log('=== ConversionIQ: WEBHOOK RECEIVED ===');
+        error_log('ConversionIQ: Request method: ' . $request->get_method());
         
         // Get headers
         $signature = $request->get_header('X-Webhook-Signature');
         $timestamp = $request->get_header('X-Webhook-Timestamp');
         $event_type = $request->get_header('X-Webhook-Event');
         
+        error_log('ConversionIQ: Event type: ' . ($event_type ?: 'NOT SET'));
+        error_log('ConversionIQ: Signature present: ' . ($signature ? 'YES' : 'NO'));
+        error_log('ConversionIQ: Timestamp: ' . ($timestamp ?: 'NOT SET'));
+        
         // Get raw body
         $raw_body = $request->get_body();
+        error_log('ConversionIQ: Payload length: ' . strlen($raw_body) . ' bytes');
+        
         $payload = json_decode($raw_body, true);
         
         if (!$payload) {
             error_log('ConversionIQ: Invalid JSON payload');
+            error_log('ConversionIQ: Raw body: ' . substr($raw_body, 0, 500));
             return new WP_REST_Response(['error' => 'Invalid JSON payload'], 400);
         }
         
         $company_id = $payload['company_id'] ?? '';
         error_log("ConversionIQ: Company ID from webhook: {$company_id}");
+        error_log('ConversionIQ: Full payload: ' . json_encode($payload));
         
         // Get webhook secret for this site
         $webhook_secret = get_option('conversioniq_knockknock_webhook_secret');
         $configured_company_id = get_option('conversioniq_knockknock_company_id');
+        
+        error_log("ConversionIQ: Configured company ID: {$configured_company_id}");
+        error_log("ConversionIQ: Webhook secret configured: " . ($webhook_secret ? 'YES' : 'NO'));
         
         // Verify this webhook is for this account
         if ($company_id !== $configured_company_id) {
@@ -79,32 +91,41 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
             return new WP_REST_Response(['error' => 'Company ID mismatch'], 403);
         }
         
+        error_log('ConversionIQ: Company ID verified successfully');
+        
         // Verify signature if secret is configured
         if ($webhook_secret && !$this->verify_signature($signature, $timestamp, $raw_body, $webhook_secret)) {
             error_log("ConversionIQ: Invalid webhook signature");
             return new WP_REST_Response(['error' => 'Invalid signature'], 403);
         }
         
-        error_log("ConversionIQ: Webhook verified successfully");
+        error_log('ConversionIQ: Webhook verified successfully');
         
         // Log the webhook event
         $log_id = $this->log_webhook_event($payload, $event_type);
+        error_log("ConversionIQ: Webhook logged with ID: {$log_id}");
         
         // Process based on event type
         switch ($event_type) {
             case 'new_lead':
                 $this->process_new_lead($log_id, $payload);
-                error_log("ConversionIQ: Processed new_lead event");
+                error_log("ConversionIQ: Processed new_lead event - Log ID: {$log_id}");
                 break;
                 
             case 'new_user_identified':
                 $this->process_new_user($log_id, $payload);
-                error_log("ConversionIQ: Processed new_user_identified event");
+                error_log("ConversionIQ: Processed new_user_identified event - Log ID: {$log_id}");
                 break;
                 
             default:
                 error_log("ConversionIQ: Unknown event type: {$event_type}");
         }
+        
+        // Verify data was saved
+        $verify_count = $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_leads}");
+        error_log("ConversionIQ: Total leads in database now: {$verify_count}");
+        
+        error_log('=== ConversionIQ: WEBHOOK PROCESSING COMPLETE ===');
         
         return new WP_REST_Response(['success' => true, 'log_id' => $log_id], 200);
     }
@@ -115,7 +136,23 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
     public function get_webhook_logs(WP_REST_Request $request) {
         global $wpdb;
         
+        error_log('ConversionIQ: get_webhook_logs called');
+        
         $limit = $request->get_param('limit') ?: 50;
+        
+        // Check if tables exist
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$this->table_leads}'") === $this->table_leads;
+        error_log("ConversionIQ: Table {$this->table_leads} exists: " . ($table_exists ? 'YES' : 'NO'));
+        
+        if (!$table_exists) {
+            error_log('ConversionIQ: Leads table does not exist!');
+            return new WP_REST_Response([
+                'success' => false,
+                'error' => 'Database table not found',
+                'leads' => [],
+                'total' => 0
+            ], 200);
+        }
         
         // Get recent leads with details
         $leads = $wpdb->get_results($wpdb->prepare(
@@ -130,10 +167,24 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
             $limit
         ), ARRAY_A);
         
+        error_log('ConversionIQ: Found ' . count($leads) . ' leads');
+        if ($wpdb->last_error) {
+            error_log('ConversionIQ: Database error: ' . $wpdb->last_error);
+        }
+        
+        // Also get total count from webhook logs
+        $log_count = $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_logs}");
+        error_log("ConversionIQ: Total webhook logs in database: {$log_count}");
+        
         return new WP_REST_Response([
             'success' => true,
             'leads' => $leads,
-            'total' => count($leads)
+            'total' => count($leads),
+            'debug' => [
+                'table_exists' => $table_exists,
+                'total_logs' => $log_count,
+                'query' => $wpdb->last_query
+            ]
         ], 200);
     }
     
