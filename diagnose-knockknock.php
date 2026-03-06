@@ -48,12 +48,23 @@ foreach ($tables_to_check as $key => $table_name) {
 $logs_table = $wpdb->prefix . 'conversioniq_webhook_logs';
 if ($diagnostics['tables']['webhook_logs']['exists']) {
     $diagnostics['data']['recent_webhook_logs'] = $wpdb->get_results(
-        "SELECT id, event_type, company_id, verified, timestamp, created_at 
+        "SELECT id, event_type, company_id, verified, timestamp, created_at, raw_payload 
          FROM {$logs_table} 
          ORDER BY created_at DESC 
          LIMIT 10",
         ARRAY_A
     );
+    
+    // Decode raw_payload JSON for easier reading
+    foreach ($diagnostics['data']['recent_webhook_logs'] as &$log) {
+        if (isset($log['raw_payload'])) {
+            $decoded = json_decode($log['raw_payload'], true);
+            $log['payload_decoded'] = $decoded;
+            // Keep first 500 chars of raw for reference
+            $log['raw_payload_preview'] = substr($log['raw_payload'], 0, 500);
+            unset($log['raw_payload']);
+        }
+    }
 }
 
 // Get recent leads
