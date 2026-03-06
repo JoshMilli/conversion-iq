@@ -148,10 +148,12 @@ class ConversionIQ_Automated_Reports
     /**
      * Send email report with audit results
      * @param string $email Comma-separated email addresses
-     * @param array $log Optional log array to append messages to
+     * @return array ['success' => bool, 'messages' => array] Success status and log messages
      */
-    private static function send_email_report($email, $results, $business, &$log = null)
+    private static function send_email_report($email, $results, $business)
     {
+        $messages = array(); // Local log array
+        
         // Parse comma-separated emails
         $email_list = array_map('trim', explode(',', $email));
         $valid_emails = array_filter($email_list, 'is_email');
@@ -159,8 +161,8 @@ class ConversionIQ_Automated_Reports
         if (empty($valid_emails)) {
             $msg = '❌ No valid email addresses provided';
             error_log($msg);
-            if ($log !== null) $log[] = $msg;
-            return false;
+            $messages[] = $msg;
+            return array('success' => false, 'messages' => $messages);
         }
 
         $site_name = get_bloginfo('name');
@@ -207,7 +209,7 @@ class ConversionIQ_Automated_Reports
                     $audit['data'] = json_decode($audit['data'], true);
                     $msg = '📄 Generating PDF for audit ID: ' . $result['insert_id'];
                     error_log($msg);
-                    if ($log !== null) $log[] = $msg;
+                    $messages[] = $msg;
                     
                     $pdf_result = ConversionIQ_Reports::generate_pdf_for_audit($audit);
 
@@ -218,30 +220,30 @@ class ConversionIQ_Automated_Reports
                             $attachments[] = $pdf_result['path'];
                             $msg = '✅ PDF generated: ' . basename($pdf_result['path']) . ' (Size: ' . round($file_size / 1024, 2) . ' KB)';
                             error_log($msg);
-                            if ($log !== null) $log[] = $msg;
+                            $messages[] = $msg;
                         }
                         else {
                             $msg = '⚠️ PDF file is empty (0 bytes): ' . basename($pdf_result['path']);
                             error_log($msg);
-                            if ($log !== null) $log[] = $msg;
+                            $messages[] = $msg;
                         }
                     }
                     else {
                         $msg = '⚠️ PDF generation failed or file not found for audit ID: ' . $result['insert_id'];
                         error_log($msg);
-                        if ($log !== null) $log[] = $msg;
+                        $messages[] = $msg;
                         
                         if (isset($pdf_result['error'])) {
                             $msg = '   Error: ' . $pdf_result['error'];
                             error_log($msg);
-                            if ($log !== null) $log[] = $msg;
+                            $messages[] = $msg;
                         }
                     }
                 }
                 else {
                     $msg = '⚠️ Audit record not found for ID: ' . $result['insert_id'];
                     error_log($msg);
-                    if ($log !== null) $log[] = $msg;
+                    $messages[] = $msg;
                 }
             }
         }
@@ -608,14 +610,14 @@ class ConversionIQ_Automated_Reports
 
         $msg = '📧 Preparing to send email to: ' . implode(', ', $valid_emails) . ($is_basecamp ? ' (Basecamp - Plain Text)' : ' (HTML)');
         error_log($msg);
-        if ($log !== null) $log[] = $msg;
+        $messages[] = $msg;
         
         $msg = '📎 Total attachments: ' . count($attachments) . ' PDF file(s)';
         error_log($msg);
-        if ($log !== null) $log[] = $msg;
+        $messages[] = $msg;
         
         if (count($attachments) > 0) {
-            if ($log !== null) $log[] = '📎 Attachment details:';
+            $messages[] = '📎 Attachment details:';
             error_log('📎 Attachment details:');
             $total_size = 0;
             foreach ($attachments as $idx => $file) {
@@ -623,23 +625,23 @@ class ConversionIQ_Automated_Reports
                 $total_size += $size;
                 $msg = '   ' . ($idx + 1) . '. ' . basename($file) . ' (' . round($size / 1024, 2) . ' KB)';
                 error_log($msg);
-                if ($log !== null) $log[] = $msg;
+                $messages[] = $msg;
             }
             $msg = '📎 Total attachment size: ' . round($total_size / 1024, 2) . ' KB';
             error_log($msg);
-            if ($log !== null) $log[] = $msg;
+            $messages[] = $msg;
             
             // Warn if total size is large
             if ($total_size > 10 * 1024 * 1024) { // 10 MB
                 $msg = '⚠️ Warning: Total attachment size exceeds 10MB - may be rejected by some email servers';
                 error_log($msg);
-                if ($log !== null) $log[] = $msg;
+                $messages[] = $msg;
             }
         }
         else {
             $msg = '⚠️ No PDF attachments generated - email will be sent without reports';
             error_log($msg);
-            if ($log !== null) $log[] = $msg;
+            $messages[] = $msg;
         }
 
         // Send email with PDF attachments to all recipients
@@ -648,27 +650,27 @@ class ConversionIQ_Automated_Reports
         if ($sent) {
             $msg = '✅ Email queued successfully for ' . count($valid_emails) . ' recipient(s): ' . implode(', ', $valid_emails);
             error_log($msg);
-            if ($log !== null) $log[] = $msg;
+            $messages[] = $msg;
         }
         else {
             $msg = '❌ Failed to send email to: ' . implode(', ', $valid_emails);
             error_log($msg);
-            if ($log !== null) $log[] = $msg;
+            $messages[] = $msg;
             
             global $phpmailer;
             if (isset($phpmailer) && is_object($phpmailer)) {
                 $msg = '❌ PHPMailer Error: ' . $phpmailer->ErrorInfo;
                 error_log($msg);
-                if ($log !== null) $log[] = $msg;
+                $messages[] = $msg;
             }
             else {
                 $msg = '❌ PHPMailer object not available for debugging';
                 error_log($msg);
-                if ($log !== null) $log[] = $msg;
+                $messages[] = $msg;
             }
         }
 
-        return $sent;
+        return array('success' => $sent, 'messages' => $messages);
     }
 
     /**
