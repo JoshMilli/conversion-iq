@@ -167,25 +167,17 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         
         $limit = $request->get_param('limit') ?: 50;
         
-        // Check if tables exist
-        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$this->table_leads}'") === $this->table_leads;
-        error_log("ConversionIQ: Table {$this->table_leads} exists: " . ($table_exists ? 'YES' : 'NO'));
-        
-        if (!$table_exists) {
-            error_log('ConversionIQ: Leads table does not exist!');
-            return new WP_REST_Response([
-                'success' => false,
-                'error' => 'Database table not found',
-                'leads' => [],
-                'total' => 0
-            ], 200);
-        }
-        
-        // Get recent leads with details
+        // Get actual leads (from new_lead events)
         $leads = $wpdb->get_results($wpdb->prepare(
             "SELECT 
-                l.*,
-                wl.timestamp as webhook_timestamp,
+                l.id,
+                l.first_name,
+                l.last_name,
+                l.email,
+                l.phone,
+                l.page_url,
+                l.converted_at as timestamp,
+                'lead' as type,
                 wl.event_type
             FROM {$this->table_leads} l
             LEFT JOIN {$this->table_logs} wl ON l.webhook_log_id = wl.id
@@ -195,34 +187,48 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         ), ARRAY_A);
         
         error_log('ConversionIQ: Found ' . count($leads) . ' leads');
-        if ($wpdb->last_error) {
-            error_log('ConversionIQ: Database error: ' . $wpdb->last_error);
-        }
         
-        // Also get total count from webhook logs
-        $log_count = $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_logs}");
-        error_log("ConversionIQ: Total webhook logs in database: {$log_count}");
-        
-        // Get recent webhook logs to debug what's coming in
-        $webhook_logs = $wpdb->get_results($wpdb->prepare(
-            "SELECT id, event_type, webhook_id, company_id, timestamp, created_at, 
-                    LEFT(raw_payload, 200) as payload_preview
-            FROM {$this->table_logs}
-            ORDER BY created_at DESC
+        // Get identified visitors (from new_user_identified events)
+        $visitors = $wpdb->get_results($wpdb->prepare(
+            "SELECT 
+                s.id,
+                s.first_name,
+                s.last_name,
+                s.email,
+                NULL as phone,
+                s.page_url,
+                s.identified_at as timestamp,
+                'visitor' as type,
+                wl.event_type
+            FROM {$this->table_sessions} s
+            LEFT JOIN {$this->table_logs} wl ON s.webhook_log_id = wl.id
+            ORDER BY s.identified_at DESC
             LIMIT %d",
-            10
+            $limit
         ), ARRAY_A);
-        error_log("ConversionIQ: Recent webhook logs: " . json_encode($webhook_logs));
+        
+        error_log('ConversionIQ: Found ' . count($visitors) . ' identified visitors');
+        
+        // Combine and sort by timestamp
+        $combined = array_merge($leads, $visitors);
+        usort($combined, function($a, $b) {
+            return strtotime($b['timestamp']) - strtotime($a['timestamp']);
+        });
+        
+        // Limit to requested count
+        $combined = array_slice($combined, 0, $limit);
+        
+        $total_count = count($combined);
+        error_log("ConversionIQ: Returning {$total_count} combined records");
         
         return new WP_REST_Response([
             'success' => true,
-            'leads' => $leads,
-            'total' => count($leads),
+            'leads' => $combined,
+            'total' => $total_count,
             'debug' => [
-                'table_exists' => $table_exists,
-                'total_logs' => $log_count,
-                'leads_query' => $wpdb->last_query,
-                'recent_webhooks' => $webhook_logs
+                'leads_count' => count($leads),
+                'visitors_count' => count($visitors),
+                'combined_count' => $total_count
             ]
         ], 200);
     }

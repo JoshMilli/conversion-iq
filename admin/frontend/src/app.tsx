@@ -2419,7 +2419,7 @@ export default function App() {
               {/* Recent Leads - Always show, with state-based messages */}
               <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid #e5e7eb' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#111827' }}>Recent Leads</h3>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#111827' }}>Recent Leads & Visitors</h3>
                   <button
                     onClick={fetchKnockKnockLeads}
                     disabled={knockKnockLeadsLoading || (!knockKnockCompanyId && !knockKnockWebhookSecret)}
@@ -2472,7 +2472,8 @@ export default function App() {
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                         <thead>
                           <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
-                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>Lead Name</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>Type</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>Name</th>
                             <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>Email</th>
                             <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>Source URL</th>
                             <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>Received</th>
@@ -2481,6 +2482,19 @@ export default function App() {
                         <tbody>
                           {knockKnockLeads.map((lead, idx) => (
                             <tr key={lead.id || idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                              <td style={{ padding: '12px 16px' }}>
+                                <span style={{
+                                  display: 'inline-block',
+                                  padding: '4px 8px',
+                                  borderRadius: 6,
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  background: lead.type === 'lead' ? '#dcfce7' : '#dbeafe',
+                                  color: lead.type === 'lead' ? '#166534' : '#1e40af'
+                                }}>
+                                  {lead.type === 'lead' ? '🎯 Lead' : '👤 Visitor'}
+                                </span>
+                              </td>
                               <td style={{ padding: '12px 16px', color: '#111827' }}>
                                 {lead.first_name && lead.last_name ? `${lead.first_name} ${lead.last_name}` : lead.first_name || lead.last_name || 'N/A'}
                               </td>
@@ -2498,7 +2512,7 @@ export default function App() {
                                 ) : 'N/A'}
                               </td>
                               <td style={{ padding: '12px 16px', color: '#6b7280', fontSize: 13 }}>
-                                {lead.converted_at ? new Date(lead.converted_at).toLocaleString() : 'N/A'}
+                                {lead.timestamp ? new Date(lead.timestamp).toLocaleString() : 'N/A'}
                               </td>
                             </tr>
                           ))}
