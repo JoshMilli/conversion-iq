@@ -531,6 +531,66 @@ This is a {$page_type} page. Your analysis MUST consider the unique conversion g
 
 Evaluate all metrics (clarity, emotional resonance, CTA, readability, engagement, trust) specifically through the lens of this page type's conversion goals.
 
+**CRITICAL - Clarity Score Scoring Guidelines:**
+When evaluating clarity_score (0-100), use these specific criteria:
+
+- **0-20**: No clear value proposition, confusing or missing headline, unclear what the business does or offers, visitors likely confused within 5 seconds
+- **20-40**: Vague value proposition, generic headline (e.g., "Welcome" or "Quality Services"), requires reading multiple paragraphs to understand core offering, heavy use of industry jargon without explanation
+- **40-60**: Basic value proposition present but not compelling, headline states what you do but not why it matters, moderate jargon usage, benefits mentioned but buried or unclear, some specificity but lacks focus
+- **60-75**: Clear value proposition in headline, what you do and who it's for is obvious, benefits mentioned but could be more prominent, minimal jargon or jargon is explained, good specificity
+- **75-85**: Strong value proposition prominently displayed, benefit-focused headline, crystal clear what you offer and why visitors should care, industry-specific but accessible language, features framed as benefits
+- **85-100**: Exceptional clarity with benefit-driven headline that speaks directly to target pain points, unique value proposition immediately obvious, every section has clear purpose, zero ambiguity, perfect balance of specificity and accessibility
+
+IMPORTANT: Pages with vague headlines like "Welcome to Our Site" or "Quality Services" should score 20-40, NOT 60+. Clarity requires immediate understanding of WHAT you offer, WHO it's for, and WHY it matters.
+
+**CRITICAL - CTA Strength Scoring Guidelines:**
+When evaluating cta_strength (0-100), use these specific criteria:
+
+- **0-20**: No clear CTA present, or only generic links like "Click Here" or "Learn More", no visual prominence, no action orientation
+- **20-40**: Weak CTAs present (e.g., "Submit" or "Learn More"), minimal visual contrast, unclear what happens next, multiple competing CTAs with no hierarchy, passive language
+- **40-60**: Basic action-oriented CTAs (e.g., "Get Started" or "Contact Us"), some visual contrast, CTA present but not prominent, moderate specificity about next step, some urgency but not compelling
+- **60-75**: Clear action-oriented CTAs with good visual prominence, specific about outcome (e.g., "Get Your Free Quote"), strategic placement (above fold + end of page), decent contrast and sizing, some urgency or benefit reinforcement
+- **75-85**: Strong CTAs with action verbs and benefit clarity (e.g., "Start Saving Money Today"), excellent visual contrast and prominence, strategic multiple placements, urgency and value clear, limited friction (short forms), clear hierarchy between primary and secondary CTAs
+- **85-100**: Exceptional CTAs with compelling action verbs + benefit + urgency (e.g., "Get Your Free Audit - 24 Hour Results"), outstanding visual design with high contrast, perfect placement throughout user journey, micro-commitments for progressive engagement, zero friction, personalized to page context
+
+IMPORTANT: Generic CTAs like "Learn More", "Submit", or "Click Here" should score 20-40 maximum, NOT 60+. Strong CTAs require ACTION VERBS + SPECIFIC BENEFIT + URGENCY.
+
+**CRITICAL - Readability Score Scoring Guidelines:**
+When evaluating readability_score (0-100), use these specific criteria:
+
+- **0-20**: Dense walls of text with no breaks, paragraphs over 150 words, no subheadings, sentences over 30 words consistently, tiny font sizes, poor contrast, no visual hierarchy
+- **20-40**: Long paragraphs (100-150 words), minimal subheadings, complex sentence structure, poor formatting, limited white space, difficult to scan, small fonts or low contrast issues
+- **40-60**: Moderate paragraph length (60-100 words), some subheadings present, mixed sentence complexity, basic formatting (bold/bullets used occasionally), adequate white space, somewhat scannable, readable fonts but room for improvement
+- **60-75**: Good paragraph length (40-60 words), clear subheadings throughout, varied sentence length, good use of bullets and lists, ample white space, easy to scan, strong visual hierarchy, good font sizing and contrast
+- **75-85**: Short, focused paragraphs (30-40 words), descriptive subheadings every 2-3 paragraphs, simple sentence structure, excellent use of formatting (bullets, bold, highlights), generous white space, highly scannable, perfect typography and contrast
+- **85-100**: Exceptional readability with bite-sized content (20-30 word paragraphs), compelling subheadings that tell the story, simple language (8th grade level or below), strategic use of visuals to break up text, outstanding white space and visual flow, perfect typography hierarchy, mobile-optimized line length
+
+IMPORTANT: Pages with paragraphs over 100 words or no subheadings should score below 50. Readability requires SHORT PARAGRAPHS + CLEAR SUBHEADINGS + SIMPLE SENTENCES + VISUAL HIERARCHY.
+
+**CRITICAL - Emotional Score Scoring Guidelines:**
+When evaluating emotional_score (0-100), use these specific criteria:
+
+- **0-20**: Purely technical/factual language with no emotional appeal, no acknowledgment of customer pain points, completely generic copy that could apply to any business, no storytelling, sterile tone
+- **20-40**: Minimal emotional connection, occasional mention of benefits but no pain point focus, very generic language ("we care about quality"), no storytelling or human element, mostly feature-focused rather than benefit-focused
+- **40-60**: Some emotional language present, basic pain points mentioned but not explored deeply, generic power words used sparingly (e.g., "great", "best"), limited storytelling, mix of features and benefits, attempts connection but feels templated
+- **60-75**: Clear pain point acknowledgment, good use of emotional language and power words, benefits prominently featured, some storytelling elements (customer success stories or problem/solution framing), empathetic tone, audience-specific language
+- **75-85**: Strong emotional resonance with deep pain point understanding, compelling power words throughout (e.g., "transform", "breakthrough", "finally"), effective storytelling that creates connection, aspirational language about outcomes, authenticity and empathy clear, speaks directly to audience struggles and desires
+- **85-100**: Exceptional emotional engagement with masterful pain point articulation, powerful storytelling that resonates deeply, language that creates vivid before/after scenarios, aspirational future state painted clearly, authentic voice that builds trust, perfect balance of empathy and inspiration, audience feels truly understood
+
+IMPORTANT: Pages that only list features without connecting to emotional benefits should score below 50. Emotional resonance requires PAIN POINT ACKNOWLEDGMENT + BENEFIT FOCUS + EMPATHETIC LANGUAGE + STORYTELLING.
+
+**CRITICAL - Engagement Score Scoring Guidelines:**
+When evaluating engagement_score (0-100), use these specific criteria:
+
+- **0-20**: Static page with only text, no images or minimal stock photos, no interactive elements, no multimedia, no forms except basic contact, monotonous single-column layout, nothing to explore or interact with
+- **20-40**: Basic images present (mostly stock photos), minimal interactivity (just a contact form), no multimedia (video/audio), simple layout with little visual variety, few reasons for users to engage beyond reading, no social proof or dynamic content
+- **40-60**: Good image usage with some custom photography, basic interactivity (forms, clickable elements), limited multimedia (perhaps one video), some visual variety in layout, 1-2 engagement hooks (quiz, calculator, or chat), social proof present but static
+- **60-75**: Strong visual design with custom imagery and graphics, multiple forms of interactivity (forms, accordions, tabs), multimedia present (videos, infographics), good layout variety, 2-3 engagement mechanisms, social proof integrated throughout, clear CTAs encourage exploration
+- **75-85**: Excellent engagement with multiple interactive elements (calculators, quizzes, comparison tools, live chat), rich multimedia (multiple videos, animations, interactive demos), dynamic content, strong visual hierarchy with varied layouts, 3-4 clear engagement hooks, social proof widgets, personalized elements, mobile-optimized interactions
+- **85-100**: Exceptional engagement with immersive experience (product configurators, AI chatbots, virtual tours, interactive assessments), comprehensive multimedia integration, gamification elements, dynamic personalization, 5+ distinct engagement points, real-time social proof, micro-interactions throughout, seamless omnichannel integration, progress indicators for multi-step processes
+
+IMPORTANT: Pages with only static text and basic contact forms should score below 40. Engagement requires INTERACTIVE ELEMENTS + MULTIMEDIA + VISUAL VARIETY + MULTIPLE TOUCHPOINTS + DYNAMIC CONTENT.
+
 **CRITICAL - Trust Score Scoring Guidelines:**
 When evaluating trust_score (0-100), use these specific criteria:
 
