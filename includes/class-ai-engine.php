@@ -531,6 +531,18 @@ This is a {$page_type} page. Your analysis MUST consider the unique conversion g
 
 Evaluate all metrics (clarity, emotional resonance, CTA, readability, engagement, trust) specifically through the lens of this page type's conversion goals.
 
+**CRITICAL - Trust Score Scoring Guidelines:**
+When evaluating trust_score (0-100), use these specific criteria:
+
+- **0-20**: No social proof elements at all (no testimonials, reviews, trust badges, certifications, client logos, or credibility indicators)
+- **20-40**: Minimal social proof (generic statements like "trusted by thousands" without evidence, or very weak trust signals)
+- **40-60**: Anonymous or partially attributed testimonials (quotes with job titles/company types but NO specific names or photos), OR limited trust badges
+- **60-75**: Testimonials with SOME attribution (names OR photos, but not both), OR multiple trust badges/certifications displayed
+- **75-85**: Full testimonials with names AND photos AND company names, OR strong combination of testimonials + trust badges + certifications
+- **85-100**: Comprehensive trust architecture (multiple testimonials with full attribution + photos, client logos, certifications, security badges, case studies, reviews, media mentions)
+
+IMPORTANT: Testimonials with job titles and company types (e.g., "CEO, IT Company") but NO actual names or photos should score in the 40-60 range, NOT 0-20.
+
 **Page Information:**
 - Title: {$title}
 - URL: {$url}
@@ -613,6 +625,9 @@ Every suggestion and recommendation MUST include:
 2. **Impact**: Specific metrics that will improve (clarity, trust, CTA strength, etc.)
 3. **Implementation**: Practical guidance on how to implement this change
 4. **Context**: Reference to audit findings, scores, or business goals that justify this recommendation
+
+**CRITICAL - Score References Must Be Accurate:**
+When referencing scores in your recommendations (e.g., "Your trust score of X"), you MUST use the EXACT scores you assigned in the clarity_score, emotional_score, cta_strength, readability_score, engagement_score, and trust_score fields. Double-check that every score reference in your text matches the numeric scores you provide. Inconsistent scoring will confuse users.
 
 Make recommendations DETAILED and ACTIONABLE:
 - BAD: Add testimonials to build trust
