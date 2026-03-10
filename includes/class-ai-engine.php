@@ -687,7 +687,7 @@ Every suggestion and recommendation MUST include:
 4. **Context**: Reference to audit findings, scores, or business goals that justify this recommendation
 
 **CRITICAL - Score References Must Be Accurate:**
-When referencing scores in your recommendations (e.g., "Your trust score of X"), you MUST use the EXACT scores you assigned in the clarity_score, emotional_score, cta_strength, readability_score, engagement_score, and trust_score fields. Double-check that every score reference in your text matches the numeric scores you provide. Inconsistent scoring will confuse users.
+When referencing scores in your recommendations (e.g., 'Your trust score of X'), you MUST use the EXACT scores you assigned in the clarity_score, emotional_score, cta_strength, readability_score, engagement_score, and trust_score fields. Double-check that every score reference in your text matches the numeric scores you provide. Inconsistent scoring will confuse users.
 
 Make recommendations DETAILED and ACTIONABLE:
 - BAD: Add testimonials to build trust
