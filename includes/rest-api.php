@@ -57,35 +57,58 @@ function conversioniq_extract_html_structure($html)
     // Extract testimonial names specifically for trust scoring
     $testimonial_names = array();
     
-    // First, try to extract content from testimonial sections specifically
-    if (preg_match_all('/<[^>]*class="[^"]*(?:testimonial|review|feedback)[^"]*"[^>]*>(.*?)<\/[^>]+>/is', $html, $testimonial_blocks)) {
-        foreach ($testimonial_blocks[1] as $block) {
-            // Within each testimonial block, look for names (two consecutive capitalized words)
-            if (preg_match_all('/\b([A-Z][a-z]+(?:\s+[A-Z][a-zA-Z]+)+)\b/', $block, $name_matches)) {
-                foreach ($name_matches[1] as $name) {
-                    // Filter out common false positives
-                    if (!preg_match('/^(Read More|Learn More|Click Here|Get Started|Contact Us|About Us|View All|See More)$/i', $name)) {
-                        // Look for a title near this name (CEO, COO, Director, etc.)
-                        if (preg_match('/\b(?:CEO|COO|CTO|CFO|President|Director|Manager|Founder|Chief)/i', $block, $title_match)) {
-                            $testimonial_names[] = trim($name . ', ' . $title_match[0]);
-                        } else {
-                            $testimonial_names[] = trim($name);
-                        }
+    // Strategy 1: Look for jet-listing or Elementor dynamic field patterns (specific to user's site structure)
+    // Extract names from h3/h6 tags and titles from span tags within jet-listing-dynamic-field__content
+    if (preg_match_all('/<(?:h[3-6]|div)[^>]*class="[^"]*jet-listing-dynamic-field__content[^"]*"[^>]*>([^<]+)<\/(?:h[3-6]|div)>/is', $html, $name_elements)) {
+        $potential_names = array_map('wp_strip_all_tags', $name_elements[1]);
+        
+        // Extract titles from span elements with same class
+        if (preg_match_all('/<span[^>]*class="[^"]*jet-listing-dynamic-field__content[^"]*"[^>]*>([^<]+)<\/span>/is', $html, $title_elements)) {
+            $potential_titles = array_map('wp_strip_all_tags', $title_elements[1]);
+            
+            // Match names with titles
+            foreach ($potential_names as $idx => $name) {
+                $name = trim($name);
+                // Check if this looks like a person's name (2+ words, starts with capital)
+                if (preg_match('/^([A-Z][a-z]+(?:\s+[A-Z][a-zA-Z]+)+)$/u', $name)) {
+                    // Find corresponding title
+                    if (isset($potential_titles[$idx]) && preg_match('/^(CEO|COO|CTO|CFO|President|Director|Manager|Founder|Owner|VP|Chief)$/i', trim($potential_titles[$idx]))) {
+                        $testimonial_names[] = $name . ', ' . strtoupper(trim($potential_titles[$idx]));
                     }
                 }
             }
         }
     }
     
-    // If no testimonials found in blocks, fall back to searching entire HTML for name+title patterns
+    // Strategy 2: Look for testimonial blocks with traditional class names
     if (empty($testimonial_names)) {
-        // Match full names followed (anywhere nearby) by executive titles
-        if (preg_match_all('/([A-Z][a-z]+\s+[A-Z][a-z]+)[\s\S]{0,50}?\b(CEO|COO|CTO|CFO|President|Director|Manager|Founder)/i', $html, $matches)) {
+        if (preg_match_all('/<[^>]*class="[^"]*(?:testimonial|review|feedback|client-info)[^"]*"[^>]*>(.*?)<\/[^>]+>/is', $html, $testimonial_blocks)) {
+            foreach ($testimonial_blocks[1] as $block) {
+                // Look for name in h3-h6 or strong tags
+                if (preg_match('/<(?:h[3-6]|strong|div)[^>]*>([A-Z][a-z]+\s+[A-Z][a-zA-Z]+[^<]*)<\/(?:h[3-6]|strong|div)>/i', $block, $name_match)) {
+                    $name = trim(wp_strip_all_tags($name_match[1]));
+                    // Look for title in the same block
+                    if (preg_match('/<(?:span|p|div)[^>]*>(CEO|COO|CTO|CFO|President|Director|Manager|Founder|Owner)<\/(?:span|p|div)>/i', $block, $title_match)) {
+                        $testimonial_names[] = $name . ', ' . strtoupper($title_match[1]);
+                    } else if (preg_match('/\b(CEO|COO|CTO|CFO|President|Director|Manager|Founder)\b/i', $block, $title_match)) {
+                        $testimonial_names[] = $name . ', ' . strtoupper($title_match[1]);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Strategy 3: Fallback - look for name + title pattern with larger gap (but filter aggressively)
+    if (empty($testimonial_names)) {
+        if (preg_match_all('/\b([A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]+)?)\b[\s\S]{0,300}?\b(CEO|COO|CTO|CFO|President|Director|Manager|Founder)\b/i', $html, $matches)) {
             for ($i = 0; $i < count($matches[1]); $i++) {
-                $name = $matches[1][$i];
-                $title = $matches[2][$i];
-                if (!preg_match('/^(Read More|Learn More|Click Here|Get Started|Contact Us|About Us)$/i', $name)) {
-                    $testimonial_names[] = trim($name . ', ' . $title);
+                $name = trim($matches[1][$i]);
+                $title = strtoupper($matches[2][$i]);
+                
+                // Aggressive filtering for false positives
+                if (!preg_match('/^(Read More|Learn More|Click Here|Get Started|Contact Us|About Us|View All|See More|Our Team|Web Designer|Jhon Doe|John Doe|Jane Doe)$/i', $name) &&
+                    !preg_match('/\b(class|div|span|button|link|script|cookie|hidden)\b/i', $name)) {
+                    $testimonial_names[] = $name . ', ' . $title;
                 }
             }
         }
