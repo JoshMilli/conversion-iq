@@ -602,12 +602,12 @@ When evaluating trust_score (0-100), use these specific criteria:
 - **85-100**: Comprehensive trust architecture (multiple testimonials with full attribution + photos, client logos, certifications, security badges, case studies, reviews, media mentions)
 
 **CRITICAL TRUST SCORING INSTRUCTIONS - READ CAREFULLY:**
-1. SEARCH the page content below for actual person names (first AND last names together like "Herman Miller", "Isabel Gabalis", "Ashley Jones", "Sarah Johnson", "John Smith")
+1. SEARCH the page content below for actual person names (first AND last names together like 'Herman Miller', 'Isabel Gabalis', 'Ashley Jones', 'Sarah Johnson', 'John Smith')
 2. If you find even ONE full person name (first + last) in the content, this indicates testimonials with attribution
 3. Person names present = MINIMUM 60 points for trust score, NOT 0 points
 4. Do NOT score 0-20 if you see person names in the text
-5. Anonymous testimonials (only generic roles like "A CEO" with no names) = 40-60 range
-6. The HTML structure may say "Testimonials Section" - if it does, look carefully in the text content for person names
+5. Anonymous testimonials (only generic roles like 'A CEO' with no names) = 40-60 range
+6. The HTML structure may say 'Testimonials Section' - if it does, look carefully in the text content for person names
 
 **Page Information:**
 - Title: {$title}
