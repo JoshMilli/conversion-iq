@@ -59,25 +59,48 @@ function conversioniq_extract_html_structure($html)
     
     // Strategy 1: Look for jet-listing or Elementor dynamic field patterns (specific to user's site structure)
     // Extract names from h3/h6 tags and titles from span tags within jet-listing-dynamic-field__content
+    error_log('🔍 Strategy 1: Searching for jet-listing-dynamic-field__content patterns');
+    
     if (preg_match_all('/<(?:h[3-6]|div)[^>]*class="[^"]*jet-listing-dynamic-field__content[^"]*"[^>]*>([^<]+)<\/(?:h[3-6]|div)>/is', $html, $name_elements)) {
         $potential_names = array_map('wp_strip_all_tags', $name_elements[1]);
+        error_log('🔍 Found ' . count($potential_names) . ' potential name elements: ' . implode(', ', array_slice($potential_names, 0, 10)));
         
         // Extract titles from span elements with same class
         if (preg_match_all('/<span[^>]*class="[^"]*jet-listing-dynamic-field__content[^"]*"[^>]*>([^<]+)<\/span>/is', $html, $title_elements)) {
             $potential_titles = array_map('wp_strip_all_tags', $title_elements[1]);
+            error_log('🔍 Found ' . count($potential_titles) . ' potential title elements: ' . implode(', ', array_slice($potential_titles, 0, 10)));
             
-            // Match names with titles
+            // Match names with titles (skip non-name elements like quote text)
+            $name_count = 0;
             foreach ($potential_names as $idx => $name) {
                 $name = trim($name);
-                // Check if this looks like a person's name (2+ words, starts with capital)
-                if (preg_match('/^([A-Z][a-z]+(?:\s+[A-Z][a-zA-Z]+)+)$/u', $name)) {
-                    // Find corresponding title
-                    if (isset($potential_titles[$idx]) && preg_match('/^(CEO|COO|CTO|CFO|President|Director|Manager|Founder|Owner|VP|Chief)$/i', trim($potential_titles[$idx]))) {
-                        $testimonial_names[] = $name . ', ' . strtoupper(trim($potential_titles[$idx]));
+                // Check if this looks like a person's name (2+ words, starts with capital, less than 50 chars)
+                if (preg_match('/^([A-Z][a-z]+(?:\s+[A-Z][a-zA-Z]+)+)$/u', $name) && strlen($name) < 50) {
+                    // Find corresponding title - check both single words and multi-word titles
+                    if (isset($potential_titles[$idx])) {
+                        $title = trim($potential_titles[$idx]);
+                        // Match common executive/business titles (single or multi-word)
+                        if (preg_match('/^(CEO|COO|CTO|CFO|President|Vice President|VP|Director|Manager|Founder|Co-Founder|Owner|Chief|Head of [A-Za-z]+|Senior [A-Za-z]+|Lead [A-Za-z]+)$/i', $title)) {
+                            $formatted_title = strtoupper($title);
+                            // Normalize common multi-word titles
+                            if (preg_match('/^HEAD OF (.+)$/i', $formatted_title, $head_match)) {
+                                $formatted_title = 'HEAD OF ' . strtoupper($head_match[1]);
+                            }
+                            $testimonial_names[] = $name . ', ' . $formatted_title;
+                            $name_count++;
+                            error_log('✅ Matched testimonial: ' . $name . ', ' . $formatted_title);
+                        } else {
+                            error_log('⚠️ Name found but title not recognized: ' . $name . ' -> "' . $title . '"');
+                        }
                     }
                 }
             }
+            error_log('🔍 Strategy 1 result: Found ' . $name_count . ' valid testimonials');
+        } else {
+            error_log('⚠️ No span elements with jet-listing-dynamic-field__content found');
         }
+    } else {
+        error_log('⚠️ No h3-h6/div elements with jet-listing-dynamic-field__content found');
     }
     
     // Strategy 2: Look for testimonial blocks with traditional class names
@@ -121,7 +144,8 @@ function conversioniq_extract_html_structure($html)
     if (!empty($testimonial_names)) {
         error_log('👤 Extracted testimonial names: ' . implode('; ', $testimonial_names));
     } else {
-        error_log('👤 No testimonial names found in HTML structure');
+        error_log('👤 No testimonial names found in HTML structure (' . strlen($html) . ' characters fetched)');
+        error_log('📄 HTML preview (first 500 chars): ' . substr($html, 0, 500));
     }
 
     // Build a concise summary for the AI
