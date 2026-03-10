@@ -56,17 +56,42 @@ function conversioniq_extract_html_structure($html)
 
     // Extract testimonial names specifically for trust scoring
     $testimonial_names = array();
-    // Look for common testimonial name patterns (names with titles like "John Smith, CEO")
-    if (preg_match_all('/\b([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s*,\s*([A-Z]{2,}|(?:CEO|COO|CTO|CFO|President|Director|Manager|Founder)))?/i', $html, $matches)) {
-        foreach ($matches[1] as $i => $name) {
-            // Filter out common false positives
-            if (!preg_match('/^(Read More|Learn More|Click Here|Get Started|Contact Us|About Us)$/i', $name)) {
-                $title = !empty($matches[2][$i]) ? $matches[2][$i] : '';
-                $testimonial_names[] = trim($name . ($title ? ', ' . $title : ''));
+    
+    // First, try to extract content from testimonial sections specifically
+    if (preg_match_all('/<[^>]*class="[^"]*(?:testimonial|review|feedback)[^"]*"[^>]*>(.*?)<\/[^>]+>/is', $html, $testimonial_blocks)) {
+        foreach ($testimonial_blocks[1] as $block) {
+            // Within each testimonial block, look for names (two consecutive capitalized words)
+            if (preg_match_all('/\b([A-Z][a-z]+(?:\s+[A-Z][a-zA-Z]+)+)\b/', $block, $name_matches)) {
+                foreach ($name_matches[1] as $name) {
+                    // Filter out common false positives
+                    if (!preg_match('/^(Read More|Learn More|Click Here|Get Started|Contact Us|About Us|View All|See More)$/i', $name)) {
+                        // Look for a title near this name (CEO, COO, Director, etc.)
+                        if (preg_match('/\b(?:CEO|COO|CTO|CFO|President|Director|Manager|Founder|Chief)/i', $block, $title_match)) {
+                            $testimonial_names[] = trim($name . ', ' . $title_match[0]);
+                        } else {
+                            $testimonial_names[] = trim($name);
+                        }
+                    }
+                }
             }
         }
     }
-    // Limit to first 10 names
+    
+    // If no testimonials found in blocks, fall back to searching entire HTML for name+title patterns
+    if (empty($testimonial_names)) {
+        // Match full names followed (anywhere nearby) by executive titles
+        if (preg_match_all('/([A-Z][a-z]+\s+[A-Z][a-z]+)[\s\S]{0,50}?\b(CEO|COO|CTO|CFO|President|Director|Manager|Founder)/i', $html, $matches)) {
+            for ($i = 0; $i < count($matches[1]); $i++) {
+                $name = $matches[1][$i];
+                $title = $matches[2][$i];
+                if (!preg_match('/^(Read More|Learn More|Click Here|Get Started|Contact Us|About Us)$/i', $name)) {
+                    $testimonial_names[] = trim($name . ', ' . $title);
+                }
+            }
+        }
+    }
+    
+    // Limit to first 10 names and ensure uniqueness
     $testimonial_names = array_slice(array_unique($testimonial_names), 0, 10);
 
     // Build a concise summary for the AI
