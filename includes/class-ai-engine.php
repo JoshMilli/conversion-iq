@@ -596,12 +596,12 @@ When evaluating trust_score (0-100), use these specific criteria:
 
 - **0-20**: No social proof elements at all (no testimonials, reviews, trust badges, certifications, client logos, or credibility indicators)
 - **20-40**: Minimal social proof (generic statements like 'trusted by thousands' without evidence, or very weak trust signals)
-- **40-60**: Anonymous or partially attributed testimonials (quotes with job titles/company types but NO specific names or photos), OR limited trust badges
-- **60-75**: Testimonials with SOME attribution (names OR photos, but not both), OR multiple trust badges/certifications displayed
-- **75-85**: Full testimonials with names AND photos AND company names, OR strong combination of testimonials + trust badges + certifications
+- **40-60**: ANONYMOUS testimonials ONLY - quotes showing generic roles/titles (e.g., 'A satisfied CEO' or 'Happy Client from Tech Industry') but NO actual person names visible AND NO photos, OR limited trust badges
+- **60-75**: Actual person NAMES are visible in testimonials (e.g., 'Herman Miller, CEO' or 'Sarah Johnson, Marketing Director') OR photos are present, but NOT both together, OR multiple trust badges/certifications displayed
+- **75-85**: Full testimonials with person names AND photos AND company names all together, OR strong combination of testimonials + trust badges + certifications
 - **85-100**: Comprehensive trust architecture (multiple testimonials with full attribution + photos, client logos, certifications, security badges, case studies, reviews, media mentions)
 
-IMPORTANT: Testimonials with job titles and company types (e.g., 'CEO, IT Company') but NO actual names or photos should score in the 40-60 range, NOT 0-20.
+CRITICAL: If you see testimonials that include ACTUAL PERSON NAMES (first and last names like 'Herman Miller', 'Sarah Johnson', 'John Smith'), you MUST score 60 or higher, regardless of whether photos are present. Anonymous testimonials (generic roles with no specific names) score 40-60. Person names present = minimum 60 points.
 
 **Page Information:**
 - Title: {$title}
