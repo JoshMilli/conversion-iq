@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 2.0.7
+ * Version: 2.0.8
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,29 +15,26 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define('CONVERSION_IQ_VERSION', '2.0.7');
+define('CONVERSION_IQ_VERSION', '2.0.8');
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
 
 // Initialize Plugin Update Checker
+// DISABLED: GitHub API token expired - uncomment and add new token to re-enable
+/*
 require CONVERSION_IQ_DIR . 'lib/plugin-update-checker-5.6/plugin-update-checker.php';
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 
 $conversionIQUpdateChecker = PucFactory::buildUpdateChecker(
-    'https://github.com/JoshMilli/conversion-iq', // Replace with your GitHub repo URL
+    'https://github.com/JoshMilli/conversion-iq',
     __FILE__,
     'conversion-iq'
 );
 
-// Set the branch to check for updates (use 'main' or 'master' depending on your repo)
 $conversionIQUpdateChecker->setBranch('main');
-
-// Authentication for private repository
-$conversionIQUpdateChecker->setAuthentication('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');
-
-// Check for updates more frequently (every 1 hour instead of default 12 hours)
-$conversionIQUpdateChecker->checkForUpdates();
+$conversionIQUpdateChecker->setAuthentication('YOUR_NEW_GITHUB_TOKEN_HERE');
+*/
 
 // Clear cache after plugin updates
 add_action('upgrader_process_complete', function($upgrader_object, $options) {
