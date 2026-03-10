@@ -632,7 +632,7 @@ Your suggestions MUST be:
 
 **IMPORTANT for Page Sections:**
 - Identify which specific section of the page each suggestion relates to
-- Use clear section names like: \"Hero Section\", \"About Section\", \"Features Section\", \"Testimonials Section\", \"CTA Section\", \"Pricing Section\", \"FAQ Section\", \"Footer\"
+- Use clear section names like: 'Hero Section', 'About Section', 'Features Section', 'Testimonials Section', 'CTA Section', 'Pricing Section', 'FAQ Section', 'Footer'
 - Be specific about what part of the page needs improvement
 - Follow the natural flow and structure of the page sections
 
@@ -649,8 +649,8 @@ Analyze the FULL CONTEXT of this specific business to recommend 4-6 features or 
    - Gaps or missing elements you identified in the page content/structure
 
 2. BE SPECIFIC about why this business needs each feature:
-   - Reference specific audit scores (e.g., \"Your trust score of 62 indicates...\")
-   - Connect to their stated business goal (e.g., \"To achieve {$goal}, you currently lack...\")
+   - Reference specific audit scores (e.g., 'Your trust score of 62 indicates...')
+   - Connect to their stated business goal (e.g., 'To achieve {$goal}, you currently lack...')
    - Explain what problem it solves for their specific audience
    - Point to a gap you found in the content analysis
 
@@ -705,8 +705,8 @@ Prioritize recommendations by:
 
 Quick wins must be PAGE-SPECIFIC and immediately actionable - NOT generic industry advice:
 
-- ❌ BAD (Generic): \"Add social proof\" or \"Improve your CTA\" or \"Optimize landing pages\"
-- ✅ GOOD (Page-Specific): \"Add 2-3 customer testimonials with photos above the 'Get Started' button in your hero section - your trust score of 62 reflects this gap\"
+- ❌ BAD (Generic): 'Add social proof' or 'Improve your CTA' or 'Optimize landing pages'
+- ✅ GOOD (Page-Specific): 'Add 2-3 customer testimonials with photos above the Get Started button in your hero section - your trust score of 62 reflects this gap'
 
 REQUIREMENTS for each Quick Win:
 1. Reference SPECIFIC page elements (sections, headlines, CTAs, images)
@@ -716,9 +716,9 @@ REQUIREMENTS for each Quick Win:
 5. Make sure each of the 3 quick wins addresses DIFFERENT aspects of the page
 
 Examples of good quick wins:
-- \"Replace your hero headline 'Welcome to Our Site' with a benefit-focused statement like 'Save 40% on Energy Costs with Smart Home Automation' - addresses your clarity score of 68\"
-- \"Add security badges (SSL, BBB, industry certifications) below the contact form - your trust score of 61 indicates visitors need more credibility signals\"
-- \"Split your 400-word paragraph in the benefits section into 3-4 shorter paragraphs with subheadings - readability score of 55 suggests content is too dense\"
+- Replace your hero headline 'Welcome to Our Site' with a benefit-focused statement like 'Save 40% on Energy Costs with Smart Home Automation' - addresses your clarity score of 68
+- Add security badges (SSL, BBB, industry certifications) below the contact form - your trust score of 61 indicates visitors need more credibility signals
+- Split your 400-word paragraph in the benefits section into 3-4 shorter paragraphs with subheadings - readability score of 55 suggests content is too dense
 
 **CRITICAL INSTRUCTIONS for Key Insights:**
 
