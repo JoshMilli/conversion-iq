@@ -54,6 +54,21 @@ function conversioniq_extract_html_structure($html)
         }
     }
 
+    // Extract testimonial names specifically for trust scoring
+    $testimonial_names = array();
+    // Look for common testimonial name patterns (names with titles like "John Smith, CEO")
+    if (preg_match_all('/\b([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s*,\s*([A-Z]{2,}|(?:CEO|COO|CTO|CFO|President|Director|Manager|Founder)))?/i', $html, $matches)) {
+        foreach ($matches[1] as $i => $name) {
+            // Filter out common false positives
+            if (!preg_match('/^(Read More|Learn More|Click Here|Get Started|Contact Us|About Us)$/i', $name)) {
+                $title = !empty($matches[2][$i]) ? $matches[2][$i] : '';
+                $testimonial_names[] = trim($name . ($title ? ', ' . $title : ''));
+            }
+        }
+    }
+    // Limit to first 10 names
+    $testimonial_names = array_slice(array_unique($testimonial_names), 0, 10);
+
     // Build a concise summary for the AI
     $summary = "Page Structure Analysis:\n";
     if (!empty($detected_sections)) {
@@ -61,6 +76,10 @@ function conversioniq_extract_html_structure($html)
     }
     if (!empty($sections['headings'])) {
         $summary .= 'Main headings: ' . implode(' | ', $sections['headings']) . "\n";
+    }
+    if (!empty($testimonial_names)) {
+        $summary .= 'Found testimonial attributions: ' . implode('; ', $testimonial_names) . "\n";
+        $summary .= "**IMPORTANT**: These names indicate testimonials with attribution. Trust score should be 60+ (not 0).\n";
     }
     $summary .= "\nNote: Use these section names when categorizing your suggestions.";
 
