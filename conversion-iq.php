@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 2.0.8
+ * Version: 2.0.9
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,14 +15,12 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define('CONVERSION_IQ_VERSION', '2.0.8');
+define('CONVERSION_IQ_VERSION', '2.0.9');
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
 
 // Initialize Plugin Update Checker
-// DISABLED: GitHub API token expired - uncomment and add new token to re-enable
-/*
 require CONVERSION_IQ_DIR . 'lib/plugin-update-checker-5.6/plugin-update-checker.php';
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 
@@ -33,8 +31,7 @@ $conversionIQUpdateChecker = PucFactory::buildUpdateChecker(
 );
 
 $conversionIQUpdateChecker->setBranch('main');
-$conversionIQUpdateChecker->setAuthentication('YOUR_NEW_GITHUB_TOKEN_HERE');
-*/
+$conversionIQUpdateChecker->setAuthentication('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');
 
 // Clear cache after plugin updates
 add_action('upgrader_process_complete', function($upgrader_object, $options) {
