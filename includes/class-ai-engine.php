@@ -535,25 +535,25 @@ Evaluate all metrics (clarity, emotional resonance, CTA, readability, engagement
 When evaluating clarity_score (0-100), use these specific criteria:
 
 - **0-20**: No clear value proposition, confusing or missing headline, unclear what the business does or offers, visitors likely confused within 5 seconds
-- **20-40**: Vague value proposition, generic headline (e.g., "Welcome" or "Quality Services"), requires reading multiple paragraphs to understand core offering, heavy use of industry jargon without explanation
+- **20-40**: Vague value proposition, generic headline (e.g., 'Welcome' or 'Quality Services'), requires reading multiple paragraphs to understand core offering, heavy use of industry jargon without explanation
 - **40-60**: Basic value proposition present but not compelling, headline states what you do but not why it matters, moderate jargon usage, benefits mentioned but buried or unclear, some specificity but lacks focus
 - **60-75**: Clear value proposition in headline, what you do and who it's for is obvious, benefits mentioned but could be more prominent, minimal jargon or jargon is explained, good specificity
 - **75-85**: Strong value proposition prominently displayed, benefit-focused headline, crystal clear what you offer and why visitors should care, industry-specific but accessible language, features framed as benefits
 - **85-100**: Exceptional clarity with benefit-driven headline that speaks directly to target pain points, unique value proposition immediately obvious, every section has clear purpose, zero ambiguity, perfect balance of specificity and accessibility
 
-IMPORTANT: Pages with vague headlines like "Welcome to Our Site" or "Quality Services" should score 20-40, NOT 60+. Clarity requires immediate understanding of WHAT you offer, WHO it's for, and WHY it matters.
+IMPORTANT: Pages with vague headlines like 'Welcome to Our Site' or 'Quality Services' should score 20-40, NOT 60+. Clarity requires immediate understanding of WHAT you offer, WHO it's for, and WHY it matters.
 
 **CRITICAL - CTA Strength Scoring Guidelines:**
 When evaluating cta_strength (0-100), use these specific criteria:
 
-- **0-20**: No clear CTA present, or only generic links like "Click Here" or "Learn More", no visual prominence, no action orientation
-- **20-40**: Weak CTAs present (e.g., "Submit" or "Learn More"), minimal visual contrast, unclear what happens next, multiple competing CTAs with no hierarchy, passive language
-- **40-60**: Basic action-oriented CTAs (e.g., "Get Started" or "Contact Us"), some visual contrast, CTA present but not prominent, moderate specificity about next step, some urgency but not compelling
-- **60-75**: Clear action-oriented CTAs with good visual prominence, specific about outcome (e.g., "Get Your Free Quote"), strategic placement (above fold + end of page), decent contrast and sizing, some urgency or benefit reinforcement
-- **75-85**: Strong CTAs with action verbs and benefit clarity (e.g., "Start Saving Money Today"), excellent visual contrast and prominence, strategic multiple placements, urgency and value clear, limited friction (short forms), clear hierarchy between primary and secondary CTAs
-- **85-100**: Exceptional CTAs with compelling action verbs + benefit + urgency (e.g., "Get Your Free Audit - 24 Hour Results"), outstanding visual design with high contrast, perfect placement throughout user journey, micro-commitments for progressive engagement, zero friction, personalized to page context
+- **0-20**: No clear CTA present, or only generic links like 'Click Here' or 'Learn More', no visual prominence, no action orientation
+- **20-40**: Weak CTAs present (e.g., 'Submit' or 'Learn More'), minimal visual contrast, unclear what happens next, multiple competing CTAs with no hierarchy, passive language
+- **40-60**: Basic action-oriented CTAs (e.g., 'Get Started' or 'Contact Us'), some visual contrast, CTA present but not prominent, moderate specificity about next step, some urgency but not compelling
+- **60-75**: Clear action-oriented CTAs with good visual prominence, specific about outcome (e.g., 'Get Your Free Quote'), strategic placement (above fold + end of page), decent contrast and sizing, some urgency or benefit reinforcement
+- **75-85**: Strong CTAs with action verbs and benefit clarity (e.g., 'Start Saving Money Today'), excellent visual contrast and prominence, strategic multiple placements, urgency and value clear, limited friction (short forms), clear hierarchy between primary and secondary CTAs
+- **85-100**: Exceptional CTAs with compelling action verbs + benefit + urgency (e.g., 'Get Your Free Audit - 24 Hour Results'), outstanding visual design with high contrast, perfect placement throughout user journey, micro-commitments for progressive engagement, zero friction, personalized to page context
 
-IMPORTANT: Generic CTAs like "Learn More", "Submit", or "Click Here" should score 20-40 maximum, NOT 60+. Strong CTAs require ACTION VERBS + SPECIFIC BENEFIT + URGENCY.
+IMPORTANT: Generic CTAs like 'Learn More', 'Submit', or 'Click Here' should score 20-40 maximum, NOT 60+. Strong CTAs require ACTION VERBS + SPECIFIC BENEFIT + URGENCY.
 
 **CRITICAL - Readability Score Scoring Guidelines:**
 When evaluating readability_score (0-100), use these specific criteria:
@@ -571,10 +571,10 @@ IMPORTANT: Pages with paragraphs over 100 words or no subheadings should score b
 When evaluating emotional_score (0-100), use these specific criteria:
 
 - **0-20**: Purely technical/factual language with no emotional appeal, no acknowledgment of customer pain points, completely generic copy that could apply to any business, no storytelling, sterile tone
-- **20-40**: Minimal emotional connection, occasional mention of benefits but no pain point focus, very generic language ("we care about quality"), no storytelling or human element, mostly feature-focused rather than benefit-focused
-- **40-60**: Some emotional language present, basic pain points mentioned but not explored deeply, generic power words used sparingly (e.g., "great", "best"), limited storytelling, mix of features and benefits, attempts connection but feels templated
+- **20-40**: Minimal emotional connection, occasional mention of benefits but no pain point focus, very generic language ('we care about quality'), no storytelling or human element, mostly feature-focused rather than benefit-focused
+- **40-60**: Some emotional language present, basic pain points mentioned but not explored deeply, generic power words used sparingly (e.g., 'great', 'best'), limited storytelling, mix of features and benefits, attempts connection but feels templated
 - **60-75**: Clear pain point acknowledgment, good use of emotional language and power words, benefits prominently featured, some storytelling elements (customer success stories or problem/solution framing), empathetic tone, audience-specific language
-- **75-85**: Strong emotional resonance with deep pain point understanding, compelling power words throughout (e.g., "transform", "breakthrough", "finally"), effective storytelling that creates connection, aspirational language about outcomes, authenticity and empathy clear, speaks directly to audience struggles and desires
+- **75-85**: Strong emotional resonance with deep pain point understanding, compelling power words throughout (e.g., 'transform', 'breakthrough', 'finally'), effective storytelling that creates connection, aspirational language about outcomes, authenticity and empathy clear, speaks directly to audience struggles and desires
 - **85-100**: Exceptional emotional engagement with masterful pain point articulation, powerful storytelling that resonates deeply, language that creates vivid before/after scenarios, aspirational future state painted clearly, authentic voice that builds trust, perfect balance of empathy and inspiration, audience feels truly understood
 
 IMPORTANT: Pages that only list features without connecting to emotional benefits should score below 50. Emotional resonance requires PAIN POINT ACKNOWLEDGMENT + BENEFIT FOCUS + EMPATHETIC LANGUAGE + STORYTELLING.
@@ -595,13 +595,13 @@ IMPORTANT: Pages with only static text and basic contact forms should score belo
 When evaluating trust_score (0-100), use these specific criteria:
 
 - **0-20**: No social proof elements at all (no testimonials, reviews, trust badges, certifications, client logos, or credibility indicators)
-- **20-40**: Minimal social proof (generic statements like "trusted by thousands" without evidence, or very weak trust signals)
+- **20-40**: Minimal social proof (generic statements like 'trusted by thousands' without evidence, or very weak trust signals)
 - **40-60**: Anonymous or partially attributed testimonials (quotes with job titles/company types but NO specific names or photos), OR limited trust badges
 - **60-75**: Testimonials with SOME attribution (names OR photos, but not both), OR multiple trust badges/certifications displayed
 - **75-85**: Full testimonials with names AND photos AND company names, OR strong combination of testimonials + trust badges + certifications
 - **85-100**: Comprehensive trust architecture (multiple testimonials with full attribution + photos, client logos, certifications, security badges, case studies, reviews, media mentions)
 
-IMPORTANT: Testimonials with job titles and company types (e.g., "CEO, IT Company") but NO actual names or photos should score in the 40-60 range, NOT 0-20.
+IMPORTANT: Testimonials with job titles and company types (e.g., 'CEO, IT Company') but NO actual names or photos should score in the 40-60 range, NOT 0-20.
 
 **Page Information:**
 - Title: {$title}
