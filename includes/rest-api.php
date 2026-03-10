@@ -93,6 +93,13 @@ function conversioniq_extract_html_structure($html)
     
     // Limit to first 10 names and ensure uniqueness
     $testimonial_names = array_slice(array_unique($testimonial_names), 0, 10);
+    
+    // Log extracted testimonial names for debugging
+    if (!empty($testimonial_names)) {
+        error_log('👤 Extracted testimonial names: ' . implode('; ', $testimonial_names));
+    } else {
+        error_log('👤 No testimonial names found in HTML structure');
+    }
 
     // Build a concise summary for the AI
     $summary = "Page Structure Analysis:\n";
