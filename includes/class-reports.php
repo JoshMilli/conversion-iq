@@ -83,9 +83,14 @@ class ConversionIQ_Reports
             $account = get_option('conversioniq_account', null);
             if ($account) {
                 $account_content = json_encode($account, JSON_UNESCAPED_UNICODE);
+                error_log('🔍 EARLY CHECK - Account data: ' . substr($account_content, 0, 200));
                 $has_spanish_in_account = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', $account_content);
                 error_log('🔍 EARLY CHECK - Account Info - Spanish chars: ' . ($has_spanish_in_account ? 'YES' : 'NO'));
+                // Also check company name specifically
+                $company_check = isset($account['company']) ? $account['company'] : '';
+                error_log('🔍 EARLY CHECK - Company name: "' . $company_check . '" - Spanish: ' . (preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', $company_check) ? 'YES' : 'NO'));
             } else {
+                error_log('🔍 EARLY CHECK - Account is NULL or not set');
                 $has_spanish_in_account = false;
             }
             
@@ -126,6 +131,15 @@ class ConversionIQ_Reports
             $account = get_option('conversioniq_account', null);
             $company_name = isset($account['company']) ? esc_html($account['company']) : '';
             $website_url = isset($account['site_url']) ? esc_url($account['site_url']) : get_site_url();
+            
+            // DEBUG: Check if esc_html created HTML entities
+            if ($company_name) {
+                $has_entities_in_company = preg_match('/&[aeiou]acute;|&ntilde;|&iquest;|&iexcl;|&uuml;/i', $company_name);
+                error_log('🔍 POST-ESCAPE CHECK - Company name after esc_html: "' . $company_name . '" - Has HTML entities: ' . ($has_entities_in_company ? 'YES' : 'NO'));
+                if ($has_entities_in_company && !$force_html_early) {
+                    error_log('⚠️ ALERT: HTML entities detected AFTER early check! Company name will break PDF.');
+                }
+            }
 
             // Webtec brand colors
             $webtec_navy = '#1e3a5f';
