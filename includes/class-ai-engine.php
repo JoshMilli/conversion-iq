@@ -773,6 +773,18 @@ The insights section is the FIRST thing clients read - make it valuable, specifi
    - BAD: Good audience fit
    - GOOD: Your messaging resonates well with the target audience, particularly the emphasis on their pain points. However, the technical jargon in the features section may alienate non-technical decision-makers.
 
+**CRITICAL JSON REQUIREMENTS:**
+
+YOU MUST INCLUDE ALL 6 SCORES AT THE TOP LEVEL OF YOUR JSON RESPONSE:
+1. clarity_score
+2. emotional_score  
+3. cta_strength
+4. readability_score
+5. engagement_score
+6. trust_score
+
+Missing any of these scores will cause the audit to fail. Each score must be a number between 0-100.
+
 **Required Output (JSON only, no markdown):**
 {
   \"clarity_score\": [0-100],
@@ -780,6 +792,7 @@ The insights section is the FIRST thing clients read - make it valuable, specifi
   \"cta_strength\": [0-100],
   \"readability_score\": [0-100],
   \"engagement_score\": [0-100],
+  \"trust_score\": [0-100],
     \"suggestions\": [
         {
             \"text\": \"Specific, actionable suggestion based on page content and business context\",
@@ -876,6 +889,25 @@ The insights section is the FIRST thing clients read - make it valuable, specifi
 CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanatory text. Provide specific section names for each suggestion.";
 
         return $prompt;
+    }
+
+    /**
+     * Extract trust score from suggestion text when AI doesn't return it in top-level JSON
+     */
+    private static function extract_trust_score_from_text($parsed_response) {
+        // Search through suggestions, insights, and recommendations for trust score mentions
+        $text_to_search = json_encode($parsed_response);
+        
+        // Look for patterns like "trust score of 58" or "trust score: 58"
+        if (preg_match('/trust[_\s]+score[:\s]+(?:of\s+)?(\d+)/i', $text_to_search, $matches)) {
+            $score = intval($matches[1]);
+            // Validate the score is in reasonable range
+            if ($score >= 0 && $score <= 100) {
+                return $score;
+            }
+        }
+        
+        return null;
     }
 
     /**
@@ -980,6 +1012,16 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanatory te
         if (!empty($missing_fields)) {
             error_log('⚠️ AI response missing required fields: ' . implode(', ', $missing_fields));
             error_log('AI response structure: ' . json_encode(array_keys($parsed)));
+            
+            // Try to extract trust_score from suggestion text if it's missing
+            if (in_array('trust_score', $missing_fields) && isset($parsed['suggestions'])) {
+                $extracted_trust_score = self::extract_trust_score_from_text($parsed);
+                if ($extracted_trust_score !== null) {
+                    $parsed['trust_score'] = $extracted_trust_score;
+                    error_log('✅ Trust score extracted from suggestion text: ' . $extracted_trust_score);
+                }
+            }
+            
             error_log('Full AI response: ' . json_encode($parsed));
         // Still continue - these might be optional or have defaults
         }
