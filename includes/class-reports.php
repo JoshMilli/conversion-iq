@@ -1214,11 +1214,16 @@ class ConversionIQ_Reports
             // Detect non-ASCII content (Spanish, etc.) and skip DOMPDF directly to HTML
             // DOMPDF has issues with Unicode characters even with DejaVu Sans
             
-            // Check page title and name first (most likely to contain Spanish characters)
-            $page_name_check = $page_name . ' ' . ($data['page_context'] ?? '');
-            $has_spanish_chars = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡ü]/u', $page_name_check);
+            // Check ORIGINAL page title BEFORE HTML escaping (most likely to contain Spanish characters)
+            $original_page_title = $audit['page_title'] ?? '';
+            $has_spanish_chars = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', $original_page_title);
+            error_log('🔍 Checking page title: "' . $original_page_title . '" - Spanish chars: ' . ($has_spanish_chars ? 'YES' : 'NO'));
             
-            // Also sample multiple parts of HTML for non-ASCII content
+            // Also check for HTML entities that indicate Spanish content (from already escaped text)
+            $has_spanish_entities = preg_match('/&[aeiou]acute;|&ntilde;|&iquest;|&iexcl;|&uuml;/i', $html);
+            error_log('🔍 HTML entities check: ' . ($has_spanish_entities ? 'YES' : 'NO'));
+            
+            // Sample multiple parts of HTML for non-ASCII content
             $sample_text = substr($html, 0, 10000); // Check first 10KB
             $non_ascii_count = 0;
             $sample_length = strlen($sample_text);
@@ -1230,10 +1235,15 @@ class ConversionIQ_Reports
             $non_ascii_percentage = ($non_ascii_count / $sample_length) * 100;
             
             $force_html = false;
-            // Force HTML if: Spanish chars detected OR >0.3% non-ASCII chars
-            if ($has_spanish_chars || $non_ascii_percentage > 0.3) {
-                $reason = $has_spanish_chars ? 'Spanish characters detected in page title' : 
-                          round($non_ascii_percentage, 2) . '% non-ASCII characters';
+            // Force HTML if: Spanish chars OR HTML entities OR >0.3% non-ASCII chars
+            if ($has_spanish_chars || $has_spanish_entities || $non_ascii_percentage > 0.3) {
+                if ($has_spanish_chars) {
+                    $reason = 'Spanish characters detected in page title: "' . $original_page_title . '"';
+                } elseif ($has_spanish_entities) {
+                    $reason = 'Spanish HTML entities detected in content';
+                } else {
+                    $reason = round($non_ascii_percentage, 2) . '% non-ASCII characters';
+                }
                 error_log('🌍 Non-English content detected (' . $reason . '). Skipping DOMPDF, using HTML fallback for better Unicode support.');
                 $force_html = true;
             }
