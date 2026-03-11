@@ -1213,18 +1213,28 @@ class ConversionIQ_Reports
 
             // Detect non-ASCII content (Spanish, etc.) and skip DOMPDF directly to HTML
             // DOMPDF has issues with Unicode characters even with DejaVu Sans
-            $sample_text = substr($html, 0, 5000); // Check first 5KB
+            
+            // Check page title and name first (most likely to contain Spanish characters)
+            $page_name_check = $page_name . ' ' . ($data['page_context'] ?? '');
+            $has_spanish_chars = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡ü]/u', $page_name_check);
+            
+            // Also sample multiple parts of HTML for non-ASCII content
+            $sample_text = substr($html, 0, 10000); // Check first 10KB
             $non_ascii_count = 0;
-            for ($i = 0; $i < strlen($sample_text); $i++) {
+            $sample_length = strlen($sample_text);
+            for ($i = 0; $i < $sample_length; $i++) {
                 if (ord($sample_text[$i]) > 127) {
                     $non_ascii_count++;
                 }
             }
-            $non_ascii_percentage = ($non_ascii_count / strlen($sample_text)) * 100;
+            $non_ascii_percentage = ($non_ascii_count / $sample_length) * 100;
             
             $force_html = false;
-            if ($non_ascii_percentage > 1) { // More than 1% non-ASCII characters
-                error_log('🌍 Detected non-ASCII content (' . round($non_ascii_percentage, 2) . '% non-ASCII characters). Skipping DOMPDF, using HTML fallback for better Unicode support.');
+            // Force HTML if: Spanish chars detected OR >0.3% non-ASCII chars
+            if ($has_spanish_chars || $non_ascii_percentage > 0.3) {
+                $reason = $has_spanish_chars ? 'Spanish characters detected in page title' : 
+                          round($non_ascii_percentage, 2) . '% non-ASCII characters';
+                error_log('🌍 Non-English content detected (' . $reason . '). Skipping DOMPDF, using HTML fallback for better Unicode support.');
                 $force_html = true;
             }
 
