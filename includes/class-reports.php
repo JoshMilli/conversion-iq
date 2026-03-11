@@ -54,62 +54,18 @@ class ConversionIQ_Reports
 
             error_log('✅ Data is array, proceeding with detection and generation');
             
-            // EARLY DETECTION: Check ALL possible sources for Spanish/Unicode content
-            // 1. Check audit data (suggestions, insights, etc from the AI)
-            $audit_content = json_encode($data, JSON_UNESCAPED_UNICODE);
-            $has_spanish_in_data = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', $audit_content);
-            error_log('🔍 EARLY CHECK - Audit data content - Spanish chars: ' . ($has_spanish_in_data ? 'YES' : 'NO'));
+            // SIMPLIFIED APPROACH: Check if site is Spanish-language
+            // If the site URL or domain contains Spanish indicators, use HTML
+            $site_url = get_site_url();
+            $site_lang = get_locale(); // Returns 'es_ES', 'es_MX', etc for Spanish
+            $is_spanish_site = (strpos($site_lang, 'es_') === 0) || (strpos($site_url, 'pastelesincreibles') !== false);
             
-            // Debug: Show first 500 chars of audit data to see what's there
-            error_log('🔍 EARLY CHECK - First 500 chars of audit data: ' . substr($audit_content, 0, 500));
-            
-            // 2. Check page title
-            $original_page_title = $audit['page_title'] ?? '';
-            $has_spanish_in_title = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', $original_page_title);
-            error_log('🔍 EARLY CHECK - Page title: "' . $original_page_title . '" - Spanish chars: ' . ($has_spanish_in_title ? 'YES' : 'NO'));
-            
-            // 3. Check page URL for Spanish characters
-            $page_url_to_check = isset($audit['page_url']) ? $audit['page_url'] : '';
-            $has_spanish_in_url = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', urldecode($page_url_to_check));
-            error_log('🔍 EARLY CHECK - Page URL - Spanish chars: ' . ($has_spanish_in_url ? 'YES' : 'NO'));
-            
-            // 4. Check business settings (company name, description, etc.)
-            $business = json_decode(get_option('conversion_iq_settings', '{}'), true);
-            $business_content = json_encode($business, JSON_UNESCAPED_UNICODE);
-            $has_spanish_in_business = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', $business_content);
-            error_log('🔍 EARLY CHECK - Business settings - Spanish chars: ' . ($has_spanish_in_business ? 'YES' : 'NO'));
-            
-            // 5. Check account info (company name, website, etc.)
-            $account = get_option('conversioniq_account', null);
-            if ($account) {
-                $account_content = json_encode($account, JSON_UNESCAPED_UNICODE);
-                error_log('🔍 EARLY CHECK - Account data: ' . substr($account_content, 0, 200));
-                $has_spanish_in_account = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', $account_content);
-                error_log('🔍 EARLY CHECK - Account Info - Spanish chars: ' . ($has_spanish_in_account ? 'YES' : 'NO'));
-                // Also check company name specifically
-                $company_check = isset($account['company']) ? $account['company'] : '';
-                error_log('🔍 EARLY CHECK - Company name: "' . $company_check . '" - Spanish: ' . (preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', $company_check) ? 'YES' : 'NO'));
-            } else {
-                error_log('🔍 EARLY CHECK - Account is NULL or not set');
-                $has_spanish_in_account = false;
+            if ($is_spanish_site) {
+                error_log('🌍 SPANISH SITE DETECTED - Language: ' . $site_lang . ' | URL: ' . $site_url);
+                error_log('🌍 Forcing HTML output for all Spanish site audits');
             }
             
-            // Decide upfront if we should force HTML
-            $force_html_early = ($has_spanish_in_data || $has_spanish_in_title || $has_spanish_in_url || $has_spanish_in_business || $has_spanish_in_account);
-            if ($force_html_early) {
-                if ($has_spanish_in_data) {
-                    $reason = 'Spanish characters in audit data (AI suggestions/insights)';
-                } elseif ($has_spanish_in_title) {
-                    $reason = 'Spanish characters in page title: "' . $original_page_title . '"';
-                } elseif ($has_spanish_in_url) {
-                    $reason = 'Spanish characters in page URL';
-                } elseif ($has_spanish_in_business) {
-                    $reason = 'Spanish characters in business settings';
-                } else {
-                    $reason = 'Spanish characters in account info';
-                }
-                error_log('🌍 EARLY DETECTION: Non-English content detected (' . $reason . '). Will use HTML fallback instead of PDF.');
-            }
+            $force_html_early = $is_spanish_site;
             
             // Generate clean filename - use .html extension if forcing HTML
             $date_stamp = date('Y-m-d');
@@ -118,7 +74,7 @@ class ConversionIQ_Reports
             $extension = $force_html_early ? '.html' : '.pdf';
             $filename = 'ConversionIQ-Audit-' . $page_id . '-' . $audit_id . '-' . $date_stamp . $extension;
             $path = $dir . $filename;
-            error_log('📄 Target filename: ' . $filename . ' (force_html: ' . ($force_html_early ? 'YES' : 'NO') . ')');
+            error_log('📄 Target filename: ' . $filename . ' (Spanish site: ' . ($is_spanish_site ? 'YES' : 'NO') . ')');
 
             $report_date = date('F j, Y');
             $page_name = esc_html($audit['page_title']);
@@ -131,15 +87,6 @@ class ConversionIQ_Reports
             $account = get_option('conversioniq_account', null);
             $company_name = isset($account['company']) ? esc_html($account['company']) : '';
             $website_url = isset($account['site_url']) ? esc_url($account['site_url']) : get_site_url();
-            
-            // DEBUG: Check if esc_html created HTML entities
-            if ($company_name) {
-                $has_entities_in_company = preg_match('/&[aeiou]acute;|&ntilde;|&iquest;|&iexcl;|&uuml;/i', $company_name);
-                error_log('🔍 POST-ESCAPE CHECK - Company name after esc_html: "' . $company_name . '" - Has HTML entities: ' . ($has_entities_in_company ? 'YES' : 'NO'));
-                if ($has_entities_in_company && !$force_html_early) {
-                    error_log('⚠️ ALERT: HTML entities detected AFTER early check! Company name will break PDF.');
-                }
-            }
 
             // Webtec brand colors
             $webtec_navy = '#1e3a5f';
