@@ -41,14 +41,6 @@ class ConversionIQ_Reports
 
             error_log('📁 Upload directory: ' . $dir);
 
-            // Generate clean filename without special characters
-            // Use audit ID and page ID to avoid issues with non-ASCII characters in email attachments
-            $date_stamp = date('Y-m-d');
-            $audit_id = isset($audit['id']) ? $audit['id'] : time();
-            $page_id = isset($audit['page_id']) ? $audit['page_id'] : 'unknown';
-            $filename = 'ConversionIQ-Audit-' . $page_id . '-' . $audit_id . '-' . $date_stamp . '.pdf';
-            $path = $dir . $filename;
-
             $data = $audit['data'];
 
             // Validate that $data is an array
@@ -60,7 +52,45 @@ class ConversionIQ_Reports
                 );
             }
 
-            error_log('✅ Data is array, proceeding with HTML generation');
+            error_log('✅ Data is array, proceeding with detection and generation');
+            
+            // EARLY DETECTION: Check audit data for Spanish/Unicode content BEFORE HTML generation
+            // This is the REAL Spanish content - suggestions, insights, etc from the AI
+            $audit_content = json_encode($data, JSON_UNESCAPED_UNICODE);
+            $has_spanish_in_data = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', $audit_content);
+            error_log('🔍 EARLY CHECK - Audit data content - Spanish chars: ' . ($has_spanish_in_data ? 'YES' : 'NO'));
+            
+            // Check page title too
+            $original_page_title = $audit['page_title'] ?? '';
+            $has_spanish_in_title = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', $original_page_title);
+            error_log('🔍 EARLY CHECK - Page title: "' . $original_page_title . '" - Spanish chars: ' . ($has_spanish_in_title ? 'YES' : 'NO'));
+            
+            // Check page URL for Spanish characters too
+            $page_url_to_check = isset($audit['page_url']) ? $audit['page_url'] : '';
+            $has_spanish_in_url = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', urldecode($page_url_to_check));
+            error_log('🔍 EARLY CHECK - Page URL - Spanish chars: ' . ($has_spanish_in_url ? 'YES' : 'NO'));
+            
+            // Decide upfront if we should force HTML
+            $force_html_early = ($has_spanish_in_data || $has_spanish_in_title || $has_spanish_in_url);
+            if ($force_html_early) {
+                if ($has_spanish_in_data) {
+                    $reason = 'Spanish characters in audit data (AI suggestions/insights)';
+                } elseif ($has_spanish_in_title) {
+                    $reason = 'Spanish characters in page title: "' . $original_page_title . '"';
+                } else {
+                    $reason = 'Spanish characters in page URL';
+                }
+                error_log('🌍 EARLY DETECTION: Non-English content detected (' . $reason . '). Will use HTML fallback instead of PDF.');
+            }
+            
+            // Generate clean filename - use .html extension if forcing HTML
+            $date_stamp = date('Y-m-d');
+            $audit_id = isset($audit['id']) ? $audit['id'] : time();
+            $page_id = isset($audit['page_id']) ? $audit['page_id'] : 'unknown';
+            $extension = $force_html_early ? '.html' : '.pdf';
+            $filename = 'ConversionIQ-Audit-' . $page_id . '-' . $audit_id . '-' . $date_stamp . $extension;
+            $path = $dir . $filename;
+            error_log('📄 Target filename: ' . $filename . ' (force_html: ' . ($force_html_early ? 'YES' : 'NO') . ')');
 
             $report_date = date('F j, Y');
             $page_name = esc_html($audit['page_title']);
@@ -1214,38 +1244,35 @@ class ConversionIQ_Reports
             // Detect non-ASCII content (Spanish, etc.) and skip DOMPDF directly to HTML
             // DOMPDF has issues with Unicode characters even with DejaVu Sans
             
-            // Check ORIGINAL page title BEFORE HTML escaping (most likely to contain Spanish characters)
-            $original_page_title = $audit['page_title'] ?? '';
-            $has_spanish_chars = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', $original_page_title);
-            error_log('🔍 Checking page title: "' . $original_page_title . '" - Spanish chars: ' . ($has_spanish_chars ? 'YES' : 'NO'));
+            // Use early detection result (already checked audit data and page title)
+            $force_html = $force_html_early;
             
-            // Also check for HTML entities that indicate Spanish content (from already escaped text)
-            $has_spanish_entities = preg_match('/&[aeiou]acute;|&ntilde;|&iquest;|&iexcl;|&uuml;/i', $html);
-            error_log('🔍 HTML entities check: ' . ($has_spanish_entities ? 'YES' : 'NO'));
-            
-            // Sample multiple parts of HTML for non-ASCII content
-            $sample_text = substr($html, 0, 10000); // Check first 10KB
-            $non_ascii_count = 0;
-            $sample_length = strlen($sample_text);
-            for ($i = 0; $i < $sample_length; $i++) {
-                if (ord($sample_text[$i]) > 127) {
-                    $non_ascii_count++;
+            // Additional check for HTML entities in the generated HTML (backup detection)
+            if (!$force_html) {
+                $has_spanish_entities = preg_match('/&[aeiou]acute;|&ntilde;|&iquest;|&iexcl;|&uuml;/i', $html);
+                error_log('🔍 HTML entities check: ' . ($has_spanish_entities ? 'YES' : 'NO'));
+                
+                // Sample HTML for non-ASCII content
+                $sample_text = substr($html, 0, 10000); // Check first 10KB
+                $non_ascii_count = 0;
+                $sample_length = strlen($sample_text);
+                for ($i = 0; $i < $sample_length; $i++) {
+                    if (ord($sample_text[$i]) > 127) {
+                        $non_ascii_count++;
+                    }
                 }
-            }
-            $non_ascii_percentage = ($non_ascii_count / $sample_length) * 100;
-            
-            $force_html = false;
-            // Force HTML if: Spanish chars OR HTML entities OR >0.3% non-ASCII chars
-            if ($has_spanish_chars || $has_spanish_entities || $non_ascii_percentage > 0.3) {
-                if ($has_spanish_chars) {
-                    $reason = 'Spanish characters detected in page title: "' . $original_page_title . '"';
-                } elseif ($has_spanish_entities) {
-                    $reason = 'Spanish HTML entities detected in content';
-                } else {
-                    $reason = round($non_ascii_percentage, 2) . '% non-ASCII characters';
+                $non_ascii_percentage = ($non_ascii_count / $sample_length) * 100;
+                
+                // Force HTML if entities detected OR >0.3% non-ASCII
+                if ($has_spanish_entities || $non_ascii_percentage > 0.3) {
+                    if ($has_spanish_entities) {
+                        $reason = 'Spanish HTML entities detected in content';
+                    } else {
+                        $reason = round($non_ascii_percentage, 2) . '% non-ASCII characters';
+                    }
+                    error_log('🌍 Non-English content detected (' . $reason . '). Skipping DOMPDF, using HTML fallback for better Unicode support.');
+                    $force_html = true;
                 }
-                error_log('🌍 Non-English content detected (' . $reason . '). Skipping DOMPDF, using HTML fallback for better Unicode support.');
-                $force_html = true;
             }
 
             // Try using DOMPDF if available via Composer and content is ASCII-safe
