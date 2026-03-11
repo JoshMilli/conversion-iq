@@ -1275,7 +1275,6 @@ class ConversionIQ_Reports
                     // Clean up DOMPDF objects
                     unset($dompdf, $html_for_pdf, $pdf_output);
                 }
-                }
             }
             else {
                 error_log('⚠️ DOMPDF not available, using HTML fallback');
