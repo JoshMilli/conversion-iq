@@ -1201,6 +1201,10 @@ class ConversionIQ_Reports
             $html .= '</body></html>';
 
             error_log('✅ HTML generation complete. Length: ' . strlen($html) . ' bytes');
+            
+            // IMPORTANT: Save original HTML before any DOMPDF modifications
+            // DOMPDF encoding can corrupt the HTML if it fails
+            $original_html = $html;
 
             // Free up memory after HTML generation
             if (function_exists('gc_collect_cycles')) {
@@ -1221,28 +1225,36 @@ class ConversionIQ_Reports
                     
                     $dompdf = new \Dompdf\Dompdf($options);
                     
+                    // Work with a COPY of HTML to preserve original for fallback
+                    $html_for_pdf = $original_html;
+                    
                     // Ensure HTML is UTF-8 encoded
                     if (function_exists('mb_convert_encoding')) {
-                        $html = mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8');
+                        $html_for_pdf = mb_convert_encoding($html_for_pdf, 'HTML-ENTITIES', 'UTF-8');
                     }
                     
-                    $dompdf->loadHtml($html);
+                    $dompdf->loadHtml($html_for_pdf);
                     $dompdf->setPaper('A4', 'portrait');
                     $dompdf->render();
                     
                     // Get PDF output before writing to ensure it's valid
                     $pdf_output = $dompdf->output();
                     
-                    if (empty($pdf_output)) {
-                        throw new Exception('DOMPDF generated empty output');
+                    if (empty($pdf_output) || strlen($pdf_output) < 1000) {
+                        throw new Exception('DOMPDF generated invalid or too small output (' . strlen($pdf_output) . ' bytes)');
+                    }
+                    
+                    // Verify it's actually PDF data
+                    if (substr($pdf_output, 0, 4) !== '%PDF') {
+                        throw new Exception('DOMPDF output does not appear to be valid PDF');
                     }
                     
                     file_put_contents($path, $pdf_output);
                     $url = trailingslashit($upload['baseurl']) . 'conversioniq/reports/' . $filename;
-                    error_log('✅ PDF generated successfully: ' . $url);
+                    error_log('✅ PDF generated successfully: ' . $url . ' (' . strlen($pdf_output) . ' bytes)');
 
                     // Free memory
-                    unset($html, $dompdf, $pdf_output);
+                    unset($html, $html_for_pdf, $original_html, $dompdf, $pdf_output);
                     if (function_exists('gc_collect_cycles')) {
                         gc_collect_cycles();
                     }
@@ -1252,12 +1264,17 @@ class ConversionIQ_Reports
                 catch (Exception $e) {
                     error_log('❌ DOMPDF Error: ' . $e->getMessage());
                     error_log('❌ Stack trace: ' . $e->getTraceAsString());
+                    error_log('⚠️ Falling back to HTML report due to DOMPDF error');
                     
                     // Clean up any partial PDF file
                     if (file_exists($path)) {
                         @unlink($path);
                         error_log('🗑️ Cleaned up partial PDF file');
                     }
+                    
+                    // Clean up DOMPDF objects
+                    unset($dompdf, $html_for_pdf, $pdf_output);
+                }
                 }
             }
             else {
@@ -1270,10 +1287,11 @@ class ConversionIQ_Reports
             $fallback_path = $dir . str_replace('.pdf', '.html', $filename);
 
             // Add print stylesheet for better PDF conversion
+            // Use $original_html to ensure clean HTML even if DOMPDF corrupted $html
             $print_ready_html = str_replace(
                 '</head>',
                 '<style>@media print { body { margin: 0; padding: 0; } .page { page-break-after: always; } .page:last-child { page-break-after: avoid; } }</style></head>',
-                $html
+                $original_html
             );
             
             // Verify we're actually writing HTML, not PDF data
@@ -1290,7 +1308,7 @@ class ConversionIQ_Reports
             error_log('📝 HTML fallback file size: ' . filesize($fallback_path) . ' bytes');
 
             // Free memory
-            unset($html, $print_ready_html);
+            unset($html, $original_html, $print_ready_html);
             if (function_exists('gc_collect_cycles')) {
                 gc_collect_cycles();
             }
