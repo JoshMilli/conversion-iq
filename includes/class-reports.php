@@ -1027,7 +1027,11 @@ class ConversionIQ_Reports
         </div>';
 
             // ============ PAGE 4.5: LEAD INTELLIGENCE SUMMARY ============
-            if (!empty($data['lead_intelligence_summary']) && is_array($data['lead_intelligence_summary'])) {
+            // Only show if KnockKnock is configured AND lead intel data exists
+            $knockknock_company_id = get_option('conversioniq_knockknock_company_id', '');
+            $is_knockknock_configured = !empty($knockknock_company_id);
+            
+            if ($is_knockknock_configured && !empty($data['lead_intelligence_summary']) && is_array($data['lead_intelligence_summary'])) {
                 $lead_intel = $data['lead_intelligence_summary'];
                 $html .= '
             <div class="page content-page">
@@ -1074,6 +1078,9 @@ class ConversionIQ_Reports
             }
 
             // ============ PAGE 5 (or 6): FEATURES & FUNCTIONALITY ============
+            // Calculate correct page number based on whether Lead Intelligence was shown
+            $features_page_num = $is_knockknock_configured ? 6 : 5;
+            
             $html .= '
         <div class="page content-page">
             <div class="content-header">
@@ -1158,7 +1165,7 @@ class ConversionIQ_Reports
             }
 
             $html .= '
-            <div class="page-number">Page 4</div>
+            <div class="page-number">Page ' . $features_page_num . '</div>
         </div>';
 
             // ============ LAST PAGE: THANK YOU ============
