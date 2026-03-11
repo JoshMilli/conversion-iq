@@ -54,31 +54,54 @@ class ConversionIQ_Reports
 
             error_log('✅ Data is array, proceeding with detection and generation');
             
-            // EARLY DETECTION: Check audit data for Spanish/Unicode content BEFORE HTML generation
-            // This is the REAL Spanish content - suggestions, insights, etc from the AI
+            // EARLY DETECTION: Check ALL possible sources for Spanish/Unicode content
+            // 1. Check audit data (suggestions, insights, etc from the AI)
             $audit_content = json_encode($data, JSON_UNESCAPED_UNICODE);
             $has_spanish_in_data = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', $audit_content);
             error_log('🔍 EARLY CHECK - Audit data content - Spanish chars: ' . ($has_spanish_in_data ? 'YES' : 'NO'));
             
-            // Check page title too
+            // Debug: Show first 500 chars of audit data to see what's there
+            error_log('🔍 EARLY CHECK - First 500 chars of audit data: ' . substr($audit_content, 0, 500));
+            
+            // 2. Check page title
             $original_page_title = $audit['page_title'] ?? '';
             $has_spanish_in_title = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', $original_page_title);
             error_log('🔍 EARLY CHECK - Page title: "' . $original_page_title . '" - Spanish chars: ' . ($has_spanish_in_title ? 'YES' : 'NO'));
             
-            // Check page URL for Spanish characters too
+            // 3. Check page URL for Spanish characters
             $page_url_to_check = isset($audit['page_url']) ? $audit['page_url'] : '';
             $has_spanish_in_url = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', urldecode($page_url_to_check));
             error_log('🔍 EARLY CHECK - Page URL - Spanish chars: ' . ($has_spanish_in_url ? 'YES' : 'NO'));
             
+            // 4. Check business settings (company name, description, etc.)
+            $business = json_decode(get_option('conversion_iq_settings', '{}'), true);
+            $business_content = json_encode($business, JSON_UNESCAPED_UNICODE);
+            $has_spanish_in_business = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', $business_content);
+            error_log('🔍 EARLY CHECK - Business settings - Spanish chars: ' . ($has_spanish_in_business ? 'YES' : 'NO'));
+            
+            // 5. Check account info (company name, website, etc.)
+            $account = get_option('conversioniq_account', null);
+            if ($account) {
+                $account_content = json_encode($account, JSON_UNESCAPED_UNICODE);
+                $has_spanish_in_account = preg_match('/[áéíóúñÁÉÍÓÚÑ¿¡üÜ]/u', $account_content);
+                error_log('🔍 EARLY CHECK - Account Info - Spanish chars: ' . ($has_spanish_in_account ? 'YES' : 'NO'));
+            } else {
+                $has_spanish_in_account = false;
+            }
+            
             // Decide upfront if we should force HTML
-            $force_html_early = ($has_spanish_in_data || $has_spanish_in_title || $has_spanish_in_url);
+            $force_html_early = ($has_spanish_in_data || $has_spanish_in_title || $has_spanish_in_url || $has_spanish_in_business || $has_spanish_in_account);
             if ($force_html_early) {
                 if ($has_spanish_in_data) {
                     $reason = 'Spanish characters in audit data (AI suggestions/insights)';
                 } elseif ($has_spanish_in_title) {
                     $reason = 'Spanish characters in page title: "' . $original_page_title . '"';
-                } else {
+                } elseif ($has_spanish_in_url) {
                     $reason = 'Spanish characters in page URL';
+                } elseif ($has_spanish_in_business) {
+                    $reason = 'Spanish characters in business settings';
+                } else {
+                    $reason = 'Spanish characters in account info';
                 }
                 error_log('🌍 EARLY DETECTION: Non-English content detected (' . $reason . '). Will use HTML fallback instead of PDF.');
             }
