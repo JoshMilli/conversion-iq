@@ -1211,16 +1211,38 @@ class ConversionIQ_Reports
             if (class_exists('\Dompdf\Dompdf')) {
                 try {
                     error_log('🔧 Using DOMPDF for PDF generation');
-                    $dompdf = new \Dompdf\Dompdf();
+                    
+                    // Configure DOMPDF with proper options for Unicode/UTF-8 support
+                    $options = new \Dompdf\Options();
+                    $options->set('isHtml5ParserEnabled', true);
+                    $options->set('isRemoteEnabled', true);
+                    $options->set('defaultFont', 'DejaVu Sans'); // Better Unicode support than Helvetica
+                    $options->set('isFontSubsettingEnabled', true);
+                    
+                    $dompdf = new \Dompdf\Dompdf($options);
+                    
+                    // Ensure HTML is UTF-8 encoded
+                    if (function_exists('mb_convert_encoding')) {
+                        $html = mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8');
+                    }
+                    
                     $dompdf->loadHtml($html);
                     $dompdf->setPaper('A4', 'portrait');
                     $dompdf->render();
-                    file_put_contents($path, $dompdf->output());
+                    
+                    // Get PDF output before writing to ensure it's valid
+                    $pdf_output = $dompdf->output();
+                    
+                    if (empty($pdf_output)) {
+                        throw new Exception('DOMPDF generated empty output');
+                    }
+                    
+                    file_put_contents($path, $pdf_output);
                     $url = trailingslashit($upload['baseurl']) . 'conversioniq/reports/' . $filename;
                     error_log('✅ PDF generated successfully: ' . $url);
 
                     // Free memory
-                    unset($html, $dompdf);
+                    unset($html, $dompdf, $pdf_output);
                     if (function_exists('gc_collect_cycles')) {
                         gc_collect_cycles();
                     }
@@ -1229,6 +1251,13 @@ class ConversionIQ_Reports
                 }
                 catch (Exception $e) {
                     error_log('❌ DOMPDF Error: ' . $e->getMessage());
+                    error_log('❌ Stack trace: ' . $e->getTraceAsString());
+                    
+                    // Clean up any partial PDF file
+                    if (file_exists($path)) {
+                        @unlink($path);
+                        error_log('🗑️ Cleaned up partial PDF file');
+                    }
                 }
             }
             else {
@@ -1237,6 +1266,7 @@ class ConversionIQ_Reports
 
             // Alternative: Use WordPress built-in functionality to create better formatted HTML
             // that can be printed to PDF by the browser
+            error_log('📄 Falling back to HTML report generation');
             $fallback_path = $dir . str_replace('.pdf', '.html', $filename);
 
             // Add print stylesheet for better PDF conversion
@@ -1245,8 +1275,19 @@ class ConversionIQ_Reports
                 '<style>@media print { body { margin: 0; padding: 0; } .page { page-break-after: always; } .page:last-child { page-break-after: avoid; } }</style></head>',
                 $html
             );
+            
+            // Verify we're actually writing HTML, not PDF data
+            if (substr($print_ready_html, 0, 10) === '%PDF-1.') {
+                error_log('❌ ERROR: HTML variable contains PDF data! This should not happen.');
+                return array(
+                    'success' => false,
+                    'message' => 'Internal error: PDF data in HTML variable',
+                );
+            }
 
             file_put_contents($fallback_path, $print_ready_html);
+            
+            error_log('📝 HTML fallback file size: ' . filesize($fallback_path) . ' bytes');
 
             // Free memory
             unset($html, $print_ready_html);
