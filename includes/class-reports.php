@@ -1211,8 +1211,25 @@ class ConversionIQ_Reports
                 gc_collect_cycles();
             }
 
-            // Try using DOMPDF if available via Composer
-            if (class_exists('\Dompdf\Dompdf')) {
+            // Detect non-ASCII content (Spanish, etc.) and skip DOMPDF directly to HTML
+            // DOMPDF has issues with Unicode characters even with DejaVu Sans
+            $sample_text = substr($html, 0, 5000); // Check first 5KB
+            $non_ascii_count = 0;
+            for ($i = 0; $i < strlen($sample_text); $i++) {
+                if (ord($sample_text[$i]) > 127) {
+                    $non_ascii_count++;
+                }
+            }
+            $non_ascii_percentage = ($non_ascii_count / strlen($sample_text)) * 100;
+            
+            $force_html = false;
+            if ($non_ascii_percentage > 1) { // More than 1% non-ASCII characters
+                error_log('🌍 Detected non-ASCII content (' . round($non_ascii_percentage, 2) . '% non-ASCII characters). Skipping DOMPDF, using HTML fallback for better Unicode support.');
+                $force_html = true;
+            }
+
+            // Try using DOMPDF if available via Composer and content is ASCII-safe
+            if (!$force_html && class_exists('\Dompdf\Dompdf')) {
                 try {
                     error_log('🔧 Using DOMPDF for PDF generation');
                     
@@ -1301,8 +1318,41 @@ class ConversionIQ_Reports
                     'message' => 'Internal error: PDF data in HTML variable',
                 );
             }
+            
+            // Double-check: Ensure it starts with HTML
+            $html_start = ltrim(substr($print_ready_html, 0, 100));
+            if (!preg_match('/^<!DOCTYPE|^<html/i', $html_start)) {
+                error_log('❌ ERROR: HTML content does not start with DOCTYPE or <html>. First 100 chars: ' . substr($html_start, 0, 100));
+                return array(
+                    'success' => false,
+                    'message' => 'Internal error: Invalid HTML content',
+                );
+            }
 
             file_put_contents($fallback_path, $print_ready_html);
+            
+            // Verify file was written correctly
+            if (!file_exists($fallback_path)) {
+                error_log('❌ ERROR: Failed to write HTML file to ' . $fallback_path);
+                return array(
+                    'success' => false,
+                    'message' => 'Failed to write HTML report file',
+                );
+            }
+            
+            // Read back first few bytes to ensure it's HTML
+            $file_handle = fopen($fallback_path, 'r');
+            $first_bytes = fread($file_handle, 10);
+            fclose($file_handle);
+            
+            if (substr($first_bytes, 0, 4) === '%PDF') {
+                error_log('❌ CRITICAL ERROR: HTML file contains PDF data after write! Deleting corrupted file.');
+                @unlink($fallback_path);
+                return array(
+                    'success' => false,
+                    'message' => 'Critical error: PDF data written to HTML file. Please contact support.',
+                );
+            }
             
             error_log('📝 HTML fallback file size: ' . filesize($fallback_path) . ' bytes');
 
