@@ -2461,15 +2461,23 @@ export default function App() {
                                       {item.email || <span style={{ color: '#9ca3af' }}>No email</span>}
                                     </td>
                                     <td style={{ padding: '14px 16px' }}>
-                                      {item.page_url ? (
+                                      {item.initial_page_visit || item.page_url ? (
                                         <a 
-                                          href={item.page_url} 
+                                          href={item.initial_page_visit || item.page_url} 
                                           target="_blank" 
                                           rel="noopener noreferrer"
                                           style={{ color: '#7c3aed', textDecoration: 'none', fontWeight: 500 }}
                                           onClick={(e) => e.stopPropagation()}
                                         >
-                                          {new URL(item.page_url).pathname}
+                                          {(() => {
+                                            const url = item.initial_page_visit || item.page_url;
+                                            try {
+                                              const parsed = new URL(url);
+                                              return parsed.pathname === '/' ? parsed.hostname : parsed.pathname;
+                                            } catch {
+                                              return url;
+                                            }
+                                          })()}
                                         </a>
                                       ) : <span style={{ color: '#9ca3af' }}>Unknown</span>}
                                     </td>
@@ -2540,9 +2548,17 @@ export default function App() {
                                   </div>
                                 </div>
                                 
-                                {item.page_url && (
+                                {(item.initial_page_visit || item.page_url) && (
                                   <div style={{ fontSize: 13, color: '#7c3aed', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    🔗 {new URL(item.page_url).pathname}
+                                    🔗 {(() => {
+                                      const url = item.initial_page_visit || item.page_url;
+                                      try {
+                                        const parsed = new URL(url);
+                                        return parsed.pathname === '/' ? parsed.hostname : parsed.pathname;
+                                      } catch {
+                                        return url;
+                                      }
+                                    })()}
                                   </div>
                                 )}
                               </div>
