@@ -1041,21 +1041,22 @@ class ConversionIQ_Reports
         </div>';
 
             // ============ PAGE 4.5: LEAD INTELLIGENCE SUMMARY ============
-            // Show if KnockKnock is configured AND we have real webhook data
+            // Show if KnockKnock is configured OR if webhook data exists in the database
             $knockknock_company_id = get_option('conversioniq_knockknock_company_id', '');
             $is_knockknock_configured = !empty($knockknock_company_id);
             
             // Use stored webhook_stats from audit data (real DB numbers, attached during audit)
             $webhook_stats = isset($data['webhook_stats']) ? $data['webhook_stats'] : null;
             
-            // Fallback: query fresh if not stored in audit data
-            if (!$webhook_stats && $is_knockknock_configured) {
+            // Always try to fetch fresh webhook data - show if ANY data exists regardless of config
+            if (!$webhook_stats) {
                 $webhook_stats = ConversionIQ_AI::get_webhook_statistics($audit['page_url']);
             }
             
             $has_lead_intel = !empty($data['lead_intelligence_summary']) && is_array($data['lead_intelligence_summary']);
             
-            if ($is_knockknock_configured && $webhook_stats) {
+            // Show section if: KnockKnock is configured AND data exists, OR data exists from DB
+            if ($webhook_stats) {
                 $html .= '
             <div class="page content-page">
                 <div class="content-header">
