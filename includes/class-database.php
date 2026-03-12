@@ -138,6 +138,20 @@ class ConversionIQ_DB
         dbDelta($sql_leads);
         dbDelta($sql_sessions);
         dbDelta($sql_analytics);
+
+        // Add initial_page_visit column to leads table if it doesn't exist
+        $leads_columns = $wpdb->get_col("DESCRIBE $table_leads");
+        if (!in_array('initial_page_visit', $leads_columns)) {
+            $wpdb->query("ALTER TABLE $table_leads ADD COLUMN initial_page_visit TEXT AFTER page_title");
+            error_log('ConversionIQ: Added initial_page_visit column to leads table');
+        }
+
+        // Add initial_page_visit column to visitor_sessions table if it doesn't exist
+        $sessions_columns = $wpdb->get_col("DESCRIBE $table_sessions");
+        if (!in_array('initial_page_visit', $sessions_columns)) {
+            $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN initial_page_visit TEXT AFTER page_url");
+            error_log('ConversionIQ: Added initial_page_visit column to visitor_sessions table');
+        }
     }
 
     public static function insert_audit($page_id, $page_title, $data, $content_hash = null)
