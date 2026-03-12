@@ -412,7 +412,7 @@ class ConversionIQ_AI
         }
         
         // Get leads that started on this page
-        $leads_query = "SELECT email, company, page_title, initial_page_visit, created_at 
+        $leads_query = "SELECT email, first_name, last_name, page_title, initial_page_visit, created_at 
              FROM $leads_table 
              WHERE $where_clause_leads 
              ORDER BY created_at DESC 
@@ -421,7 +421,7 @@ class ConversionIQ_AI
         $leads = $wpdb->get_results($wpdb->prepare($leads_query, ...$sql_params), ARRAY_A);
         
         // Get visitors engaged on this page
-        $visitors_query = "SELECT email, company, page_url, created_at 
+        $visitors_query = "SELECT email, first_name, last_name, page_url, created_at 
              FROM $visitors_table 
              WHERE $where_clause_visitors 
              ORDER BY created_at DESC 
@@ -460,12 +460,12 @@ class ConversionIQ_AI
             
             // Fallback: get ALL site visitor data (useful when URLs don't match exactly)
             $leads = $wpdb->get_results(
-                "SELECT email, company, page_title, initial_page_visit, created_at 
+                "SELECT email, first_name, last_name, page_title, initial_page_visit, created_at 
                  FROM $leads_table ORDER BY created_at DESC LIMIT 50",
                 ARRAY_A
             );
             $visitors = $wpdb->get_results(
-                "SELECT email, company, page_url, created_at 
+                "SELECT email, first_name, last_name, page_url, created_at 
                  FROM $visitors_table ORDER BY created_at DESC LIMIT 50",
                 ARRAY_A
             );
@@ -499,11 +499,8 @@ class ConversionIQ_AI
         $total_visitors = count($visitors);
         $total_interactions = $total_leads + $total_visitors;
         
-        // Company analysis
-        $companies = array_filter(array_column(array_merge($leads, $visitors), 'company'));
-        $company_counts = array_count_values($companies);
-        arsort($company_counts);
-        $top_companies = array_slice($company_counts, 0, 10, true);
+        // Company analysis - no company column exists in leads/visitors tables
+        $top_companies = array();
         
         // Domain analysis
         $domains = array();

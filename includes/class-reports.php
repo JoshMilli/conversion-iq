@@ -1216,7 +1216,7 @@ class ConversionIQ_Reports
                                 <thead>
                                     <tr style="background: #f1f5f9;">
                                         <th style="padding: 12px 16px; text-align: left; font-weight: 700; color: #475569; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Email</th>
-                                        <th style="padding: 12px 16px; text-align: left; font-weight: 700; color: #475569; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Company</th>
+                                        <th style="padding: 12px 16px; text-align: left; font-weight: 700; color: #475569; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Name</th>
                                         <th style="padding: 12px 16px; text-align: right; font-weight: 700; color: #475569; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Date</th>
                                     </tr>
                                 </thead>
@@ -1225,13 +1225,14 @@ class ConversionIQ_Reports
                     foreach ($recent_people as $i => $person) {
                         $bg = ($i % 2 === 0) ? '#ffffff' : '#f8fafc';
                         $email = esc_html($person['email'] ?? '—');
-                        $company = esc_html($person['company'] ?? '—');
+                        $name_parts = array_filter(array($person['first_name'] ?? '', $person['last_name'] ?? ''));
+                        $display_name = !empty($name_parts) ? esc_html(implode(' ', $name_parts)) : '—';
                         $date = isset($person['created_at']) ? date('M j, Y g:i A', strtotime($person['created_at'])) : '—';
                         
                         $html .= '
                                     <tr style="background: ' . $bg . '; border-top: 1px solid #e2e8f0;">
                                         <td style="padding: 10px 16px; color: #1e293b; font-weight: 500;">' . $email . '</td>
-                                        <td style="padding: 10px 16px; color: #64748b;">' . $company . '</td>
+                                        <td style="padding: 10px 16px; color: #64748b;">' . $display_name . '</td>
                                         <td style="padding: 10px 16px; color: #64748b; text-align: right; font-size: 12px;">' . $date . '</td>
                                     </tr>';
                     }
