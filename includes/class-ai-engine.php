@@ -365,6 +365,10 @@ class ConversionIQ_AI
                        $page_url === $site_url || 
                        $page_url === trailingslashit($site_url);
         
+        error_log('🔍 Webhook Stats Query - Page URL: ' . $page_url);
+        error_log('🔍 Is Homepage: ' . ($is_homepage ? 'YES' : 'NO'));
+        error_log('🔍 Homepage variations: ' . implode(', ', $homepage_variations));
+        
         // Build SQL condition for homepage matching
         if ($is_homepage) {
             $homepage_placeholders = implode(',', array_fill(0, count($homepage_variations), '%s'));
@@ -378,24 +382,24 @@ class ConversionIQ_AI
         }
         
         // Get leads that started on this page
-        $leads = $wpdb->get_results($wpdb->prepare(
-            "SELECT email, company, page_title, initial_page_visit, created_at 
+        $leads_query = "SELECT email, company, page_title, initial_page_visit, created_at 
              FROM $leads_table 
              WHERE $where_clause_leads 
              ORDER BY created_at DESC 
-             LIMIT 50",
-            ...$sql_params
-        ), ARRAY_A);
+             LIMIT 50";
+        error_log('🔍 Leads SQL: ' . $leads_query);
+        $leads = $wpdb->get_results($wpdb->prepare($leads_query, ...$sql_params), ARRAY_A);
         
         // Get visitors engaged on this page
-        $visitors = $wpdb->get_results($wpdb->prepare(
-            "SELECT email, company, page_url, created_at 
+        $visitors_query = "SELECT email, company, page_url, created_at 
              FROM $visitors_table 
              WHERE $where_clause_visitors 
              ORDER BY created_at DESC 
-             LIMIT 50",
-            ...$sql_params
-        ), ARRAY_A);
+             LIMIT 50";
+        error_log('🔍 Visitors SQL: ' . $visitors_query);
+        $visitors = $wpdb->get_results($wpdb->prepare($visitors_query, ...$sql_params), ARRAY_A);
+        
+        error_log('🔍 Found ' . count($leads) . ' leads, ' . count($visitors) . ' visitors');
         
         // Get total site stats for context
         $total_site_leads = $wpdb->get_var("SELECT COUNT(*) FROM $leads_table");
@@ -414,6 +418,7 @@ class ConversionIQ_AI
         
         // Return null if no data
         if (empty($leads) && empty($visitors)) {
+            error_log('🔍 No webhook data found - returning null');
             return null;
         }
         
@@ -463,6 +468,8 @@ class ConversionIQ_AI
         $site_contribution_pct = ($total_site_leads > 0) 
             ? round(($total_leads / $total_site_leads) * 100, 1) 
             : 0;
+        
+        error_log('✅ Webhook stats compiled: ' . $total_interactions . ' interactions, ' . $site_contribution_pct . '% contribution');
         
         return array(
             'total_leads' => $total_leads,
@@ -609,71 +616,36 @@ class ConversionIQ_AI
 
         error_log('🎯 Detected page type: ' . $page_type . ' | Conversion goal: ' . $conversion_goal);
 
-        // Get webhook statistics for this page
+        // Get webhook statistics for this page - CONCISE version to avoid API timeouts
         $webhook_stats = self::get_webhook_statistics($url);
         $leads_context = '';
 
         if ($webhook_stats) {
             error_log('📊 Webhook stats loaded: ' . $webhook_stats['total_interactions'] . ' interactions, ' . $webhook_stats['total_leads'] . ' leads');
             
-            $leads_context .= "\n\n**REAL LEAD DATA ANALYSIS (KnockKnock Intelligence):**\n";
-            $leads_context .= "The following data represents ACTUAL leads and visitors who have engaged with this page:\n\n";
+            // ULTRA-CONCISE format to minimize prompt size
+            $leads_context .= "\n\n**LEAD INTELLIGENCE DATA:**\n";
+            $leads_context .= "This page: {$webhook_stats['total_leads']} leads, {$webhook_stats['total_visitors']} visitors ({$webhook_stats['site_contribution_pct']}% of site total). ";
+            $leads_context .= "Recent: {$webhook_stats['recent_activity_7d']} interactions (7d). ";
+            $leads_context .= "Peak: {$webhook_stats['peak_weekday']} at {$webhook_stats['peak_hour']}:00. ";
             
-            // Overall statistics
-            $leads_context .= "**Key Metrics:**\n";
-            $leads_context .= "- Total Leads Started Here: {$webhook_stats['total_leads']}\n";
-            $leads_context .= "- Total Engaged Visitors: {$webhook_stats['total_visitors']}\n";
-            $leads_context .= "- Page Contributes: {$webhook_stats['site_contribution_pct']}% of all site leads\n";
-            $leads_context .= "- Recent Activity (7 days): {$webhook_stats['recent_activity_7d']} interactions\n";
-            $leads_context .= "- Activity Status: " . ($webhook_stats['has_recent_activity'] ? 'ACTIVE' : 'QUIET') . "\n\n";
-            
-            // Company/Domain insights
+            // Top companies (max 3, condensed)
             if (!empty($webhook_stats['top_companies'])) {
-                $leads_context .= "**Top Companies Engaging:**\n";
-                $count = 0;
-                foreach ($webhook_stats['top_companies'] as $company => $frequency) {
-                    $leads_context .= "  - {$company}: {$frequency} interaction" . ($frequency > 1 ? 's' : '') . "\n";
-                    if (++$count >= 5) break;
-                }
-                $leads_context .= "\n";
+                $top3 = array_slice($webhook_stats['top_companies'], 0, 3, true);
+                $companies = array_keys($top3);
+                $leads_context .= "Top companies: " . implode(', ', $companies) . ". ";
             }
             
+            // Top domains (max 3, condensed)
             if (!empty($webhook_stats['top_domains'])) {
-                $leads_context .= "**Top Email Domains:**\n";
-                $count = 0;
-                foreach ($webhook_stats['top_domains'] as $domain => $frequency) {
-                    $leads_context .= "  - {$domain}: {$frequency} lead" . ($frequency > 1 ? 's' : '') . "\n";
-                    if (++$count >= 5) break;
-                }
-                $leads_context .= "\n";
+                $top3 = array_slice($webhook_stats['top_domains'], 0, 3, true);
+                $domains = array_keys($top3);
+                $leads_context .= "Top domains: " . implode(', ', $domains) . ". ";
             }
             
-            // Behavioral insights
-            $leads_context .= "**Behavioral Patterns:**\n";
-            $leads_context .= "- Peak Day: {$webhook_stats['peak_weekday']}\n";
-            $leads_context .= "- Peak Hour: {$webhook_stats['peak_hour']}:00\n\n";
-            
-            // Sample data for deeper insights
-            if (!empty($webhook_stats['sample_leads'])) {
-                $leads_context .= "**Sample Lead Data (for pattern analysis):**\n";
-                foreach (array_slice($webhook_stats['sample_leads'], 0, 3) as $lead) {
-                    $leads_context .= "  - Email: " . ($lead['email'] ?? 'N/A') . 
-                                     ", Company: " . ($lead['company'] ?? 'Unknown') . 
-                                     ", Date: " . date('M j', strtotime($lead['created_at'])) . "\n";
-                }
-                $leads_context .= "\n";
-            }
-            
-            $leads_context .= "**CRITICAL ANALYSIS INSTRUCTIONS:**\n";
-            $leads_context .= "1. Use these REAL NUMBERS in your lead_intelligence_summary - cite specific statistics\n";
-            $leads_context .= "2. In 'overview': Lead with the numbers (e.g., 'This page has generated {$webhook_stats['total_leads']} leads...')\n";
-            $leads_context .= "3. In 'messaging_alignment': Compare company names/domains against page content - do they match the target audience?\n";
-            $leads_context .= "4. In 'audience_insights': Analyze the pattern of companies and domains - what industries/roles are converting?\n";
-            $leads_context .= "5. In 'recommended_adjustments': Provide SPECIFIC changes based on gaps between actual leads and page messaging\n";
-            $leads_context .= "6. Be quantitative and data-driven - mention percentages, counts, and specific examples\n";
+            $leads_context .= "\n**INSTRUCTIONS:** Use these numbers in lead_intelligence_summary. Compare companies/domains against page content for alignment analysis.\n";
         } else {
-            error_log('ℹ️ No webhook data available for AI analysis');
-            $leads_context .= "\n\n**Note:** No lead intelligence data available yet for this page. Focus on general conversion best practices.\n";
+            error_log('ℹ️ No webhook data available for AI analysis (URL: ' . $url . ')');
         }
 
 
