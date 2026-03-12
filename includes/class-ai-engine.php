@@ -448,8 +448,36 @@ class ConversionIQ_AI
         
         // Return null if no data
         if (empty($leads) && empty($visitors)) {
-            error_log('🔍 No webhook data found - returning null');
-            return null;
+            error_log('🔍 No page-specific webhook data found - trying site-wide fallback');
+            
+            // Fallback: get ALL site visitor data (useful when URLs don't match exactly)
+            $leads = $wpdb->get_results(
+                "SELECT email, company, page_title, initial_page_visit, created_at 
+                 FROM $leads_table ORDER BY created_at DESC LIMIT 50",
+                ARRAY_A
+            );
+            $visitors = $wpdb->get_results(
+                "SELECT email, company, page_url, created_at 
+                 FROM $visitors_table ORDER BY created_at DESC LIMIT 50",
+                ARRAY_A
+            );
+            
+            if (empty($leads) && empty($visitors)) {
+                error_log('🔍 No webhook data found site-wide either - returning null');
+                return null;
+            }
+            
+            error_log('📊 Site-wide fallback: found ' . count($leads) . ' leads, ' . count($visitors) . ' visitors');
+            
+            // Recalculate 7-day activity for site-wide
+            $recent_leads = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM $leads_table WHERE created_at >= %s",
+                $seven_days_ago
+            ));
+            $recent_visitors = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM $visitors_table WHERE created_at >= %s",
+                $seven_days_ago
+            ));
         }
         
         // Aggregate statistics
