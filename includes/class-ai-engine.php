@@ -352,13 +352,29 @@ class ConversionIQ_AI
         $parsed_site = parse_url($site_url);
         
         // Homepage variations to check
+        $base_host = $parsed_site['host'];
+        $scheme = $parsed_site['scheme'];
+        
         $homepage_variations = array(
             $site_url,
             trailingslashit($site_url),
             rtrim($site_url, '/'),
-            $parsed_site['scheme'] . '://' . $parsed_site['host'],
-            $parsed_site['scheme'] . '://' . $parsed_site['host'] . '/'
+            $scheme . '://' . $base_host,
+            $scheme . '://' . $base_host . '/',
+            $scheme . '://www.' . $base_host,
+            $scheme . '://www.' . $base_host . '/',
         );
+        
+        // Remove www if present and add non-www variation
+        if (strpos($base_host, 'www.') === 0) {
+            $non_www = substr($base_host, 4);
+            $homepage_variations[] = $scheme . '://' . $non_www;
+            $homepage_variations[] = $scheme . '://' . $non_www . '/';
+        }
+        
+        // Remove duplicates
+        $homepage_variations = array_unique($homepage_variations);
+        $homepage_variations = array_values($homepage_variations);
         
         // Check if this is the homepage
         $is_homepage = in_array($page_url, $homepage_variations) || 
@@ -667,280 +683,43 @@ class ConversionIQ_AI
             $html_structure = substr($html_structure, 0, 2000) . '... [structure truncated]';
         }
 
-        $prompt = "You are an expert conversion copywriter and UX analyst. Perform a comprehensive analysis of the following WordPress page.{$section_context}
+        $prompt = "You are an expert conversion specialist. Analyze this {$page_type} page for: {$conversion_goal}{$section_context}
 
-**Business Context:**
-- Industry: {$industry}
-- Product/Service: {$product}
-- Target Audience: {$audience}
-- Customer Pain Points: {$pain_points}
-- Key Competitors: {$competitors}
-- Primary Business Goal: {$goal}
+**Business:** {$industry} | {$product} | Audience: {$audience} | Goal: {$goal}
+**Page:** {$title} ({$word_count} words)
 
-**Page Type & Context:**
-- Page Type: {$page_type}
-- Page Purpose: {$page_context}
-- Specific Conversion Goal for This Page: {$conversion_goal}
+**SCORING RUBRIC (0-100):**
 
-**IMPORTANT - Page-Specific Analysis:**
-This is a {$page_type} page. Your analysis MUST consider the unique conversion goals and user expectations for this page type:
-{$page_context}
+clarity_score: 0-40=vague/generic headline, unclear offering | 40-60=basic value prop | 60-75=clear what/who/why | 75+=benefit-driven, immediate understanding
 
-Evaluate all metrics (clarity, emotional resonance, CTA, readability, engagement, trust) specifically through the lens of this page type's conversion goals.
+cta_strength: 0-40='Learn More'/'Submit' (weak) | 40-60='Get Started' (basic) | 60-75=action verb+benefit | 75+=action+benefit+urgency, high contrast
 
-**CRITICAL - Clarity Score Scoring Guidelines:**
-When evaluating clarity_score (0-100), use these specific criteria:
+readability_score: 0-40=100+ word paragraphs, no subheadings | 40-60=60-100 word paragraphs, some subheadings | 60-75=40-60 words, clear structure | 75+=20-40 words, scannable, visual hierarchy
 
-- **0-20**: No clear value proposition, confusing or missing headline, unclear what the business does or offers, visitors likely confused within 5 seconds
-- **20-40**: Vague value proposition, generic headline (e.g., 'Welcome' or 'Quality Services'), requires reading multiple paragraphs to understand core offering, heavy use of industry jargon without explanation
-- **40-60**: Basic value proposition present but not compelling, headline states what you do but not why it matters, moderate jargon usage, benefits mentioned but buried or unclear, some specificity but lacks focus
-- **60-75**: Clear value proposition in headline, what you do and who it's for is obvious, benefits mentioned but could be more prominent, minimal jargon or jargon is explained, good specificity
-- **75-85**: Strong value proposition prominently displayed, benefit-focused headline, crystal clear what you offer and why visitors should care, industry-specific but accessible language, features framed as benefits
-- **85-100**: Exceptional clarity with benefit-driven headline that speaks directly to target pain points, unique value proposition immediately obvious, every section has clear purpose, zero ambiguity, perfect balance of specificity and accessibility
+emotional_score: 0-40=features only, no pain points | 40-60=some benefits, generic language | 60-75=pain points addressed, storytelling | 75+=deep empathy, aspirational, authentic
 
-IMPORTANT: Pages with vague headlines like 'Welcome to Our Site' or 'Quality Services' should score 20-40, NOT 60+. Clarity requires immediate understanding of WHAT you offer, WHO it's for, and WHY it matters.
+engagement_score: 0-40=static text, basic contact form | 40-60=images, basic interactivity | 60-75=multimedia, multiple interactions | 75+=rich interactive elements, personalization
 
-**CRITICAL - CTA Strength Scoring Guidelines:**
-When evaluating cta_strength (0-100), use these specific criteria:
+trust_score: 0-40=minimal/no social proof | 40-60=anonymous testimonials OR basic badges | 60-75=person names OR photos (not both) | 75+=full testimonials (name+photo+company) + badges + logos
 
-- **0-20**: No clear CTA present, or only generic links like 'Click Here' or 'Learn More', no visual prominence, no action orientation
-- **20-40**: Weak CTAs present (e.g., 'Submit' or 'Learn More'), minimal visual contrast, unclear what happens next, multiple competing CTAs with no hierarchy, passive language
-- **40-60**: Basic action-oriented CTAs (e.g., 'Get Started' or 'Contact Us'), some visual contrast, CTA present but not prominent, moderate specificity about next step, some urgency but not compelling
-- **60-75**: Clear action-oriented CTAs with good visual prominence, specific about outcome (e.g., 'Get Your Free Quote'), strategic placement (above fold + end of page), decent contrast and sizing, some urgency or benefit reinforcement
-- **75-85**: Strong CTAs with action verbs and benefit clarity (e.g., 'Start Saving Money Today'), excellent visual contrast and prominence, strategic multiple placements, urgency and value clear, limited friction (short forms), clear hierarchy between primary and secondary CTAs
-- **85-100**: Exceptional CTAs with compelling action verbs + benefit + urgency (e.g., 'Get Your Free Audit - 24 Hour Results'), outstanding visual design with high contrast, perfect placement throughout user journey, micro-commitments for progressive engagement, zero friction, personalized to page context
+**TRUST SCORING:** Search content for full person names (First Last). If found → minimum 60 points. Anonymous roles only → 40-60.
 
-IMPORTANT: Generic CTAs like 'Learn More', 'Submit', or 'Click Here' should score 20-40 maximum, NOT 60+. Strong CTAs require ACTION VERBS + SPECIFIC BENEFIT + URGENCY.
+**Lead Intelligence Data:**{$leads_context}
 
-**CRITICAL - Readability Score Scoring Guidelines:**
-When evaluating readability_score (0-100), use these specific criteria:
-
-- **0-20**: Dense walls of text with no breaks, paragraphs over 150 words, no subheadings, sentences over 30 words consistently, tiny font sizes, poor contrast, no visual hierarchy
-- **20-40**: Long paragraphs (100-150 words), minimal subheadings, complex sentence structure, poor formatting, limited white space, difficult to scan, small fonts or low contrast issues
-- **40-60**: Moderate paragraph length (60-100 words), some subheadings present, mixed sentence complexity, basic formatting (bold/bullets used occasionally), adequate white space, somewhat scannable, readable fonts but room for improvement
-- **60-75**: Good paragraph length (40-60 words), clear subheadings throughout, varied sentence length, good use of bullets and lists, ample white space, easy to scan, strong visual hierarchy, good font sizing and contrast
-- **75-85**: Short, focused paragraphs (30-40 words), descriptive subheadings every 2-3 paragraphs, simple sentence structure, excellent use of formatting (bullets, bold, highlights), generous white space, highly scannable, perfect typography and contrast
-- **85-100**: Exceptional readability with bite-sized content (20-30 word paragraphs), compelling subheadings that tell the story, simple language (8th grade level or below), strategic use of visuals to break up text, outstanding white space and visual flow, perfect typography hierarchy, mobile-optimized line length
-
-IMPORTANT: Pages with paragraphs over 100 words or no subheadings should score below 50. Readability requires SHORT PARAGRAPHS + CLEAR SUBHEADINGS + SIMPLE SENTENCES + VISUAL HIERARCHY.
-
-**CRITICAL - Emotional Score Scoring Guidelines:**
-When evaluating emotional_score (0-100), use these specific criteria:
-
-- **0-20**: Purely technical/factual language with no emotional appeal, no acknowledgment of customer pain points, completely generic copy that could apply to any business, no storytelling, sterile tone
-- **20-40**: Minimal emotional connection, occasional mention of benefits but no pain point focus, very generic language ('we care about quality'), no storytelling or human element, mostly feature-focused rather than benefit-focused
-- **40-60**: Some emotional language present, basic pain points mentioned but not explored deeply, generic power words used sparingly (e.g., 'great', 'best'), limited storytelling, mix of features and benefits, attempts connection but feels templated
-- **60-75**: Clear pain point acknowledgment, good use of emotional language and power words, benefits prominently featured, some storytelling elements (customer success stories or problem/solution framing), empathetic tone, audience-specific language
-- **75-85**: Strong emotional resonance with deep pain point understanding, compelling power words throughout (e.g., 'transform', 'breakthrough', 'finally'), effective storytelling that creates connection, aspirational language about outcomes, authenticity and empathy clear, speaks directly to audience struggles and desires
-- **85-100**: Exceptional emotional engagement with masterful pain point articulation, powerful storytelling that resonates deeply, language that creates vivid before/after scenarios, aspirational future state painted clearly, authentic voice that builds trust, perfect balance of empathy and inspiration, audience feels truly understood
-
-IMPORTANT: Pages that only list features without connecting to emotional benefits should score below 50. Emotional resonance requires PAIN POINT ACKNOWLEDGMENT + BENEFIT FOCUS + EMPATHETIC LANGUAGE + STORYTELLING.
-
-**CRITICAL - Engagement Score Scoring Guidelines:**
-When evaluating engagement_score (0-100), use these specific criteria:
-
-- **0-20**: Static page with only text, no images or minimal stock photos, no interactive elements, no multimedia, no forms except basic contact, monotonous single-column layout, nothing to explore or interact with
-- **20-40**: Basic images present (mostly stock photos), minimal interactivity (just a contact form), no multimedia (video/audio), simple layout with little visual variety, few reasons for users to engage beyond reading, no social proof or dynamic content
-- **40-60**: Good image usage with some custom photography, basic interactivity (forms, clickable elements), limited multimedia (perhaps one video), some visual variety in layout, 1-2 engagement hooks (quiz, calculator, or chat), social proof present but static
-- **60-75**: Strong visual design with custom imagery and graphics, multiple forms of interactivity (forms, accordions, tabs), multimedia present (videos, infographics), good layout variety, 2-3 engagement mechanisms, social proof integrated throughout, clear CTAs encourage exploration
-- **75-85**: Excellent engagement with multiple interactive elements (calculators, quizzes, comparison tools, live chat), rich multimedia (multiple videos, animations, interactive demos), dynamic content, strong visual hierarchy with varied layouts, 3-4 clear engagement hooks, social proof widgets, personalized elements, mobile-optimized interactions
-- **85-100**: Exceptional engagement with immersive experience (product configurators, AI chatbots, virtual tours, interactive assessments), comprehensive multimedia integration, gamification elements, dynamic personalization, 5+ distinct engagement points, real-time social proof, micro-interactions throughout, seamless omnichannel integration, progress indicators for multi-step processes
-
-IMPORTANT: Pages with only static text and basic contact forms should score below 40. Engagement requires INTERACTIVE ELEMENTS + MULTIMEDIA + VISUAL VARIETY + MULTIPLE TOUCHPOINTS + DYNAMIC CONTENT.
-
-**CRITICAL - Trust Score Scoring Guidelines:**
-When evaluating trust_score (0-100), use these specific criteria:
-
-- **0-20**: No social proof elements at all (no testimonials, reviews, trust badges, certifications, client logos, or credibility indicators)
-- **20-40**: Minimal social proof (generic statements like 'trusted by thousands' without evidence, or very weak trust signals)
-- **40-60**: ANONYMOUS testimonials ONLY - quotes showing generic roles/titles (e.g., 'A satisfied CEO' or 'Happy Client from Tech Industry') but NO actual person names visible AND NO photos, OR limited trust badges
-- **60-75**: Actual person NAMES are visible in testimonials (e.g., 'Herman Miller, CEO' or 'Sarah Johnson, Marketing Director') OR photos are present, but NOT both together, OR multiple trust badges/certifications displayed
-- **75-85**: Full testimonials with person names AND photos AND company names all together, OR strong combination of testimonials + trust badges + certifications
-- **85-100**: Comprehensive trust architecture (multiple testimonials with full attribution + photos, client logos, certifications, security badges, case studies, reviews, media mentions)
-
-**CRITICAL TRUST SCORING INSTRUCTIONS - READ CAREFULLY:**
-1. SEARCH the page content below for actual person names (first AND last names together like 'Herman Miller', 'Isabel Gabalis', 'Ashley Jones', 'Sarah Johnson', 'John Smith')
-2. If you find even ONE full person name (first + last) in the content, this indicates testimonials with attribution
-3. Person names present = MINIMUM 60 points for trust score, NOT 0 points
-4. Do NOT score 0-20 if you see person names in the text
-5. Anonymous testimonials (only generic roles like 'A CEO' with no names) = 40-60 range
-6. The HTML structure may say 'Testimonials Section' - if it does, look carefully in the text content for person names
-
-**Page Information:**
-- Title: {$title}
-- URL: {$url}
-- Word Count: {$word_count} words
-
-**Page Content:**
+**Content:**
 {$content}
 
-**HTML Structure (for targeting specific elements):**
+**Structure:**
 {$html_structure}
 
-**Analysis Task:**
-Analyze this page SPECIFICALLY in the context of:
-1. The page type and its specific conversion goals (not just general business goals)
-2. The business information and target audience
-3. The actual page content (not generic advice)
-4. Customer pain points and competitive positioning
-5. How this page fits into the overall customer journey
-6. The provided lead data (if any), to ensure messaging aligns with actual converting visitors
-{$leads_context}
+**REQUIREMENTS:**
+- All suggestions must reference SPECIFIC page elements (sections, headlines, CTAs)
+- Connect recommendations to actual weaknesses found (cite scores)
+- Quick wins: actionable within 1-2 days, page-specific (not generic advice)
+- Features: only recommend if solving a gap you identified in THIS audit
+- Reference exact scores in your why/impact text (consistency critical)
 
-Your suggestions MUST be:
-- Appropriate for a {$page_type} page
-- Aligned with this page's conversion goal: {$conversion_goal}
-- Based on actual page content (reference specific elements)
-- Actionable and specific
-
-**IMPORTANT for Page Sections:**
-- Identify which specific section of the page each suggestion relates to
-- Use clear section names like: 'Hero Section', 'About Section', 'Features Section', 'Testimonials Section', 'CTA Section', 'Pricing Section', 'FAQ Section', 'Footer'
-- Be specific about what part of the page needs improvement
-- Follow the natural flow and structure of the page sections
-
-**CRITICAL INSTRUCTIONS for Additional Features & Functionality:**
-
-Analyze the FULL CONTEXT of this specific business to recommend 4-6 features or integrations that would genuinely improve their conversion rates. 
-
-**YOU MUST:**
-1. Base recommendations ONLY on genuine needs identified from:
-   - Specific audit score weaknesses (e.g., low trust score = 65 needs testimonials/reviews system)
-   - Actual business goals and what's missing to achieve them
-   - Target audience behavior and expectations for this industry
-   - Page type and what's typically needed for that conversion goal
-   - Gaps or missing elements you identified in the page content/structure
-
-2. BE SPECIFIC about why this business needs each feature:
-   - Reference specific audit scores (e.g., 'Your trust score of 62 indicates...')
-   - Connect to their stated business goal (e.g., 'To achieve {$goal}, you currently lack...')
-   - Explain what problem it solves for their specific audience
-   - Point to a gap you found in the content analysis
-
-3. DO NOT recommend generic features that apply to everyone
-   - BAD: Live Chat Support - helps engage visitors in real-time
-   - GOOD: Live Chat Support - Your service-based business with complex offerings (mentioned in business info) and low engagement score of 64 suggests visitors need immediate answers to proceed. Your target audience of {$audience} typically has questions before converting.
-
-4. VARIETY MATTERS: 
-   - Don't recommend the same 4-5 features for different businesses
-   - Consider the unique combination of: page type, industry, audience, goals, and weaknesses
-   - A B2B software company needs different features than a local restaurant or e-commerce store
-
-5. ONLY recommend features that solve problems you actually found:
-   - If trust score is high, don't suggest testimonials system
-   - If they already have clear CTAs, don't suggest popup forms
-   - If single-location local business, skip multi-language support
-   - If simple product page, skip booking systems
-
-**Common feature categories to consider (choose relevant ones only):**
-E-Commerce Integration, Live Chat, Email Marketing, Social Media Integration, Blog/Content System, Lead Capture Forms, Booking/Appointment System, Testimonials/Reviews System, FAQ/Knowledge Base, Multi-Language Support, Analytics/Tracking Tools, Payment Gateways, Membership Systems, Search Functionality, Comparison Tools, Live Product Demos, Customer Portal, Chatbot/AI Assistant, Video Integration, Mobile App, Custom Calculators/Tools, Automated Follow-ups, Social Proof Widgets, Exit-Intent Technology
-
-For EACH recommendation, write a detailed 'why' that includes:
-- Reference to specific audit score(s)
-- Connection to their business goal
-- How it addresses their target audience's needs
-- What gap or weakness it solves from your analysis
-
-**CRITICAL INSTRUCTIONS for Recommendations & Suggestions:**
-
-Every suggestion and recommendation MUST include:
-1. **Why**: Clear reasoning explaining why this change matters for conversion
-2. **Impact**: Specific metrics that will improve (clarity, trust, CTA strength, etc.)
-3. **Implementation**: Practical guidance on how to implement this change
-4. **Context**: Reference to audit findings, scores, or business goals that justify this recommendation
-
-**CRITICAL - Score References Must Be Accurate:**
-When referencing scores in your recommendations (e.g., 'Your trust score of X'), you MUST use the EXACT scores you assigned in the clarity_score, emotional_score, cta_strength, readability_score, engagement_score, and trust_score fields. Double-check that every score reference in your text matches the numeric scores you provide. Inconsistent scoring will confuse users.
-
-Make recommendations DETAILED and ACTIONABLE:
-- BAD: Add testimonials to build trust
-- GOOD: Add testimonials from satisfied clients in a dedicated section below the hero
-  - Why: Your trust score of 58 is significantly below the industry average of 72, indicating visitors need social proof before converting
-  - Impact: Expected to increase trust score by 15-20 points and reduce bounce rate
-  - Implementation: Contact 3-5 recent satisfied clients for testimonials, create a testimonials section with photos and full names, place above the pricing table
-
-Prioritize recommendations by:
-1. **Quick Wins**: High-impact, low-effort changes (1-2 days to implement)
-2. **Long-term**: Strategic improvements requiring more time/resources
-3. **Priority**: The ONE most critical change that addresses the biggest weakness
-
-**CRITICAL INSTRUCTIONS for Quick Wins:**
-
-Quick wins must be PAGE-SPECIFIC and immediately actionable - NOT generic industry advice:
-
-- ❌ BAD (Generic): 'Add social proof' or 'Improve your CTA' or 'Optimize landing pages'
-- ✅ GOOD (Page-Specific): 'Add 2-3 customer testimonials with photos above the Get Started button in your hero section - your trust score of 62 reflects this gap'
-
-REQUIREMENTS for each Quick Win:
-1. Reference SPECIFIC page elements (sections, headlines, CTAs, images)
-2. Connect to ACTUAL weaknesses found in THIS page's analysis (cite scores)
-3. Provide ACTIONABLE advice (what to change, where to change it)
-4. Explain measurable impact specific to this page's gaps
-5. Make sure each of the 3 quick wins addresses DIFFERENT aspects of the page
-
-Examples of good quick wins:
-- Replace your hero headline 'Welcome to Our Site' with a benefit-focused statement like 'Save 40% on Energy Costs with Smart Home Automation' - addresses your clarity score of 68
-- Add security badges (SSL, BBB, industry certifications) below the contact form - your trust score of 61 indicates visitors need more credibility signals
-- Split your 400-word paragraph in the benefits section into 3-4 shorter paragraphs with subheadings - readability score of 55 suggests content is too dense
-
-**CRITICAL INSTRUCTIONS for Key Insights:**
-
-The insights section is the FIRST thing clients read - make it valuable, specific, and actionable:
-
-1. **Executive Summary**: Write a 2-3 sentence overview in client-facing language that:
-   - Summarizes the overall conversion health based on audit scores
-   - Highlights the #1 priority area that needs attention
-   - Sets a positive, solution-focused tone (avoid being overly negative)
-   - Example: Your page shows strong foundations with clear messaging (clarity: 78), but trust-building elements are your biggest opportunity. With a trust score of 58, adding social proof and testimonials could increase conversions by 20-30%. The good news: these are quick wins that can be implemented within a week.
-
-2. **Strengths**: List 2-3 specific things this page does WELL:
-   - Reference actual content you analyzed (not generic observations)
-   - Connect to specific scores (e.g., Strong headline clarity 82/100)
-   - Be specific about what's working
-   - BAD: Good content quality
-   - GOOD: Your feature descriptions effectively address customer pain points, creating strong emotional resonance
-
-3. **Weaknesses**: Identify 2-3 critical gaps that hurt conversion:
-   - Be constructive and solution-focused in tone
-   - Reference specific audit scores that are below 70
-   - Point to actual missing elements you identified
-   - Frame in terms of missed opportunities, not just problems
-   - BAD: Poor trust signals
-   - GOOD: Missing testimonials and client logos (trust score: 58) - your competitors showcase social proof prominently, and adding this could boost conversions significantly
-
-4. **Opportunities**: List 2-3 high-impact improvements presented positively:
-   - Focus on what could be gained, not what's missing
-   - Connect to business goals and expected outcomes
-   - Make clients excited about the potential
-   - BAD: Need better CTAs
-   - GOOD: Strengthening your CTA from Learn More to action-driven copy could increase click-through rates by 15-25%
-
-5. **Top Priority Insight**: A clear, client-friendly explanation of the #1 area to focus on:
-   - Explain WHY this is the priority (reference the lowest score or biggest gap)
-   - Explain the IMPACT of fixing it (expected conversion improvement)
-   - Make it digestible for non-technical business owners
-   - Set realistic timeframe and difficulty expectations
-   - BAD: Improve trust score
-   - GOOD: Your trust score of 58 is your biggest opportunity. For this industry targeting this audience, trust signals are critical - visitors need proof before converting. Adding client testimonials, trust badges, and case studies could lift your conversion rate by 25-30% within 2 weeks of implementation.
-
-6. **Audience Alignment**: Specific analysis of how well the page speaks to {$audience}:
-   - Reference actual language, tone, and messaging from the page
-   - Identify gaps between current copy and audience expectations
-   - Be specific about what resonates and what doesn't
-   - BAD: Good audience fit
-   - GOOD: Your messaging resonates well with the target audience, particularly the emphasis on their pain points. However, the technical jargon in the features section may alienate non-technical decision-makers.
-
-**CRITICAL JSON REQUIREMENTS:**
-
-YOU MUST INCLUDE ALL 6 SCORES AT THE TOP LEVEL OF YOUR JSON RESPONSE:
-1. clarity_score
-2. emotional_score  
-3. cta_strength
-4. readability_score
-5. engagement_score
-6. trust_score
-
-Missing any of these scores will cause the audit to fail. Each score must be a number between 0-100.
+**OUTPUT JSON (no markdown):**
 
 **Required Output (JSON only, no markdown):**
 {
