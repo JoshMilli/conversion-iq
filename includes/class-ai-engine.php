@@ -635,9 +635,11 @@ class ConversionIQ_AI
         // Get webhook statistics for this page - CONCISE version to avoid API timeouts
         $webhook_stats = self::get_webhook_statistics($url);
         $leads_context = '';
+        $has_lead_data = false;
 
         if ($webhook_stats) {
             error_log('📊 Webhook stats loaded: ' . $webhook_stats['total_interactions'] . ' interactions, ' . $webhook_stats['total_leads'] . ' leads');
+            $has_lead_data = true;
             
             // ULTRA-CONCISE format to minimize prompt size
             $leads_context .= "\n\n**LEAD INTELLIGENCE DATA:**\n";
@@ -662,6 +664,7 @@ class ConversionIQ_AI
             $leads_context .= "\n**INSTRUCTIONS:** Use these numbers in lead_intelligence_summary. Compare companies/domains against page content for alignment analysis.\n";
         } else {
             error_log('ℹ️ No webhook data available for AI analysis (URL: ' . $url . ')');
+            error_log('⚠️ lead_intelligence_summary will be EXCLUDED from JSON template - no data to analyze');
         }
 
 
@@ -719,7 +722,21 @@ trust_score: 0-40=minimal/no social proof | 40-60=anonymous testimonials OR basi
 - Features: only recommend if solving a gap you identified in THIS audit
 - Reference exact scores in your why/impact text (consistency critical)
 
-**OUTPUT JSON (no markdown):**
+**OUTPUT JSON (no markdown):**";
+
+        // Build lead intelligence JSON field only if we have real data
+        $lead_intelligence_json = '';
+        if ($has_lead_data) {
+            $lead_intelligence_json = ',
+    \"lead_intelligence_summary\": {
+        \"overview\": \"QUANTITATIVE summary with specific numbers. Start with stats like: \'This page has generated X leads (Y% of site total) from Z companies.\' Include key metrics, peak activity times, and trend summary. Make it data-driven, not generic.\",
+        \"messaging_alignment\": \"Compare page content against actual lead data. Example: \'Top converting companies include [list 3-5 names] - the page does/doesn\'t address their industry needs.\' Reference specific gaps between target audience messaging and actual converters. Include percentages where relevant.\",
+        \"audience_insights\": \"Specific insights from the data with numbers. Example: \'X% of leads are from [industry], with [domain type] being most common. Peak engagement happens on [day] at [time]. Notable patterns: [specific observation].\' Cite company types, job roles if available, behavioral patterns.\",
+        \"recommended_adjustments\": \"Specific, prioritized changes based on data gaps. Example: \'1. Add case studies targeting [specific industries from data] 2. Adjust headline to speak to [actual audience type] who make up X% of leads 3. Include testimonials from companies in [relevant sector].\' Be specific, not generic.\"
+    }';
+        }
+
+        $prompt .= "
 
 **Required Output (JSON only, no markdown):**
 {
@@ -737,13 +754,7 @@ trust_score: 0-40=minimal/no social proof | 40-60=anonymous testimonials OR basi
             \"impact\": \"Which metrics this will improve (e.g., 'Improves trust score and emotional resonance', 'Increases CTA strength and clarity')\",
             \"implementation\": \"Brief guidance on how to implement this (e.g., 'Add a testimonials widget in the sidebar', 'Replace current headline with suggested rewrite')\"
         }
-    ],
-    \"lead_intelligence_summary\": {
-        \"overview\": \"QUANTITATIVE summary with specific numbers. Start with stats like: 'This page has generated X leads (Y% of site total) from Z companies.' Include key metrics, peak activity times, and trend summary. Make it data-driven, not generic.\",
-        \"messaging_alignment\": \"Compare page content against actual lead data. Example: 'Top converting companies include [list 3-5 names] - the page does/doesn't address their industry needs.' Reference specific gaps between target audience messaging and actual converters. Include percentages where relevant.\",
-        \"audience_insights\": \"Specific insights from the data with numbers. Example: 'X% of leads are from [industry], with [domain type] being most common. Peak engagement happens on [day] at [time]. Notable patterns: [specific observation].' Cite company types, job roles if available, behavioral patterns.\",
-        \"recommended_adjustments\": \"Specific, prioritized changes based on data gaps. Example: '1. Add case studies targeting [specific industries from data] 2. Adjust headline to speak to [actual audience type] who make up X% of leads 3. Include testimonials from companies in [relevant sector].' Be specific, not generic.\"
-    },
+    ]" . $lead_intelligence_json . ",
     \"functionality_suggestions\": [
         {
             \"title\": \"Specific feature name that addresses an identified gap\",
@@ -1001,6 +1012,12 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanatory te
                     'impact' => 'Cannot generate custom suggestions for your business',
                     'implementation' => 'Verify Abacus.ai API key in wp-config.php and check network connectivity'
                 )
+            ),
+            'lead_intelligence_summary' => array(
+                'overview' => 'Lead Intelligence data unavailable - AI analysis failed before webhook data could be processed.',
+                'messaging_alignment' => 'Unable to analyze messaging alignment without AI analysis. Fix the AI integration to see how your page messaging aligns with actual converting leads.',
+                'audience_insights' => 'Lead behavior insights require successful AI analysis. Once the AI integration is fixed, you will see detailed patterns about which companies, industries, and domains are converting on this page.',
+                'recommended_adjustments' => 'Cannot provide data-driven recommendations without AI analysis. Fix AI integration to get specific, actionable changes based on your actual lead data.'
             ),
             'functionality_suggestions' => array(
                     array(
