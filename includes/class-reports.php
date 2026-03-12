@@ -1041,49 +1041,225 @@ class ConversionIQ_Reports
         </div>';
 
             // ============ PAGE 4.5: LEAD INTELLIGENCE SUMMARY ============
-            // Only show if KnockKnock is configured AND lead intel data exists
+            // Only show if KnockKnock is configured AND (lead intel data exists OR metrics exist)
             $knockknock_company_id = get_option('conversioniq_knockknock_company_id', '');
             $is_knockknock_configured = !empty($knockknock_company_id);
+            $lead_metrics = $is_knockknock_configured ? self::get_lead_performance_metrics($audit['page_url']) : null;
+            $has_lead_intel = !empty($data['lead_intelligence_summary']) && is_array($data['lead_intelligence_summary']);
             
-            if ($is_knockknock_configured && !empty($data['lead_intelligence_summary']) && is_array($data['lead_intelligence_summary'])) {
-                $lead_intel = $data['lead_intelligence_summary'];
+            if ($is_knockknock_configured && ($has_lead_intel || $lead_metrics)) {
+                $lead_intel = $has_lead_intel ? $data['lead_intelligence_summary'] : array();
                 $html .= '
             <div class="page content-page">
                 <div class="content-header">
                     <h2>Lead Intelligence Summary</h2>
                     <span style="font-size: 14px; color: #6b7280;">' . $report_date . '</span>
-                </div>
+                </div>';
+
+                // Add performance metrics section if data exists
+                if ($lead_metrics) {
+                    $html .= '
+                <div class="section" style="margin-bottom: 40px;">
+                    <h3 style="color: #1e3a5f; font-size: 20px; font-weight: 700; margin: 0 0 8px 0;">🎯 Page Discovery & Engagement</h3>
+                    <p style="font-size: 14px; color: #6b7280; margin: 0 0 24px 0; line-height: 1.6;">
+                        These metrics show how this page contributes to your lead generation as an entry point and engagement hub.
+                    </p>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;">';
+                    
+                    // Stat Card 1: Leads Started Here (PRIMARY METRIC)
+                    $html .= '
+                        <div style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 24px 20px; border-radius: 12px; text-align: center; box-shadow: 0 4px 12px rgba(37,99,235,0.2);">
+                            <div style="font-size: 42px; font-weight: 800; color: white; margin-bottom: 8px; line-height: 1;">' . $lead_metrics['leads_started_here'] . '</div>
+                            <div style="font-size: 12px; color: rgba(255,255,255,0.95); font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px;">Leads Started Here</div>
+                        </div>';
+                    
+                    // Stat Card 2: Engaged Visitors
+                    $html .= '
+                        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 24px 20px; border-radius: 12px; text-align: center; box-shadow: 0 4px 12px rgba(16,185,129,0.2);">
+                            <div style="font-size: 42px; font-weight: 800; color: white; margin-bottom: 8px; line-height: 1;">' . $lead_metrics['engaged_visitors'] . '</div>
+                            <div style="font-size: 12px; color: rgba(255,255,255,0.95); font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px;">Engaged Visitors</div>
+                        </div>';
+                    
+                    // Stat Card 3: Site Contribution %
+                    $site_pct = $lead_metrics['site_contribution_pct'];
+                    $html .= '
+                        <div style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 24px 20px; border-radius: 12px; text-align: center; box-shadow: 0 4px 12px rgba(139,92,246,0.2);">
+                            <div style="font-size: 42px; font-weight: 800; color: white; margin-bottom: 8px; line-height: 1;">' . $site_pct . '%</div>
+                            <div style="font-size: 12px; color: rgba(255,255,255,0.95); font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px;">Of Site Leads</div>
+                        </div>';
+                    
+                    // Stat Card 4: Recent Activity Status
+                    $activity_icon = $lead_metrics['has_recent_activity'] ? '✓' : '—';
+                    $activity_text = $lead_metrics['has_recent_activity'] ? 'Active' : 'Quiet';
+                    $activity_gradient = $lead_metrics['has_recent_activity'] 
+                        ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' 
+                        : 'linear-gradient(135deg, #9ca3af 0%, #6b7280 100%)';
+                    $html .= '
+                        <div style="background: ' . $activity_gradient . '; padding: 24px 20px; border-radius: 12px; text-align: center; box-shadow: 0 4px 12px rgba(245,158,11,0.2);">
+                            <div style="font-size: 42px; font-weight: 800; color: white; margin-bottom: 8px; line-height: 1;">' . $activity_icon . '</div>
+                            <div style="font-size: 12px; color: rgba(255,255,255,0.95); font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px;">' . $activity_text . ' (7 days)</div>
+                        </div>';
+                    
+                    $html .= '
+                    </div>'; // End metrics grid
+                    
+                    // Add contextual insights based on the data
+                    $insights_html = '';
+                    
+                    // Entry Point Value Insight
+                    if ($lead_metrics['leads_started_here'] > 0) {
+                        $site_pct = $lead_metrics['site_contribution_pct'];
+                        $insights_html .= '
+                        <div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); padding: 20px; border-radius: 10px; margin-bottom: 16px; border-left: 5px solid #2563eb; box-shadow: 0 2px 8px rgba(37,99,235,0.1);">
+                            <div style="display: flex; align-items: start; gap: 12px;">
+                                <div style="font-size: 24px; line-height: 1; margin-top: 2px;">🚪</div>
+                                <div>
+                                    <div style="font-size: 13px; font-weight: 700; color: #1e3a8a; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Entry Point Value</div>
+                                    <p style="margin: 0; font-size: 14px; color: #1e40af; line-height: 1.7; font-weight: 500;">';
+                        
+                        if ($site_pct >= 20) {
+                            $insights_html .= 'This is a <strong>critical entry point</strong> — <strong>' . $site_pct . '%</strong> of all leads discover your business here. This page\'s content, messaging, and optimization should be a top priority.';
+                        } elseif ($site_pct >= 10) {
+                            $insights_html .= 'This page contributes <strong>' . $site_pct . '%</strong> of your site-wide leads. It plays a <strong>meaningful role</strong> in your acquisition funnel and warrants continued optimization.';
+                        } elseif ($site_pct >= 5) {
+                            $insights_html .= 'This page generates <strong>' . $site_pct . '%</strong> of site leads. While not your primary entry point, it\'s still attracting qualified visitors worth nurturing.';
+                        } else {
+                            $insights_html .= 'This page accounts for <strong>' . $site_pct . '%</strong> of leads. Most visitors discover you through other pages, but those who land here are converting.';
+                        }
+                        
+                        $insights_html .= '</p>
+                                </div>
+                            </div>
+                        </div>';
+                    }
+                    
+                    // Engagement Quality Insight
+                    if ($lead_metrics['engaged_visitors'] > 0) {
+                        $total_engagement = $lead_metrics['leads_started_here'] + $lead_metrics['engaged_visitors'];
+                        $insights_html .= '
+                        <div style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); padding: 20px; border-radius: 10px; margin-bottom: 16px; border-left: 5px solid #10b981; box-shadow: 0 2px 8px rgba(16,185,129,0.1);">
+                            <div style="display: flex; align-items: start; gap: 12px;">
+                                <div style="font-size: 24px; line-height: 1; margin-top: 2px;">💬</div>
+                                <div>
+                                    <div style="font-size: 13px; font-weight: 700; color: #065f46; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Visitor Engagement</div>
+                                    <p style="margin: 0; font-size: 14px; color: #047857; line-height: 1.7; font-weight: 500;">';
+                        
+                        if ($lead_metrics['engaged_visitors'] >= 10) {
+                            $insights_html .= '<strong>' . $lead_metrics['engaged_visitors'] . ' visitors</strong> have been identified on this page, showing it\'s <strong>actively engaging</strong> your audience. These interactions provide valuable data about visitor interests.';
+                        } elseif ($lead_metrics['engaged_visitors'] >= 5) {
+                            $insights_html .= 'You have <strong>' . $lead_metrics['engaged_visitors'] . ' engaged visitors</strong> on this page — people who spent enough time to trigger identification. This indicates the content is resonating.';
+                        } else {
+                            $insights_html .= '<strong>' . $lead_metrics['engaged_visitors'] . ' visitors</strong> have engaged with this page. Early data suggests visitors find the content worth exploring.';
+                        }
+                        
+                        $insights_html .= '</p>
+                                </div>
+                            </div>
+                        </div>';
+                    }
+                    
+                    // Recent Activity / Traffic Pattern Insight
+                    if ($lead_metrics['has_recent_activity']) {
+                        $insights_html .= '
+                        <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); padding: 20px; border-radius: 10px; border-left: 5px solid #f59e0b; box-shadow: 0 2px 8px rgba(245,158,11,0.1);">
+                            <div style="display: flex; align-items: start; gap: 12px;">
+                                <div style="font-size: 24px; line-height: 1; margin-top: 2px;">⚡</div>
+                                <div>
+                                    <div style="font-size: 13px; font-weight: 700; color: #92400e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Current Activity</div>
+                                    <p style="margin: 0; font-size: 14px; color: #78350f; line-height: 1.7; font-weight: 500;">
+                                        This page had <strong>' . $lead_metrics['recent_activity'] . ' interactions</strong> in the last 7 days. It\'s actively attracting traffic and the recommendations in this report are based on current, real-world performance data.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>';
+                    } else {
+                        // No recent activity
+                        $insights_html .= '
+                        <div style="background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%); padding: 20px; border-radius: 10px; border-left: 5px solid #9ca3af; box-shadow: 0 2px 8px rgba(156,163,175,0.1);">
+                            <div style="display: flex; align-items: start; gap: 12px;">
+                                <div style="font-size: 24px; line-height: 1; margin-top: 2px;">💤</div>
+                                <div>
+                                    <div style="font-size: 13px; font-weight: 700; color: #374151; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Lower Traffic Period</div>
+                                    <p style="margin: 0; font-size: 14px; color: #4b5563; line-height: 1.7; font-weight: 500;">
+                                        No activity recorded in the past 7 days. Historical data shows this page has attracted leads, but current traffic may be low. Consider driving more visitors here through SEO, ads, or internal linking.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>';
+                    }
+                    
+                    // Data Quality Note
+                    $total_data_points = $lead_metrics['leads_started_here'] + $lead_metrics['engaged_visitors'];
+                    if ($total_data_points >= 20) {
+                        $insights_html .= '
+                        <div style="background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%); padding: 20px; border-radius: 10px; margin-top: 16px; border-left: 5px solid #6366f1; box-shadow: 0 2px 8px rgba(99,102,241,0.1);">
+                            <div style="display: flex; align-items: start; gap: 12px;">
+                                <div style="font-size: 24px; line-height: 1; margin-top: 2px;">📊</div>
+                                <div>
+                                    <div style="font-size: 13px; font-weight: 700; color: #3730a3; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Data-Driven Analysis</div>
+                                    <p style="margin: 0; font-size: 14px; color: #4338ca; line-height: 1.7; font-weight: 500;">
+                                        With <strong>' . $total_data_points . ' total interactions</strong>, we have solid data to analyze this page\'s performance. The insights and recommendations are based on real visitor behavior patterns, not assumptions.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>';
+                    } elseif ($total_data_points >= 5) {
+                        $insights_html .= '
+                        <div style="background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%); padding: 20px; border-radius: 10px; margin-top: 16px; border-left: 5px solid #6366f1; box-shadow: 0 2px 8px rgba(99,102,241,0.1);">
+                            <div style="display: flex; align-items: start; gap: 12px;">
+                                <div style="font-size: 24px; line-height: 1; margin-top: 2px;">🌱</div>
+                                <div>
+                                    <div style="font-size: 13px; font-weight: 700; color: #3730a3; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Building Data History</div>
+                                    <p style="margin: 0; font-size: 14px; color: #4338ca; line-height: 1.7; font-weight: 500;">
+                                        You\'re collecting valuable data on this page (<strong>' . $total_data_points . ' interactions so far</strong>). As more visitors engage, we\'ll be able to provide increasingly targeted optimization recommendations.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>';
+                    }
+                    
+                    $html .= $insights_html;
+                    $html .= '</div>'; // End metrics section
+                }
                 
-                <p style="font-size: 15px; color: #374151; margin-bottom: 30px; line-height: 1.8;">
-                    Based on your recent webhook data, our AI has analyzed how well your page messaging aligns with the actual leads you are receiving.
+                // Add AI insights intro if they exist
+                if ($has_lead_intel) {
+                    $html .= '
+                <p style="font-size: 15px; color: #374151; margin-bottom: 30px; line-height: 1.8; padding-top: ' . ($lead_metrics ? '20px' : '0') . '; border-top: ' . ($lead_metrics ? '2px solid #e5e7eb' : 'none') . ';">
+                    Our AI has analyzed your recent webhook data to understand how well your page messaging aligns with the actual leads you are receiving.
                 </p>';
-
-                if (!empty($lead_intel['overview'])) {
-                    $html .= '<div class="feature-card" style="border-left-color: #3b82f6;">
-                    <h4 class="feature-title">Overview</h4>
-                    <p class="feature-desc">' . esc_html($lead_intel['overview']) . '</p>
-                </div>';
                 }
 
-                if (!empty($lead_intel['messaging_alignment'])) {
-                    $html .= '<div class="feature-card" style="border-left-color: #8b5cf6;">
-                    <h4 class="feature-title">Messaging Alignment</h4>
-                    <p class="feature-desc">' . esc_html($lead_intel['messaging_alignment']) . '</p>
-                </div>';
-                }
+                // Only show AI insights if they exist
+                if ($has_lead_intel) {
+                    if (!empty($lead_intel['overview'])) {
+                        $html .= '<div class="feature-card" style="border-left-color: #3b82f6;">
+                        <h4 class="feature-title">Overview</h4>
+                        <p class="feature-desc">' . esc_html($lead_intel['overview']) . '</p>
+                    </div>';
+                    }
 
-                if (!empty($lead_intel['audience_insights'])) {
-                    $html .= '<div class="feature-card" style="border-left-color: #10b981;">
-                    <h4 class="feature-title">Audience Insights</h4>
-                    <p class="feature-desc">' . esc_html($lead_intel['audience_insights']) . '</p>
-                </div>';
-                }
+                    if (!empty($lead_intel['messaging_alignment'])) {
+                        $html .= '<div class="feature-card" style="border-left-color: #8b5cf6;">
+                        <h4 class="feature-title">Messaging Alignment</h4>
+                        <p class="feature-desc">' . esc_html($lead_intel['messaging_alignment']) . '</p>
+                    </div>';
+                    }
 
-                if (!empty($lead_intel['recommended_adjustments'])) {
-                    $html .= '<div class="feature-card" style="border-left-color: #f59e0b;">
-                    <h4 class="feature-title">Recommended Adjustments</h4>
-                    <p class="feature-desc">' . esc_html($lead_intel['recommended_adjustments']) . '</p>
-                </div>';
+                    if (!empty($lead_intel['audience_insights'])) {
+                        $html .= '<div class="feature-card" style="border-left-color: #10b981;">
+                        <h4 class="feature-title">Audience Insights</h4>
+                        <p class="feature-desc">' . esc_html($lead_intel['audience_insights']) . '</p>
+                    </div>';
+                    }
+
+                    if (!empty($lead_intel['recommended_adjustments'])) {
+                        $html .= '<div class="feature-card" style="border-left-color: #f59e0b;">
+                        <h4 class="feature-title">Recommended Adjustments</h4>
+                        <p class="feature-desc">' . esc_html($lead_intel['recommended_adjustments']) . '</p>
+                    </div>';
+                    }
                 }
 
                 $html .= '
@@ -1414,5 +1590,68 @@ class ConversionIQ_Reports
                 'message' => 'Report generation failed: ' . $e->getMessage(),
             );
         }
+    }
+
+    /**
+     * Get lead performance metrics for a specific page
+     * 
+     * @param string $page_url The URL of the page to get metrics for
+     * @return array|null Array of metrics or null if no data exists
+     */
+    private static function get_lead_performance_metrics($page_url) {
+        global $wpdb;
+        
+        $leads_table = $wpdb->prefix . 'conversioniq_leads';
+        $visitors_table = $wpdb->prefix . 'conversioniq_visitor_sessions';
+        
+        // PRIMARY METRIC: Leads that started their journey on this page
+        // This is the most meaningful metric - shows the page's value as an entry point
+        $leads_started_here = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $leads_table WHERE initial_page_visit = %s",
+            $page_url
+        ));
+        
+        // SECONDARY METRIC: Engaged visitors (identified while on this page)
+        // Shows people are spending time and interacting with content
+        $engaged_visitors = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $visitors_table WHERE page_url = %s",
+            $page_url
+        ));
+        
+        // CONTEXT METRIC: Total site leads to calculate this page's contribution
+        $total_site_leads = $wpdb->get_var("SELECT COUNT(*) FROM $leads_table");
+        
+        // Calculate percentage of site leads that started here
+        $site_contribution_pct = ($total_site_leads > 0) 
+            ? round(($leads_started_here / $total_site_leads) * 100, 1) 
+            : 0;
+        
+        // RECENCY METRIC: Check for activity in last 7 days
+        $seven_days_ago = date('Y-m-d H:i:s', strtotime('-7 days'));
+        $recent_leads = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $leads_table WHERE initial_page_visit = %s AND created_at >= %s",
+            $page_url,
+            $seven_days_ago
+        ));
+        $recent_visitors = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $visitors_table WHERE page_url = %s AND created_at >= %s",
+            $page_url,
+            $seven_days_ago
+        ));
+        $recent_activity = $recent_leads + $recent_visitors;
+        
+        // Return null if no meaningful data exists
+        if ($leads_started_here == 0 && $engaged_visitors == 0) {
+            return null;
+        }
+        
+        return array(
+            'leads_started_here' => (int)$leads_started_here,
+            'engaged_visitors' => (int)$engaged_visitors,
+            'site_contribution_pct' => $site_contribution_pct,
+            'total_site_leads' => (int)$total_site_leads,
+            'recent_activity' => (int)$recent_activity,
+            'has_recent_activity' => $recent_activity > 0,
+        );
     }
 }

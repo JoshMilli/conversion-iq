@@ -133,6 +133,7 @@ export default function App() {
   const [knockKnockViewMode, setKnockKnockViewMode] = useState<'table' | 'cards'>('table');
   const knockKnockItemsPerPage = 20;
   const [knockKnockStats, setKnockKnockStats] = useState({ totalLeads: 0, totalVisitors: 0, totalToday: 0 });
+  const [selectedLead, setSelectedLead] = useState<any>(null);
 
   // Check authentication status on mount
   useEffect(() => {
@@ -2427,7 +2428,17 @@ export default function App() {
                               </thead>
                               <tbody>
                                 {paginatedData.map((item, idx) => (
-                                  <tr key={item.id || idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                                  <tr 
+                                    key={item.id || idx} 
+                                    style={{ 
+                                      borderBottom: '1px solid #e5e7eb',
+                                      cursor: 'pointer',
+                                      transition: 'background 0.2s'
+                                    }}
+                                    onClick={() => setSelectedLead(item)}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                  >
                                     <td style={{ padding: '14px 16px' }}>
                                       <span style={{
                                         display: 'inline-block',
@@ -2456,6 +2467,7 @@ export default function App() {
                                           target="_blank" 
                                           rel="noopener noreferrer"
                                           style={{ color: '#7c3aed', textDecoration: 'none', fontWeight: 500 }}
+                                          onClick={(e) => e.stopPropagation()}
                                         >
                                           {new URL(item.page_url).pathname}
                                         </a>
@@ -2483,6 +2495,7 @@ export default function App() {
                             {paginatedData.map((item, idx) => (
                               <div 
                                 key={item.id || idx}
+                                onClick={() => setSelectedLead(item)}
                                 style={{
                                   background: '#fff',
                                   border: '1px solid #e5e7eb',
@@ -3484,6 +3497,280 @@ export default function App() {
             }}>
               This may take a minute depending on page complexity...
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Lead Detail Modal */}
+      {selectedLead && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+          backdropFilter: 'blur(4px)',
+          padding: 20
+        }}
+        onClick={() => setSelectedLead(null)}
+        >
+          <div style={{
+            background: '#fff',
+            borderRadius: 16,
+            maxWidth: 700,
+            width: '100%',
+            maxHeight: '90vh',
+            overflow: 'auto',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.3)'
+          }}
+          onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{
+              padding: '24px 32px',
+              borderBottom: '1px solid #e5e7eb',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)',
+              color: '#fff',
+              borderRadius: '16px 16px 0 0'
+            }}>
+              <div>
+                <h2 style={{ margin: '0 0 4px 0', fontSize: 24, fontWeight: 700 }}>
+                  {selectedLead.type === 'lead' ? '🎯 Lead Details' : '👤 Visitor Details'}
+                </h2>
+                <p style={{ margin: 0, fontSize: 14, opacity: 0.9 }}>
+                  {selectedLead.first_name && selectedLead.last_name 
+                    ? `${selectedLead.first_name} ${selectedLead.last_name}` 
+                    : selectedLead.first_name || selectedLead.last_name || 'Anonymous User'}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedLead(null)}
+                style={{
+                  background: 'rgba(255,255,255,0.2)',
+                  border: 'none',
+                  color: '#fff',
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  fontSize: 18,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: 32 }}>
+              {/* Contact Information */}
+              <div style={{ marginBottom: 32 }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600, color: '#111827', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  📧 Contact Information
+                </h3>
+                <div style={{ display: 'grid', gap: 16 }}>
+                  <div style={{ display: 'flex', padding: 16, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Full Name</div>
+                      <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>
+                        {selectedLead.first_name && selectedLead.last_name 
+                          ? `${selectedLead.first_name} ${selectedLead.last_name}` 
+                          : selectedLead.first_name || selectedLead.last_name || 'Not provided'}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', padding: 16, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Email Address</div>
+                      <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>
+                        {selectedLead.email || <span style={{ color: '#9ca3af' }}>Not provided</span>}
+                      </div>
+                    </div>
+                    {selectedLead.email && (
+                      <a
+                        href={`mailto:${selectedLead.email}`}
+                        style={{
+                          padding: '8px 16px',
+                          background: '#7c3aed',
+                          color: '#fff',
+                          borderRadius: 6,
+                          fontSize: 14,
+                          fontWeight: 600,
+                          textDecoration: 'none',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#6d28d9'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = '#7c3aed'}
+                      >
+                        Send Email
+                      </a>
+                    )}
+                  </div>
+                  {selectedLead.phone && (
+                    <div style={{ display: 'flex', padding: 16, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Phone Number</div>
+                        <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>{selectedLead.phone}</div>
+                      </div>
+                      <a
+                        href={`tel:${selectedLead.phone}`}
+                        style={{
+                          padding: '8px 16px',
+                          background: '#10b981',
+                          color: '#fff',
+                          borderRadius: 6,
+                          fontSize: 14,
+                          fontWeight: 600,
+                          textDecoration: 'none',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
+                      >
+                        Call
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Activity Information */}
+              <div style={{ marginBottom: 32 }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600, color: '#111827', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  📊 Activity Details
+                </h3>
+                <div style={{ display: 'grid', gap: 16 }}>
+                  <div style={{ padding: 16, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Type</div>
+                    <span style={{
+                      display: 'inline-block',
+                      padding: '6px 12px',
+                      borderRadius: 6,
+                      fontSize: 14,
+                      fontWeight: 600,
+                      background: selectedLead.type === 'lead' ? '#dcfce7' : '#dbeafe',
+                      color: selectedLead.type === 'lead' ? '#166534' : '#1e40af'
+                    }}>
+                      {selectedLead.type === 'lead' ? '🎯 Lead (Converted)' : '👤 Visitor (Identified)'}
+                    </span>
+                  </div>
+                  {selectedLead.initial_page_visit && (
+                    <div style={{ padding: 16, background: '#fef3c7', borderRadius: 8, border: '1px solid #fde68a' }}>
+                      <div style={{ fontSize: 12, color: '#92400e', marginBottom: 8, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        🚪 Initial Landing Page
+                      </div>
+                      <a 
+                        href={selectedLead.initial_page_visit} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        style={{ 
+                          color: '#7c3aed', 
+                          fontSize: 14, 
+                          fontWeight: 500,
+                          textDecoration: 'none',
+                          wordBreak: 'break-all',
+                          display: 'block',
+                          marginBottom: 4
+                        }}
+                      >
+                        {selectedLead.initial_page_visit}
+                      </a>
+                      <p style={{ fontSize: 12, color: '#78350f', margin: '8px 0 0 0' }}>
+                        This is the first page they visited before {selectedLead.type === 'lead' ? 'converting' : 'being identified'}
+                      </p>
+                    </div>
+                  )}
+                  {selectedLead.page_url && (
+                    <div style={{ padding: 16, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8, fontWeight: 500 }}>
+                        {selectedLead.type === 'lead' ? 'Conversion Page' : 'Current Page'}
+                      </div>
+                      <a 
+                        href={selectedLead.page_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        style={{ 
+                          color: '#7c3aed', 
+                          fontSize: 14, 
+                          fontWeight: 500,
+                          textDecoration: 'none',
+                          wordBreak: 'break-all'
+                        }}
+                      >
+                        {selectedLead.page_url}
+                      </a>
+                    </div>
+                  )}
+                  <div style={{ padding: 16, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Date & Time</div>
+                    <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>
+                      {selectedLead.timestamp ? new Date(selectedLead.timestamp).toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                      }) : 'N/A'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                {selectedLead.email && (
+                  <a
+                    href={`mailto:${selectedLead.email}?subject=Follow up from ${location.hostname}`}
+                    style={{
+                      padding: '12px 24px',
+                      background: '#7c3aed',
+                      color: '#fff',
+                      borderRadius: 8,
+                      fontSize: 15,
+                      fontWeight: 600,
+                      textDecoration: 'none',
+                      transition: 'all 0.2s',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#6d28d9'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = '#7c3aed'}
+                  >
+                    📧 Send Follow-Up Email
+                  </a>
+                )}
+                <button
+                  onClick={() => setSelectedLead(null)}
+                  style={{
+                    padding: '12px 24px',
+                    background: '#f3f4f6',
+                    color: '#6b7280',
+                    border: '1px solid #d1d5db',
+                    borderRadius: 8,
+                    fontSize: 15,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#e5e7eb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#f3f4f6'}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

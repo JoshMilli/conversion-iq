@@ -176,6 +176,7 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
                 l.email,
                 l.phone,
                 l.page_url,
+                l.initial_page_visit,
                 l.converted_at as timestamp,
                 'lead' as type,
                 wl.event_type
@@ -197,6 +198,7 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
                 s.email,
                 NULL as phone,
                 s.page_url,
+                s.initial_page_visit,
                 s.identified_at as timestamp,
                 'visitor' as type,
                 wl.event_type
@@ -315,6 +317,7 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
             'phone' => $contact['phone'] ?? $contact_info['phone'] ?? null,
             'page_url' => $page_url,
             'page_title' => null,
+            'initial_page_visit' => $data['initial_page_visit'] ?? null,
             'user_session_id' => $data['user_session_id'] ?? $data['user_session']['_id'] ?? '',
             'converted_at' => gmdate('Y-m-d H:i:s', $payload['timestamp'] ?? time()),
             'created_at' => current_time('mysql')
@@ -377,6 +380,7 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
             'last_name' => $contact['lastName'] ?? $contact['last_name'] ?? null,
             'email' => $email,
             'page_url' => $page_url,
+            'initial_page_visit' => $data['initial_page_visit'] ?? null,
             'identified_at' => gmdate('Y-m-d H:i:s', $payload['timestamp'] ?? time()),
             'created_at' => current_time('mysql')
         ];
