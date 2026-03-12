@@ -58,13 +58,44 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         $timestamp = $request->get_header('X-Webhook-Timestamp');
         $event_type = $request->get_header('X-Webhook-Event');
         
-        error_log('ConversionIQ: Event type: ' . ($event_type ?: 'NOT SET'));
+        error_log('ConversionIQ: Event type from header: ' . ($event_type ?: 'NOT SET'));
         error_log('ConversionIQ: Signature present: ' . ($signature ? 'YES' : 'NO'));
         error_log('ConversionIQ: Timestamp: ' . ($timestamp ?: 'NOT SET'));
         
         // Get raw body
         $raw_body = $request->get_body();
         error_log('ConversionIQ: Payload length: ' . strlen($raw_body) . ' bytes');
+        
+        $payload = json_decode($raw_body, true);
+        
+        if (!$payload) {
+            error_log('ConversionIQ: Invalid JSON payload');
+            error_log('ConversionIQ: Raw body: ' . substr($raw_body, 0, 500));
+            return new WP_REST_Response(['error' => 'Invalid JSON payload'], 400);
+        }
+        
+        // FALLBACK: If event_type not in header, check payload
+        if (empty($event_type)) {
+            // Try common payload fields for event type
+            $event_type = $payload['event'] ?? $payload['event_type'] ?? $payload['type'] ?? '';
+            error_log('ConversionIQ: Event type from payload: ' . ($event_type ?: 'STILL NOT FOUND'));
+            
+            // If still not found, try to infer from structure
+            if (empty($event_type) && isset($payload['data'])) {
+                $data = $payload['data'];
+                
+                // Infer based on structure
+                if (isset($data['is_conversion']) || isset($data['conversion_type'])) {
+                    $event_type = 'new_lead';
+                    error_log('ConversionIQ: Event type INFERRED as new_lead from structure');
+                } elseif (isset($data['user_session_id']) || isset($data['user_session'])) {
+                    $event_type = 'new_user_identified';
+                    error_log('ConversionIQ: Event type INFERRED as new_user_identified from structure');
+                }
+            }
+        }
+        
+        error_log('ConversionIQ: Final event type to process: ' . ($event_type ?: 'NONE'));
         
         $payload = json_decode($raw_body, true);
         
@@ -130,6 +161,11 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         error_log("ConversionIQ: Processing event type: " . var_export($event_type, true));
         error_log("ConversionIQ: Event type comparison: 'new_lead'=" . ($event_type === 'new_lead' ? 'TRUE' : 'FALSE') . ", 'new_user_identified'=" . ($event_type === 'new_user_identified' ? 'TRUE' : 'FALSE'));
         
+        if (empty($event_type)) {
+            error_log("ConversionIQ: ❌ ERROR - No event type could be determined. Webhook will be logged but not processed.");
+            error_log("ConversionIQ: Full payload for debugging: " . json_encode($payload));
+        }
+        
         switch ($event_type) {
             case 'new_lead':
                 error_log("ConversionIQ: → Calling process_new_lead()");
@@ -146,6 +182,8 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
             default:
                 error_log("ConversionIQ: ⚠ UNHANDLED EVENT TYPE: '{$event_type}'");
                 error_log("ConversionIQ: Event type is: " . gettype($event_type) . " with length: " . strlen((string)$event_type));
+                error_log("ConversionIQ: Available event types: 'new_lead', 'new_user_identified'");
+                error_log("ConversionIQ: First 500 chars of payload: " . substr(json_encode($payload), 0, 500));
         }
         
         // Verify data was saved
