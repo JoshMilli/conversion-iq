@@ -336,6 +336,154 @@ class ConversionIQ_AI
     }
 
     /**
+     * Get aggregated webhook statistics for AI analysis
+     * @param string $page_url The URL of the page being analyzed
+     * @return array|null Aggregated webhook statistics or null if no data
+     */
+    public static function get_webhook_statistics($page_url) {
+        global $wpdb;
+        
+        $leads_table = $wpdb->prefix . 'conversioniq_leads';
+        $visitors_table = $wpdb->prefix . 'conversioniq_visitor_sessions';
+        
+        // Normalize homepage URL for consistent matching
+        $parsed_url = parse_url($page_url);
+        $site_url = get_site_url();
+        $parsed_site = parse_url($site_url);
+        
+        // Homepage variations to check
+        $homepage_variations = array(
+            $site_url,
+            trailingslashit($site_url),
+            rtrim($site_url, '/'),
+            $parsed_site['scheme'] . '://' . $parsed_site['host'],
+            $parsed_site['scheme'] . '://' . $parsed_site['host'] . '/'
+        );
+        
+        // Check if this is the homepage
+        $is_homepage = in_array($page_url, $homepage_variations) || 
+                       $page_url === $site_url || 
+                       $page_url === trailingslashit($site_url);
+        
+        // Build SQL condition for homepage matching
+        if ($is_homepage) {
+            $homepage_placeholders = implode(',', array_fill(0, count($homepage_variations), '%s'));
+            $where_clause_leads = "initial_page_visit IN ($homepage_placeholders)";
+            $where_clause_visitors = "page_url IN ($homepage_placeholders)";
+            $sql_params = $homepage_variations;
+        } else {
+            $where_clause_leads = "initial_page_visit = %s";
+            $where_clause_visitors = "page_url = %s";
+            $sql_params = array($page_url);
+        }
+        
+        // Get leads that started on this page
+        $leads = $wpdb->get_results($wpdb->prepare(
+            "SELECT email, company, page_title, initial_page_visit, created_at 
+             FROM $leads_table 
+             WHERE $where_clause_leads 
+             ORDER BY created_at DESC 
+             LIMIT 50",
+            ...$sql_params
+        ), ARRAY_A);
+        
+        // Get visitors engaged on this page
+        $visitors = $wpdb->get_results($wpdb->prepare(
+            "SELECT email, company, page_url, created_at 
+             FROM $visitors_table 
+             WHERE $where_clause_visitors 
+             ORDER BY created_at DESC 
+             LIMIT 50",
+            ...$sql_params
+        ), ARRAY_A);
+        
+        // Get total site stats for context
+        $total_site_leads = $wpdb->get_var("SELECT COUNT(*) FROM $leads_table");
+        $total_site_visitors = $wpdb->get_var("SELECT COUNT(*) FROM $visitors_table");
+        
+        // Get 7-day activity
+        $seven_days_ago = date('Y-m-d H:i:s', strtotime('-7 days'));
+        $recent_leads = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $leads_table WHERE $where_clause_leads AND created_at >= %s",
+            ...array_merge($sql_params, array($seven_days_ago))
+        ));
+        $recent_visitors = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $visitors_table WHERE $where_clause_visitors AND created_at >= %s",
+            ...array_merge($sql_params, array($seven_days_ago))
+        ));
+        
+        // Return null if no data
+        if (empty($leads) && empty($visitors)) {
+            return null;
+        }
+        
+        // Aggregate statistics
+        $total_leads = count($leads);
+        $total_visitors = count($visitors);
+        $total_interactions = $total_leads + $total_visitors;
+        
+        // Company analysis
+        $companies = array_filter(array_column(array_merge($leads, $visitors), 'company'));
+        $company_counts = array_count_values($companies);
+        arsort($company_counts);
+        $top_companies = array_slice($company_counts, 0, 10, true);
+        
+        // Domain analysis
+        $domains = array();
+        foreach (array_merge($leads, $visitors) as $item) {
+            if (!empty($item['email']) && strpos($item['email'], '@') !== false) {
+                $domain = substr(strrchr($item['email'], "@"), 1);
+                $domains[] = $domain;
+            }
+        }
+        $domain_counts = array_count_values($domains);
+        arsort($domain_counts);
+        $top_domains = array_slice($domain_counts, 0, 10, true);
+        
+        // Time-based analysis
+        $weekday_counts = array();
+        $hour_counts = array();
+        foreach (array_merge($leads, $visitors) as $item) {
+            if (!empty($item['created_at'])) {
+                $timestamp = strtotime($item['created_at']);
+                $weekday = date('l', $timestamp);
+                $hour = date('G', $timestamp);
+                
+                if (!isset($weekday_counts[$weekday])) $weekday_counts[$weekday] = 0;
+                $weekday_counts[$weekday]++;
+                
+                if (!isset($hour_counts[$hour])) $hour_counts[$hour] = 0;
+                $hour_counts[$hour]++;
+            }
+        }
+        arsort($weekday_counts);
+        arsort($hour_counts);
+        
+        // Calculate contribution percentages
+        $site_contribution_pct = ($total_site_leads > 0) 
+            ? round(($total_leads / $total_site_leads) * 100, 1) 
+            : 0;
+        
+        return array(
+            'total_leads' => $total_leads,
+            'total_visitors' => $total_visitors,
+            'total_interactions' => $total_interactions,
+            'total_site_leads' => (int)$total_site_leads,
+            'site_contribution_pct' => $site_contribution_pct,
+            'recent_leads_7d' => (int)$recent_leads,
+            'recent_visitors_7d' => (int)$recent_visitors,
+            'recent_activity_7d' => (int)($recent_leads + $recent_visitors),
+            'top_companies' => $top_companies,
+            'top_domains' => $top_domains,
+            'peak_weekday' => !empty($weekday_counts) ? array_key_first($weekday_counts) : 'Unknown',
+            'peak_hour' => !empty($hour_counts) ? array_key_first($hour_counts) : 'Unknown',
+            'has_recent_activity' => ($recent_leads + $recent_visitors) > 0,
+            'sample_leads' => array_slice($leads, 0, 5),
+            'sample_visitors' => array_slice($visitors, 0, 5),
+        );
+    }
+
+    /**
      * Detect page type and return appropriate conversion context
      */
     private static function detect_page_type($title, $url)
@@ -461,34 +609,71 @@ class ConversionIQ_AI
 
         error_log('🎯 Detected page type: ' . $page_type . ' | Conversion goal: ' . $conversion_goal);
 
-        // Process recent leads data
-        $recent_leads = isset($business['recent_leads']) ? $business['recent_leads'] : array();
+        // Get webhook statistics for this page
+        $webhook_stats = self::get_webhook_statistics($url);
         $leads_context = '';
 
-        if (!empty($recent_leads['page_specific_leads']) || !empty($recent_leads['site_wide_leads'])) {
-            $leads_context .= "\n\n**Recent Lead Data (KnockKnock Webhooks):**\n";
-            $leads_context .= "Use this data to analyze how well the page messaging aligns with actual converting visitors.\n";
-
-            if (!empty($recent_leads['page_specific_leads'])) {
-                $leads_context .= "- Page-Specific Leads (converted on this specific URL):\n";
-                foreach ($recent_leads['page_specific_leads'] as $lead) {
-                    $json_data = is_string($lead->data) ? $lead->data : wp_json_encode($lead->data);
-                    $leads_context .= "  - " . $json_data . "\n";
+        if ($webhook_stats) {
+            error_log('📊 Webhook stats loaded: ' . $webhook_stats['total_interactions'] . ' interactions, ' . $webhook_stats['total_leads'] . ' leads');
+            
+            $leads_context .= "\n\n**REAL LEAD DATA ANALYSIS (KnockKnock Intelligence):**\n";
+            $leads_context .= "The following data represents ACTUAL leads and visitors who have engaged with this page:\n\n";
+            
+            // Overall statistics
+            $leads_context .= "**Key Metrics:**\n";
+            $leads_context .= "- Total Leads Started Here: {$webhook_stats['total_leads']}\n";
+            $leads_context .= "- Total Engaged Visitors: {$webhook_stats['total_visitors']}\n";
+            $leads_context .= "- Page Contributes: {$webhook_stats['site_contribution_pct']}% of all site leads\n";
+            $leads_context .= "- Recent Activity (7 days): {$webhook_stats['recent_activity_7d']} interactions\n";
+            $leads_context .= "- Activity Status: " . ($webhook_stats['has_recent_activity'] ? 'ACTIVE' : 'QUIET') . "\n\n";
+            
+            // Company/Domain insights
+            if (!empty($webhook_stats['top_companies'])) {
+                $leads_context .= "**Top Companies Engaging:**\n";
+                $count = 0;
+                foreach ($webhook_stats['top_companies'] as $company => $frequency) {
+                    $leads_context .= "  - {$company}: {$frequency} interaction" . ($frequency > 1 ? 's' : '') . "\n";
+                    if (++$count >= 5) break;
                 }
+                $leads_context .= "\n";
             }
-
-            if (!empty($recent_leads['site_wide_leads'])) {
-                $leads_context .= "- Site-Wide Leads (converted elsewhere on the site, for context):\n";
-                foreach ($recent_leads['site_wide_leads'] as $lead) {
-                    $json_data = is_string($lead->data) ? $lead->data : wp_json_encode($lead->data);
-                    $leads_context .= "  - " . $json_data . "\n";
+            
+            if (!empty($webhook_stats['top_domains'])) {
+                $leads_context .= "**Top Email Domains:**\n";
+                $count = 0;
+                foreach ($webhook_stats['top_domains'] as $domain => $frequency) {
+                    $leads_context .= "  - {$domain}: {$frequency} lead" . ($frequency > 1 ? 's' : '') . "\n";
+                    if (++$count >= 5) break;
                 }
+                $leads_context .= "\n";
             }
-
-            $leads_context .= "\n**CRITICAL INSTRUCTIONS for Lead Data Analysis:**\n";
-            $leads_context .= "1. Analyze the lead data to understand the actual demographics, interests, and pain points of converting visitors.\n";
-            $leads_context .= "2. Compare this against the page content. Identify gaps where the messaging doesn't address the actual needs of the leads.\n";
-            $leads_context .= "3. Provide a 'lead_intelligence_summary' in the JSON response detailing your findings and suggesting specific content alignments.\n";
+            
+            // Behavioral insights
+            $leads_context .= "**Behavioral Patterns:**\n";
+            $leads_context .= "- Peak Day: {$webhook_stats['peak_weekday']}\n";
+            $leads_context .= "- Peak Hour: {$webhook_stats['peak_hour']}:00\n\n";
+            
+            // Sample data for deeper insights
+            if (!empty($webhook_stats['sample_leads'])) {
+                $leads_context .= "**Sample Lead Data (for pattern analysis):**\n";
+                foreach (array_slice($webhook_stats['sample_leads'], 0, 3) as $lead) {
+                    $leads_context .= "  - Email: " . ($lead['email'] ?? 'N/A') . 
+                                     ", Company: " . ($lead['company'] ?? 'Unknown') . 
+                                     ", Date: " . date('M j', strtotime($lead['created_at'])) . "\n";
+                }
+                $leads_context .= "\n";
+            }
+            
+            $leads_context .= "**CRITICAL ANALYSIS INSTRUCTIONS:**\n";
+            $leads_context .= "1. Use these REAL NUMBERS in your lead_intelligence_summary - cite specific statistics\n";
+            $leads_context .= "2. In 'overview': Lead with the numbers (e.g., 'This page has generated {$webhook_stats['total_leads']} leads...')\n";
+            $leads_context .= "3. In 'messaging_alignment': Compare company names/domains against page content - do they match the target audience?\n";
+            $leads_context .= "4. In 'audience_insights': Analyze the pattern of companies and domains - what industries/roles are converting?\n";
+            $leads_context .= "5. In 'recommended_adjustments': Provide SPECIFIC changes based on gaps between actual leads and page messaging\n";
+            $leads_context .= "6. Be quantitative and data-driven - mention percentages, counts, and specific examples\n";
+        } else {
+            error_log('ℹ️ No webhook data available for AI analysis');
+            $leads_context .= "\n\n**Note:** No lead intelligence data available yet for this page. Focus on general conversion best practices.\n";
         }
 
 
@@ -803,10 +988,10 @@ Missing any of these scores will cause the audit to fail. Each score must be a n
         }
     ],
     \"lead_intelligence_summary\": {
-        \"overview\": \"High-level summary of lead demographics and behavior based on the provided KnockKnock webhook data.\",
-        \"messaging_alignment\": \"How well the current page messaging aligns with the actual leads data. Are there gaps?\",
-        \"audience_insights\": \"Specific insights derived from the leads (e.g., common titles, interests, or interactions discovered in the data).\",
-        \"recommended_adjustments\": \"Specific content or structural changes to better capture similar leads based on the intel.\"
+        \"overview\": \"QUANTITATIVE summary with specific numbers. Start with stats like: 'This page has generated X leads (Y% of site total) from Z companies.' Include key metrics, peak activity times, and trend summary. Make it data-driven, not generic.\",
+        \"messaging_alignment\": \"Compare page content against actual lead data. Example: 'Top converting companies include [list 3-5 names] - the page does/doesn't address their industry needs.' Reference specific gaps between target audience messaging and actual converters. Include percentages where relevant.\",
+        \"audience_insights\": \"Specific insights from the data with numbers. Example: 'X% of leads are from [industry], with [domain type] being most common. Peak engagement happens on [day] at [time]. Notable patterns: [specific observation].' Cite company types, job roles if available, behavioral patterns.\",
+        \"recommended_adjustments\": \"Specific, prioritized changes based on data gaps. Example: '1. Add case studies targeting [specific industries from data] 2. Adjust headline to speak to [actual audience type] who make up X% of leads 3. Include testimonials from companies in [relevant sector].' Be specific, not generic.\"
     },
     \"functionality_suggestions\": [
         {
