@@ -449,6 +449,14 @@ class ConversionIQ_AI
         // Return null if no data
         if (empty($leads) && empty($visitors)) {
             error_log('🔍 No page-specific webhook data found - trying site-wide fallback');
+            error_log('🔍 Leads table: ' . $leads_table);
+            error_log('🔍 Visitors table: ' . $visitors_table);
+            error_log('🔍 Last DB error: ' . $wpdb->last_error);
+            
+            // Check total table counts first
+            $total_all_leads = $wpdb->get_var("SELECT COUNT(*) FROM $leads_table");
+            $total_all_visitors = $wpdb->get_var("SELECT COUNT(*) FROM $visitors_table");
+            error_log('🔍 Total records site-wide - leads: ' . $total_all_leads . ', visitors: ' . $total_all_visitors);
             
             // Fallback: get ALL site visitor data (useful when URLs don't match exactly)
             $leads = $wpdb->get_results(
@@ -462,12 +470,18 @@ class ConversionIQ_AI
                 ARRAY_A
             );
             
+            error_log('🔍 Site-wide fallback query - leads found: ' . count($leads) . ', visitors found: ' . count($visitors));
+            if (!empty($visitors)) {
+                $sample_urls = array_unique(array_column($visitors, 'page_url'));
+                error_log('🔍 Sample page_url values in DB: ' . json_encode(array_slice($sample_urls, 0, 5)));
+            }
+            
             if (empty($leads) && empty($visitors)) {
-                error_log('🔍 No webhook data found site-wide either - returning null');
+                error_log('❌ No webhook data found site-wide - tables may be empty or missing');
                 return null;
             }
             
-            error_log('📊 Site-wide fallback: found ' . count($leads) . ' leads, ' . count($visitors) . ' visitors');
+            error_log('✅ Site-wide fallback: using ' . count($leads) . ' leads, ' . count($visitors) . ' visitors');
             
             // Recalculate 7-day activity for site-wide
             $recent_leads = $wpdb->get_var($wpdb->prepare(

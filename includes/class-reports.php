@@ -1041,22 +1041,38 @@ class ConversionIQ_Reports
         </div>';
 
             // ============ PAGE 4.5: LEAD INTELLIGENCE SUMMARY ============
-            // Show if KnockKnock is configured OR if webhook data exists in the database
             $knockknock_company_id = get_option('conversioniq_knockknock_company_id', '');
             $is_knockknock_configured = !empty($knockknock_company_id);
+            
+            error_log('=== LEAD INTELLIGENCE SECTION ===');
+            error_log('📋 Audit ID: ' . ($audit['id'] ?? 'unknown'));
+            error_log('📋 Page URL: ' . ($audit['page_url'] ?? 'unknown'));
+            error_log('📋 KnockKnock Company ID configured: ' . ($is_knockknock_configured ? 'YES (' . $knockknock_company_id . ')' : 'NO (empty)'));
+            error_log('📋 Data keys in audit: ' . json_encode(array_keys($data)));
+            error_log('📋 webhook_stats in stored data: ' . (isset($data['webhook_stats']) ? 'YES' : 'NO'));
+            error_log('📋 lead_intelligence_summary in stored data: ' . (isset($data['lead_intelligence_summary']) ? 'YES' : 'NO'));
             
             // Use stored webhook_stats from audit data (real DB numbers, attached during audit)
             $webhook_stats = isset($data['webhook_stats']) ? $data['webhook_stats'] : null;
             
-            // Always try to fetch fresh webhook data - show if ANY data exists regardless of config
-            if (!$webhook_stats) {
-                $webhook_stats = ConversionIQ_AI::get_webhook_statistics($audit['page_url']);
+            if ($webhook_stats) {
+                error_log('✅ Using stored webhook_stats from audit data: ' . $webhook_stats['total_interactions'] . ' interactions');
+            } else {
+                error_log('⚠️ No webhook_stats in stored audit data - querying DB fresh for: ' . ($audit['page_url'] ?? 'unknown'));
+                $webhook_stats = ConversionIQ_AI::get_webhook_statistics($audit['page_url'] ?? '');
+                if ($webhook_stats) {
+                    error_log('✅ Fresh DB query returned: ' . $webhook_stats['total_interactions'] . ' interactions, ' . $webhook_stats['total_leads'] . ' leads, ' . $webhook_stats['total_visitors'] . ' visitors');
+                } else {
+                    error_log('❌ Fresh DB query returned NULL - no webhook data found for this page or site-wide');
+                }
             }
             
             $has_lead_intel = !empty($data['lead_intelligence_summary']) && is_array($data['lead_intelligence_summary']);
+            error_log('📋 has_lead_intel: ' . ($has_lead_intel ? 'YES' : 'NO'));
+            error_log('📋 webhook_stats result: ' . ($webhook_stats ? 'HAS DATA' : 'NULL - section will be HIDDEN'));
             
-            // Show section if: KnockKnock is configured AND data exists, OR data exists from DB
             if ($webhook_stats) {
+                error_log('✅ Rendering Lead Intelligence section');
                 $html .= '
             <div class="page content-page">
                 <div class="content-header">
