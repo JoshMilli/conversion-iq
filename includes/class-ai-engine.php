@@ -61,7 +61,16 @@ class ConversionIQ_AI
 
         if ($ai_response && isset($ai_response['success']) && $ai_response['success']) {
             error_log('✅ AI analysis successful, returning data');
-            return $ai_response['data'];
+            $result = $ai_response['data'];
+            
+            // Attach raw webhook stats to the audit data so reports can show real numbers
+            $webhook_stats = self::get_webhook_statistics($page_url);
+            if ($webhook_stats) {
+                $result['webhook_stats'] = $webhook_stats;
+                error_log('📊 Attached webhook_stats to audit: ' . $webhook_stats['total_interactions'] . ' interactions');
+            }
+            
+            return $result;
         }
 
         // Log why we're falling back
@@ -69,8 +78,13 @@ class ConversionIQ_AI
         error_log('⚠️⚠️⚠️ FALLING BACK TO MOCK DATA - Reason: ' . $error_reason);
         error_log('📋 Full response: ' . json_encode($ai_response));
 
-        // Fallback to mock response if AI fails
-        return self::mock_response($page_title);
+        // Fallback to mock response if AI fails - still attach webhook stats
+        $mock = self::mock_response($page_title);
+        $webhook_stats = self::get_webhook_statistics($page_url);
+        if ($webhook_stats) {
+            $mock['webhook_stats'] = $webhook_stats;
+        }
+        return $mock;
     }
 
     /**
@@ -635,12 +649,9 @@ class ConversionIQ_AI
         // Get webhook statistics for this page - CONCISE version to avoid API timeouts
         $webhook_stats = self::get_webhook_statistics($url);
         $leads_context = '';
-        // TEMPORARILY DISABLED FOR TESTING: Commenting out conditional logic to test AI analysis without real data
-        // $has_lead_data = false;
 
         if ($webhook_stats) {
             error_log('📊 Webhook stats loaded: ' . $webhook_stats['total_interactions'] . ' interactions, ' . $webhook_stats['total_leads'] . ' leads');
-            // $has_lead_data = true;
             
             // ULTRA-CONCISE format to minimize prompt size
             $leads_context .= "\n\n**LEAD INTELLIGENCE DATA:**\n";
@@ -662,13 +673,10 @@ class ConversionIQ_AI
                 $leads_context .= "Top domains: " . implode(', ', $domains) . ". ";
             }
             
-            $leads_context .= "\n**INSTRUCTIONS:** Use these numbers in lead_intelligence_summary. Compare companies/domains against page content for alignment analysis.\n";
-        } 
-        // TEMPORARILY DISABLED FOR TESTING: Allowing AI to generate lead intelligence without real data
-        // else {
-        //     error_log('ℹ️ No webhook data available for AI analysis (URL: ' . $url . ')');
-        //     error_log('⚠️ lead_intelligence_summary will be EXCLUDED from JSON template - no data to analyze');
-        // }
+            $leads_context .= "\n**INSTRUCTIONS:** Use ONLY these real numbers in lead_intelligence_summary. Do NOT invent or estimate any stats.\n";
+        } else {
+            error_log('ℹ️ No webhook data available for AI analysis (URL: ' . $url . ')');
+        }
 
 
         // Section context for chunked analysis
@@ -727,20 +735,20 @@ trust_score: 0-40=minimal/no social proof | 40-60=anonymous testimonials OR basi
 
 **OUTPUT JSON (no markdown):**";
 
-        // TEMPORARILY DISABLED FOR TESTING: Always include lead_intelligence_summary to test AI analysis
-        // Original conditional logic (will restore later):
-        // Build lead intelligence JSON field only if we have real data
-        // $lead_intelligence_json = '';
-        // if ($has_lead_data) {
-        
-        $lead_intelligence_json = ',
+        // Lead intelligence: AI provides brief insight + recommendations only when real data exists
+        // The actual stats/numbers are stored separately as webhook_stats (real DB data, never AI-generated)
+        $lead_intelligence_json = '';
+        if ($webhook_stats) {
+            $lead_intelligence_json = ',
     \"lead_intelligence_summary\": {
-        \"overview\": \"QUANTITATIVE summary with specific numbers. Start with stats like: \'This page has generated X leads (Y% of site total) from Z companies.\' Include key metrics, peak activity times, and trend summary. Make it data-driven, not generic.\",
-        \"messaging_alignment\": \"Compare page content against actual lead data. Example: \'Top converting companies include [list 3-5 names] - the page does/doesn\'t address their industry needs.\' Reference specific gaps between target audience messaging and actual converters. Include percentages where relevant.\",
-        \"audience_insights\": \"Specific insights from the data with numbers. Example: \'X% of leads are from [industry], with [domain type] being most common. Peak engagement happens on [day] at [time]. Notable patterns: [specific observation].\' Cite company types, job roles if available, behavioral patterns.\",
-        \"recommended_adjustments\": \"Specific, prioritized changes based on data gaps. Example: \'1. Add case studies targeting [specific industries from data] 2. Adjust headline to speak to [actual audience type] who make up X% of leads 3. Include testimonials from companies in [relevant sector].\' Be specific, not generic.\"
+        \"insight\": \"In 2-3 sentences, analyze what the lead data reveals about this page performance. Reference the specific companies, domains, and patterns from the data provided. What does the data tell us about who this page attracts vs who it should attract?\",
+        \"recommendations\": [
+            \"Specific action item #1 based on actual lead data patterns - reference real company types or domains\",
+            \"Specific action item #2 addressing a gap between page messaging and who actually converts\",
+            \"Specific action item #3 for improving lead quality or volume based on the data trends\"
+        ]
     }';
-        // } // END OF COMMENTED OUT CONDITIONAL
+        }
 
         $prompt .= "
 
@@ -1019,12 +1027,7 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanatory te
                     'implementation' => 'Verify Abacus.ai API key in wp-config.php and check network connectivity'
                 )
             ),
-            'lead_intelligence_summary' => array(
-                'overview' => 'Lead Intelligence data unavailable - AI analysis failed before webhook data could be processed.',
-                'messaging_alignment' => 'Unable to analyze messaging alignment without AI analysis. Fix the AI integration to see how your page messaging aligns with actual converting leads.',
-                'audience_insights' => 'Lead behavior insights require successful AI analysis. Once the AI integration is fixed, you will see detailed patterns about which companies, industries, and domains are converting on this page.',
-                'recommended_adjustments' => 'Cannot provide data-driven recommendations without AI analysis. Fix AI integration to get specific, actionable changes based on your actual lead data.'
-            ),
+            'lead_intelligence_summary' => null,
             'functionality_suggestions' => array(
                     array(
                     'title' => 'Fix AI Integration',
