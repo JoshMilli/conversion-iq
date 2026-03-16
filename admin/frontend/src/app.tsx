@@ -2449,7 +2449,7 @@ export default function App() {
                                         background: item.type === 'lead' ? '#dcfce7' : '#dbeafe',
                                         color: item.type === 'lead' ? '#166534' : '#1e40af'
                                       }}>
-                                        {item.type === 'lead' ? '🎯 Lead' : '👤 Visitor'}
+                                        {item.type === 'lead' ? 'Lead' : 'Visitor'}
                                       </span>
                                     </td>
                                     <td style={{ padding: '14px 16px', color: '#111827', fontWeight: 500 }}>

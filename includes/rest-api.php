@@ -165,6 +165,141 @@ function conversioniq_extract_html_structure($html)
     return $summary;
 }
 
+/**
+ * Query WordPress Custom Post Types for review/testimonial entries
+ * to supplement HTML trust signal analysis with database-sourced reviews.
+ *
+ * Handles CPTs like 'review', 'reviews', '_reviews', 'testimonial', etc.
+ * Meta fields checked follow common patterns (e.g. _name, _position, _review-copy).
+ *
+ * @return string Formatted context string, or empty string if no reviews found.
+ */
+function conversioniq_get_cpt_reviews() {
+    static $cached_result = null;
+    if ($cached_result !== null) {
+        return $cached_result;
+    }
+
+    // Scan all registered post types for review/testimonial CPTs
+    $all_types = get_post_types(array(), 'names');
+    $review_cpt_candidates = array();
+    foreach ($all_types as $post_type) {
+        $slug = strtolower($post_type);
+        if (strpos($slug, 'review') !== false || strpos($slug, 'testimonial') !== false) {
+            $review_cpt_candidates[] = $post_type;
+        }
+    }
+
+    if (empty($review_cpt_candidates)) {
+        error_log('ℹ️ No review/testimonial CPTs detected on this site');
+        $cached_result = '';
+        return '';
+    }
+
+    error_log('🔍 Detected review CPTs: ' . implode(', ', $review_cpt_candidates));
+
+    // Common meta field names used by popular review/testimonial CPT setups
+    $name_fields     = array('_name', 'reviewer_name', 'client_name', 'author_name', 'name', 'review_author');
+    $position_fields = array('_position', 'reviewer_position', 'client_position', 'job_title', 'position', 'role');
+    $text_fields     = array('_review-copy', 'review_text', 'review_content', 'testimonial_text', 'review_body', 'review_copy');
+
+    $all_reviews = array();
+
+    foreach ($review_cpt_candidates as $cpt) {
+        $posts = get_posts(array(
+            'post_type'   => $cpt,
+            'post_status' => 'publish',
+            'numberposts' => 20,
+            'orderby'     => 'date',
+            'order'       => 'DESC',
+        ));
+
+        if (empty($posts)) {
+            continue;
+        }
+
+        error_log('📝 CPT "' . $cpt . '": ' . count($posts) . ' published reviews');
+
+        foreach ($posts as $post) {
+            // Reviewer name
+            $reviewer_name = '';
+            foreach ($name_fields as $field) {
+                $val = trim((string) get_post_meta($post->ID, $field, true));
+                if ($val !== '') {
+                    $reviewer_name = sanitize_text_field($val);
+                    break;
+                }
+            }
+            // Fallback: post title when it looks like a person's name
+            if ($reviewer_name === '' && preg_match('/^[A-Z][a-z]+(?:\s+[A-Z][a-zA-Z]+)+$/', trim($post->post_title))) {
+                $reviewer_name = trim($post->post_title);
+            }
+
+            // Reviewer position / job title
+            $reviewer_position = '';
+            foreach ($position_fields as $field) {
+                $val = trim((string) get_post_meta($post->ID, $field, true));
+                if ($val !== '') {
+                    $reviewer_position = sanitize_text_field($val);
+                    break;
+                }
+            }
+
+            // Review body text
+            $review_text = '';
+            foreach ($text_fields as $field) {
+                $val = trim((string) get_post_meta($post->ID, $field, true));
+                if ($val !== '') {
+                    $review_text = wp_strip_all_tags($val);
+                    break;
+                }
+            }
+            if ($review_text === '' && !empty($post->post_content)) {
+                $review_text = wp_strip_all_tags($post->post_content);
+            }
+
+            if ($reviewer_name === '' && $review_text === '') {
+                continue;
+            }
+
+            // Format: "Name, Position: "text preview""
+            $entry = $reviewer_name;
+            if ($reviewer_name !== '' && $reviewer_position !== '') {
+                $entry .= ', ' . $reviewer_position;
+            }
+            if ($review_text !== '') {
+                $preview = mb_strlen($review_text) > 150 ? mb_substr($review_text, 0, 150) . '...' : $review_text;
+                $entry .= ($entry !== '' ? ': "' : '"') . $preview . '"';
+            }
+
+            $all_reviews[] = $entry;
+        }
+    }
+
+    if (empty($all_reviews)) {
+        error_log('ℹ️ Review CPTs found but no publishable review data could be extracted');
+        $cached_result = '';
+        return '';
+    }
+
+    $count = count($all_reviews);
+    error_log('✅ ' . $count . ' CPT reviews extracted for trust scoring');
+
+    $summary  = "\n\n**SITE REVIEWS (WordPress Custom Post Type - Database):**\n";
+    $summary .= 'This site has ' . $count . ' published customer reviews stored in a WordPress Custom Post Type (these are manually curated reviews often not rendered in standard page HTML).' . "\n";
+    foreach (array_slice($all_reviews, 0, 10) as $i => $review) {
+        $summary .= ($i + 1) . '. ' . $review . "\n";
+    }
+    if ($count > 10) {
+        $summary .= '... and ' . ($count - 10) . " more reviews in the database.\n";
+    }
+    $summary .= '**TRUST SIGNAL**: These ' . $count . ' verified manual customer reviews are a strong trust indicator. ';
+    $summary .= 'The trust score must reflect this social proof (minimum 65 when named reviews exist, 75+ when reviews have both name and position).';
+
+    $cached_result = $summary;
+    return $summary;
+}
+
 add_action('rest_api_init', function () {
     // Authentication routes
     register_rest_route('conversioniq/v1', '/auth/status', array(
@@ -587,6 +722,13 @@ function conversioniq_run_audit(WP_REST_Request $request)
         }
         else {
             error_log('⚠️ Could not fetch HTML: ' . (is_wp_error($response) ? $response->get_error_message() : 'HTTP error'));
+        }
+
+        // Supplement HTML-based trust signals with reviews stored in WordPress CPTs
+        $cpt_reviews = conversioniq_get_cpt_reviews();
+        if (!empty($cpt_reviews)) {
+            $html_structure .= $cpt_reviews;
+            error_log('✅ CPT reviews appended to trust signal context');
         }
 
         $payload = array(
@@ -1720,6 +1862,12 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
             if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
                 $html = wp_remote_retrieve_body($response);
                 $html_structure = conversioniq_extract_html_structure($html);
+            }
+
+            // Supplement HTML-based trust signals with reviews stored in WordPress CPTs
+            $cpt_reviews = conversioniq_get_cpt_reviews();
+            if (!empty($cpt_reviews)) {
+                $html_structure .= $cpt_reviews;
             }
 
             // Get business settings
