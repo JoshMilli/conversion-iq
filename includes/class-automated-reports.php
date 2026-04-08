@@ -252,13 +252,25 @@ class ConversionIQ_Automated_Reports
         $status = $overall_score >= 85 ? 'Excellent' : ($overall_score >= 75 ? 'Good' : ($overall_score >= 60 ? 'Fair' : 'Needs Improvement'));
         $status_color = $overall_score >= 85 ? '#10b981' : ($overall_score >= 75 ? '#2563eb' : ($overall_score >= 60 ? '#f59e0b' : '#ef4444'));
 
-        // Webtec logo - convert to base64 for email embedding
-        $logo_base64 = '';
-        $logo_path = CONVERSION_IQ_DIR . 'assets/images/Webtec.png';
-        if (file_exists($logo_path)) {
-            $logo_data = file_get_contents($logo_path);
-            $logo_base64 = 'data:image/png;base64,' . base64_encode($logo_data);
+        // Branding from config manager — only apply custom branding if plan allows it
+        if (ConversionIQ_Config_Manager::can('white_label_emails')) {
+            $branding = ConversionIQ_Config_Manager::get_branding();
+        } else {
+            // Use default branding for Starter plans
+            $branding = array(
+                'company_name'   => 'Webtec',
+                'product_name'   => 'Conversion IQ',
+                'support_email'  => 'support@trywebtec.com',
+                'booking_url'    => 'https://calendly.com/webtec-website/success-meeting',
+                'hide_powered_by' => false,
+            );
         }
+        $brand_company = esc_html($branding['company_name']);
+        $brand_product = esc_html($branding['product_name']);
+        $brand_support_email = $branding['support_email'];
+        $brand_booking_url = esc_url($branding['booking_url']);
+        $brand_hide_powered_by = !empty($branding['hide_powered_by']);
+        $logo_html = ConversionIQ_Config_Manager::get_logo_html('height: 60px; width: auto; display: block; margin: 0 auto;');
 
         // Calculate insights
         $low_scoring_pages = array_filter($page_summaries, function ($p) {
@@ -288,7 +300,7 @@ class ConversionIQ_Automated_Reports
         $strongest_areas = array_values(array_slice(array_keys($avg_scores), 0, 2));
 
         // Build email subject
-        $subject = sprintf('[%s] Conversion Audit Report - Score: %d/100', $site_name, $overall_score);
+        $subject = sprintf('[%s] %s Audit Report - Score: %d/100', $site_name, $brand_product, $overall_score);
 
         // Check if any recipient email contains 'basecamp'
         $is_basecamp = conversioniq_has_basecamp_email($valid_emails);
@@ -313,11 +325,7 @@ class ConversionIQ_Automated_Reports
             );
         }
 
-        // Build logo HTML if available
-        $logo_html = '';
-        if (!empty($logo_base64)) {
-            $logo_html = '<img src="' . $logo_base64 . '" alt="Webtec" style="height: 60px; width: auto; display: block; margin: 0 auto;" />';
-        }
+        // Logo HTML already built from config manager above
 
         // Build HTML email with professional styling
         $message = sprintf(            '<!DOCTYPE html>
@@ -325,7 +333,7 @@ class ConversionIQ_Automated_Reports
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conversion IQ Audit Report</title>
+    <title>' . $brand_product . ' Audit Report</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, \'Helvetica Neue\', Arial, sans-serif; background-color: #f9fafb; line-height: 1.6;">
     <table width="100%%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f9fafb; padding: 40px 20px;">
@@ -338,7 +346,7 @@ class ConversionIQ_Automated_Reports
                         <td style="background: linear-gradient(135deg, #1e3a5f 0%%, #2563eb 100%%); padding: 40px 32px; text-align: center;">
                             %s
                             <h1 style="margin: 16px 0 0 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
-                                Conversion IQ Audit Report
+                                ' . $brand_product . ' Audit Report
                             </h1>
                             <p style="margin: 8px 0 0; color: rgba(255,255,255,0.9); font-size: 14px;">
                                 Your automated conversion analysis is complete
@@ -356,11 +364,11 @@ class ConversionIQ_Automated_Reports
                             </p>
                             
                             <p style="margin: 0 0 24px; color: #4b5563; font-size: 15px;">
-                                Your automated Conversion IQ audit has been completed. We analyzed <strong>%d page%s</strong> on your website to evaluate conversion performance across six critical factors: conversion clarity, emotional resonance, call-to-action effectiveness, readability, engagement, and trust signals.
+                                Your automated ' . $brand_product . ' audit has been completed. We analyzed <strong>%d page%s</strong> on your website to evaluate conversion performance across six critical factors: conversion clarity, emotional resonance, call-to-action effectiveness, readability, engagement, and trust signals.
                             </p>
                             
                             <p style="margin: 0 0 12px; color: #4b5563; font-size: 15px;">
-                                Feel free to book a quick chat if you have any questions: <a href="https://calendly.com/webtec-website/success-meeting" style="color: #2563eb; text-decoration: none;">https://calendly.com/webtec-website/success-meeting</a>
+                                Feel free to book a quick chat if you have any questions: <a href="' . $brand_booking_url . '" style="color: #2563eb; text-decoration: none;">' . $brand_booking_url . '</a>
                             </p>
                             
                             <p style="margin: 0 0 24px; color: #4b5563; font-size: 15px;">
@@ -369,7 +377,7 @@ class ConversionIQ_Automated_Reports
                             
                             <p style="margin: 0 0 24px; color: #4b5563; font-size: 15px;">
                                 Thanks,<br>
-                                WebTec
+                                ' . $brand_company . '
                             </p>
                             
                             <!-- Overall Score Card -->
@@ -478,7 +486,7 @@ class ConversionIQ_Automated_Reports
                                                     <div style="width: 24px; height: 24px; background-color: #2563eb; color: #ffffff; border-radius: 50%%; text-align: center; line-height: 24px; font-weight: 700; font-size: 12px;">3</div>
                                                 </td>
                                                 <td style="padding-left: 12px; color: #4b5563; font-size: 14px;">
-                                                    Schedule implementation - Reach out to Webtec for a call to discuss and help implement the recommendations
+                                                    Schedule implementation - Reach out to ' . $brand_company . ' for a call to discuss and help implement the recommendations
                                                 </td>
                                             </tr>
                                         </table>
@@ -507,14 +515,14 @@ class ConversionIQ_Automated_Reports
                     <tr>
                         <td style="background-color: #f9fafb; padding: 24px 32px; border-top: 1px solid #e5e7eb;">
                             <p style="margin: 0 0 8px; color: #1f2937; font-size: 14px; font-weight: 600; text-align: center;">
-                                Conversion IQ
+                                ' . $brand_product . '
                             </p>
-                            <p style="margin: 0; color: #6b7280; font-size: 12px; text-align: center;">
-                                Powered by <strong>Webtec</strong>
-                            </p>
+                            ' . ($brand_hide_powered_by ? '' : '<p style="margin: 0; color: #6b7280; font-size: 12px; text-align: center;">
+                                Powered by <strong>' . $brand_company . '</strong>
+                            </p>') . '
                             <p style="margin: 12px 0 0; color: #9ca3af; font-size: 12px; text-align: center;">
                                 Need help implementing changes or have questions?<br>
-                                Contact us at <a href="mailto:support@trywebtec.com" style="color: #2563eb; text-decoration: none;">support@trywebtec.com</a>
+                                Contact us at <a href="mailto:' . esc_attr($brand_support_email) . '" style="color: #2563eb; text-decoration: none;">' . esc_html($brand_support_email) . '</a>
                             </p>
                         </td>
                     </tr>
@@ -547,22 +555,22 @@ class ConversionIQ_Automated_Reports
 
         $headers = array(
             'Content-Type: text/html; charset=UTF-8',
-            'From: Conversion IQ - ' . $site_name . ' <noreply@' . parse_url(get_site_url(), PHP_URL_HOST) . '>',
-            'Reply-To: Webtec Support <support@trywebtec.com>'
+            'From: ' . $brand_product . ' - ' . $site_name . ' <noreply@' . parse_url(get_site_url(), PHP_URL_HOST) . '>',
+            'Reply-To: ' . $brand_company . ' Support <' . $brand_support_email . '>'
         );
 
         // If sending to Basecamp, create plain text version instead
         if ($is_basecamp) {
-            $message = "CONVERSION IQ AUDIT REPORT\n";
+            $message = strtoupper($brand_product) . " AUDIT REPORT\n";
             $message .= "=================================\n";
             $message .= "\n\n";
             $message .= "Hello,\n\n";
-            $message .= "Your automated Conversion IQ audit has been completed.\n";
+            $message .= "Your automated " . $brand_product . " audit has been completed.\n";
             $message .= "We analyzed " . $total_pages . " page" . ($total_pages > 1 ? 's' : '') . " on your website.\n\n";
             $message .= "Feel free to book a quick chat if you have any questions:\n";
-            $message .= "https://calendly.com/webtec-website/success-meeting\n\n";
+            $message .= $brand_booking_url . "\n\n";
             $message .= "You can paste any recommendations directly into Basecamp and our Customer Success Team will get onto them right away.\n\n";
-            $message .= "Thanks,\nWebTec\n\n";
+            $message .= "Thanks,\n" . $brand_company . "\n\n";
 
             $message .= "OVERALL PERFORMANCE: " . $overall_score . "/100 - " . $status . "\n";
             $message .= "=================================\n\n";
@@ -592,19 +600,19 @@ class ConversionIQ_Automated_Reports
             $message .= "---------------------------------\n";
             $message .= "1. Review the attached PDF reports for detailed analysis and recommendations\n";
             $message .= "2. Prioritize changes based on the scores and suggestions provided\n";
-            $message .= "3. Schedule implementation - Reach out to Webtec for a call to discuss and implement recommendations\n\n";
+            $message .= "3. Schedule implementation - Reach out to " . $brand_company . " for a call to discuss and implement recommendations\n\n";
 
             $message .= "ATTACHED FILES:\n";
             $message .= "- " . count($attachments) . " detailed PDF report" . (count($attachments) !== 1 ? 's' : '') . " with page-specific recommendations\n\n";
 
             $message .= "---\n";
-            $message .= "Conversion IQ - Powered by Webtec\n";
-            $message .= "Need help? Contact us at support@trywebtec.com\n";
+            $message .= $brand_product . " - Powered by " . $brand_company . "\n";
+            $message .= "Need help? Contact us at " . $brand_support_email . "\n";
 
             $headers = array(
                 'Content-Type: text/plain; charset=UTF-8',
-                'From: Conversion IQ - ' . $site_name . ' <noreply@' . parse_url(get_site_url(), PHP_URL_HOST) . '>',
-                'Reply-To: Webtec Support <support@trywebtec.com>'
+                'From: ' . $brand_product . ' - ' . $site_name . ' <noreply@' . parse_url(get_site_url(), PHP_URL_HOST) . '>',
+                'Reply-To: ' . $brand_company . ' Support <' . $brand_support_email . '>'
             );
         }
 

@@ -5,11 +5,17 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // Generate nonce and prepare data for immediate injection
 $nonce = wp_create_nonce( 'wp_rest' );
+$branding = ConversionIQ_Config_Manager::get_branding();
+$features = ConversionIQ_Config_Manager::get_feature_flags();
+$plan = ConversionIQ_Config_Manager::get_plan();
 $data = array(
     'restUrl' => esc_url_raw( rest_url( 'conversioniq/v1/' ) ),
     'nonce'   => $nonce,
     'pluginUrl' => CONVERSION_IQ_URL,
     'version' => CONVERSION_IQ_VERSION . '.' . get_option('conversioniq_last_updated', time()),
+    'branding' => $branding,
+    'features' => $features,
+    'plan'     => $plan,
 );
 ?>
 <div class="wrap">

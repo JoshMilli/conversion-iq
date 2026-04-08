@@ -9,16 +9,21 @@ class ConversionIQ_AI
     const ABACUS_API_URL = 'https://routellm.abacus.ai/v1/chat/completions';
 
     /**
-     * Get API key from wp-config.php or fallback to constant
+     * Get API key from wp-config.php or wp_options (synced via license activation)
      */
     private static function get_api_key()
     {
-        // Prefer API key from wp-config.php for better security
+        // Prefer API key from wp-config.php constant
         if (defined('CONVERSIONIQ_ABACUS_KEY')) {
             return CONVERSIONIQ_ABACUS_KEY;
         }
-        // Fallback to hardcoded key (should be moved to wp-config.php)
-        return 's2_7b1143d048014d04b7d489a17671b1a7';
+        // Then try wp_options (delivered via /api/get-config during license sync)
+        $opt = get_option('conversioniq_api_key', '');
+        if (!empty($opt)) {
+            return $opt;
+        }
+        // No key available — audits will fail until a valid license is activated
+        return '';
     }
 
     /**
@@ -39,12 +44,13 @@ class ConversionIQ_AI
             return self::analyze_chunked($payload);
         }
 
-        // Build the AI prompt
-        $prompt = self::build_prompt($page_title, $page_content, $page_url, $word_count, $html_structure, $business);
+        // Build the AI prompts (system = rubric/persona, user = page content)
+        $system_prompt = self::build_system_prompt();
+        $user_prompt = self::build_user_prompt($page_title, $page_content, $page_url, $word_count, $html_structure, $business);
 
         // Call Abacus.ai API
         $start_time = microtime(true);
-        $ai_response = self::call_abacus_ai($prompt);
+        $ai_response = self::call_abacus_ai($user_prompt, $system_prompt);
         $elapsed = round((microtime(true) - $start_time), 2);
 
         $debug_info = array(
@@ -124,17 +130,17 @@ class ConversionIQ_AI
             $section_payload['page']['content'] = $compressed;
             $section_payload['page']['word_count'] = str_word_count($compressed);
 
-            $prompt = self::build_prompt(
+            $system_prompt = self::build_system_prompt($section_name);
+            $user_prompt = self::build_user_prompt(
                 $payload['page']['title'],
                 $compressed,
                 isset($payload['page']['url']) ? $payload['page']['url'] : '',
                 str_word_count($compressed),
                 isset($payload['page']['html_structure']) ? $payload['page']['html_structure'] : '',
-                isset($payload['business']) ? $payload['business'] : array(),
-                $section_name
+                isset($payload['business']) ? $payload['business'] : array()
             );
 
-            $response = self::call_abacus_ai($prompt);
+            $response = self::call_abacus_ai($user_prompt, $system_prompt);
 
             if ($response && isset($response['success']) && $response['success']) {
                 $data = $response['data'];
@@ -341,7 +347,15 @@ class ConversionIQ_AI
             'recommendations' => isset($first_section['recommendations']) ? $first_section['recommendations'] : array(),
             'ai_used' => true,
             'analysis_method' => 'chunked',
-            'sections_analyzed' => count($all_scores)
+            'sections_analyzed' => count($all_scores),
+            'overall_score' => (int) round(
+                $averaged['clarity_score'] * 0.20 +
+                $averaged['emotional_score'] * 0.15 +
+                $averaged['cta_strength'] * 0.20 +
+                $averaged['readability_score'] * 0.15 +
+                $averaged['engagement_score'] * 0.15 +
+                $averaged['trust_score'] * 0.15
+            ),
         ));
 
         error_log('✅ Aggregation complete - returning chunked analysis results');
@@ -406,13 +420,27 @@ class ConversionIQ_AI
             $where_clause_visitors = "page_url IN ($homepage_placeholders)";
             $sql_params = $homepage_variations;
         } else {
-            $where_clause_leads = "initial_page_visit = %s";
-            $where_clause_visitors = "page_url = %s";
-            $sql_params = array($page_url);
+            // Normalize the URL for flexible matching: strip protocol, www, trailing slash
+            $normalized_url = preg_replace('#^https?://(www\.)?#', '', rtrim($page_url, '/'));
+            // Use LIKE with the path portion for more reliable matching
+            $parsed_page = parse_url($page_url);
+            $page_path = isset($parsed_page['path']) ? rtrim($parsed_page['path'], '/') : '';
+            
+            if (!empty($page_path) && $page_path !== '' && $page_path !== '/') {
+                // Match any URL ending with this path (handles http/https, www/non-www, trailing slash)
+                $where_clause_leads = "initial_page_visit LIKE %s";
+                $where_clause_visitors = "page_url LIKE %s";
+                $sql_params = array('%' . $wpdb->esc_like($page_path) . '%');
+            } else {
+                // Fallback to exact match
+                $where_clause_leads = "initial_page_visit = %s";
+                $where_clause_visitors = "page_url = %s";
+                $sql_params = array($page_url);
+            }
         }
         
         // Get leads that started on this page
-        $leads_query = "SELECT email, first_name, last_name, page_title, initial_page_visit, created_at 
+        $leads_query = "SELECT email, first_name, last_name, page_title, initial_page_visit, city, state, country, company_name, company_industry, job_title, created_at 
              FROM $leads_table 
              WHERE $where_clause_leads 
              ORDER BY created_at DESC 
@@ -421,7 +449,7 @@ class ConversionIQ_AI
         $leads = $wpdb->get_results($wpdb->prepare($leads_query, ...$sql_params), ARRAY_A);
         
         // Get visitors engaged on this page
-        $visitors_query = "SELECT email, first_name, last_name, page_url, created_at 
+        $visitors_query = "SELECT email, first_name, last_name, page_url, city, state, country, company_name, company_industry, job_title, created_at 
              FROM $visitors_table 
              WHERE $where_clause_visitors 
              ORDER BY created_at DESC 
@@ -435,18 +463,11 @@ class ConversionIQ_AI
         $total_site_leads = $wpdb->get_var("SELECT COUNT(*) FROM $leads_table");
         $total_site_visitors = $wpdb->get_var("SELECT COUNT(*) FROM $visitors_table");
         
-        // Get 7-day activity
-        $seven_days_ago = date('Y-m-d H:i:s', strtotime('-7 days'));
-        $recent_leads = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM $leads_table WHERE $where_clause_leads AND created_at >= %s",
-            ...array_merge($sql_params, array($seven_days_ago))
-        ));
-        $recent_visitors = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM $visitors_table WHERE $where_clause_visitors AND created_at >= %s",
-            ...array_merge($sql_params, array($seven_days_ago))
-        ));
+        // Store page-specific counts BEFORE any fallback
+        $page_specific_visitors = count($visitors);
+        $used_fallback = false;
         
-        // Return null if no data
+        // If no page-specific data, fallback to site-wide for contextual sections (domains, recent visitors)
         if (empty($leads) && empty($visitors)) {
             error_log('🔍 No page-specific webhook data found - trying site-wide fallback');
             error_log('🔍 Leads table: ' . $leads_table);
@@ -458,14 +479,14 @@ class ConversionIQ_AI
             $total_all_visitors = $wpdb->get_var("SELECT COUNT(*) FROM $visitors_table");
             error_log('🔍 Total records site-wide - leads: ' . $total_all_leads . ', visitors: ' . $total_all_visitors);
             
-            // Fallback: get ALL site visitor data (useful when URLs don't match exactly)
+            // Fallback: get ALL site visitor data (useful for domains, recent visitors context)
             $leads = $wpdb->get_results(
-                "SELECT email, first_name, last_name, page_title, initial_page_visit, created_at 
+                "SELECT email, first_name, last_name, page_title, initial_page_visit, city, state, country, company_name, company_industry, job_title, created_at 
                  FROM $leads_table ORDER BY created_at DESC LIMIT 50",
                 ARRAY_A
             );
             $visitors = $wpdb->get_results(
-                "SELECT email, first_name, last_name, page_url, created_at 
+                "SELECT email, first_name, last_name, page_url, city, state, country, company_name, company_industry, job_title, created_at 
                  FROM $visitors_table ORDER BY created_at DESC LIMIT 50",
                 ARRAY_A
             );
@@ -481,17 +502,11 @@ class ConversionIQ_AI
                 return null;
             }
             
-            error_log('✅ Site-wide fallback: using ' . count($leads) . ' leads, ' . count($visitors) . ' visitors');
+            $used_fallback = true;
+            // Page-specific count stays 0 since we couldn't match this page
+            $page_specific_visitors = 0;
             
-            // Recalculate 7-day activity for site-wide
-            $recent_leads = $wpdb->get_var($wpdb->prepare(
-                "SELECT COUNT(*) FROM $leads_table WHERE created_at >= %s",
-                $seven_days_ago
-            ));
-            $recent_visitors = $wpdb->get_var($wpdb->prepare(
-                "SELECT COUNT(*) FROM $visitors_table WHERE created_at >= %s",
-                $seven_days_ago
-            ));
+            error_log('✅ Site-wide fallback: using ' . count($leads) . ' leads, ' . count($visitors) . ' visitors');
         }
         
         // Aggregate statistics
@@ -499,8 +514,16 @@ class ConversionIQ_AI
         $total_visitors = count($visitors);
         $total_interactions = $total_leads + $total_visitors;
         
-        // Company analysis - no company column exists in leads/visitors tables
-        $top_companies = array();
+        // Company analysis from stored company_name field
+        $companies = array();
+        foreach (array_merge($leads, $visitors) as $item) {
+            if (!empty($item['company_name'])) {
+                $companies[] = $item['company_name'];
+            }
+        }
+        $company_counts = array_count_values($companies);
+        arsort($company_counts);
+        $top_companies = array_slice($company_counts, 0, 10, true);
         
         // Domain analysis
         $domains = array();
@@ -514,6 +537,107 @@ class ConversionIQ_AI
         arsort($domain_counts);
         $top_domains = array_slice($domain_counts, 0, 10, true);
         
+        // Industry analysis from stored company_industry field
+        $industries = array();
+        foreach (array_merge($leads, $visitors) as $item) {
+            if (!empty($item['company_industry'])) {
+                $industries[] = $item['company_industry'];
+            }
+        }
+        $industry_counts = array_count_values($industries);
+        arsort($industry_counts);
+        $top_industries = array_slice($industry_counts, 0, 10, true);
+        
+        // Job title analysis from stored job_title field
+        $job_titles = array();
+        foreach (array_merge($leads, $visitors) as $item) {
+            if (!empty($item['job_title'])) {
+                $job_titles[] = $item['job_title'];
+            }
+        }
+        $job_title_counts = array_count_values($job_titles);
+        arsort($job_title_counts);
+        $top_job_titles = array_slice($job_title_counts, 0, 10, true);
+
+        // Decision-maker tier classification from job_title field
+        $all_people = array_merge($leads, $visitors);
+        $tiers = array('Executive' => 0, 'Director/VP' => 0, 'Manager' => 0, 'Individual' => 0);
+        foreach ($all_people as $person) {
+            $title = $person['job_title'] ?? '';
+            if (empty($title)) continue;
+            if (preg_match('/\b(ceo|founder|owner|president|coo|cto|cfo|ciso|cmo|cpo|chief)\b/i', $title)) {
+                $tiers['Executive']++;
+            } elseif (preg_match('/\b(director|vp|vice president|head of|svp|evp)\b/i', $title)) {
+                $tiers['Director/VP']++;
+            } elseif (preg_match('/\b(manager|lead|senior|supervisor|team lead)\b/i', $title)) {
+                $tiers['Manager']++;
+            } else {
+                $tiers['Individual']++;
+            }
+        }
+        $decision_maker_tiers = array_filter($tiers); // Remove zero-count tiers
+
+        // Geographic distribution from city/country fields
+        $locations = array();
+        foreach ($all_people as $person) {
+            $city    = $person['city'] ?? '';
+            $country = $person['country'] ?? '';
+            if (!empty($city) && !empty($country)) {
+                $locations[] = $city . ', ' . $country;
+            } elseif (!empty($city)) {
+                $locations[] = $city;
+            } elseif (!empty($country)) {
+                $locations[] = $country;
+            }
+        }
+        $location_counts = array_count_values($locations);
+        arsort($location_counts);
+        $top_locations = array_slice($location_counts, 0, 10, true);
+
+        // Company intelligence: group all people by company with named contacts
+        $company_intel_raw = array();
+        foreach ($all_people as $person) {
+            $company = $person['company_name'] ?? '';
+            if (empty($company)) continue;
+            if (!isset($company_intel_raw[$company])) {
+                $company_intel_raw[$company] = array(
+                    'company'  => $company,
+                    'industry' => $person['company_industry'] ?? '',
+                    'count'    => 0,
+                    'contacts' => array(),
+                    'last_seen'=> $person['created_at'] ?? '',
+                );
+            }
+            $entry = &$company_intel_raw[$company];
+            $entry['count']++;
+            if (!empty($person['created_at']) && ($person['created_at'] ?? '') > $entry['last_seen']) {
+                $entry['last_seen'] = $person['created_at'];
+            }
+            if (empty($entry['industry']) && !empty($person['company_industry'])) {
+                $entry['industry'] = $person['company_industry'];
+            }
+            // Add unique named contacts (deduplicated by email, max 3 per company)
+            $email = $person['email'] ?? '';
+            $already_added = false;
+            foreach ($entry['contacts'] as $c) {
+                if (!empty($email) && ($c['email'] ?? '') === $email) { $already_added = true; break; }
+            }
+            $name_parts = array_filter(array($person['first_name'] ?? '', $person['last_name'] ?? ''));
+            $name = implode(' ', $name_parts);
+            if (!$already_added && count($entry['contacts']) < 3 && (!empty($name) || !empty($person['job_title'] ?? ''))) {
+                $entry['contacts'][] = array(
+                    'name'    => $name,
+                    'title'   => $person['job_title'] ?? '',
+                    'email'   => $email,
+                    'city'    => $person['city'] ?? '',
+                    'country' => $person['country'] ?? '',
+                );
+            }
+            unset($entry);
+        }
+        uasort($company_intel_raw, function($a, $b) { return $b['count'] - $a['count']; });
+        $company_intelligence = array_slice($company_intel_raw, 0, 8, true);
+
         // Time-based analysis
         $weekday_counts = array();
         $hour_counts = array();
@@ -533,27 +657,32 @@ class ConversionIQ_AI
         arsort($weekday_counts);
         arsort($hour_counts);
         
-        // Calculate contribution percentages
-        $site_contribution_pct = ($total_site_leads > 0) 
-            ? round(($total_leads / $total_site_leads) * 100, 1) 
+        // Calculate contribution percentages (page-specific visitors vs total site visitors)
+        $total_site_all = (int)$total_site_leads + (int)$total_site_visitors;
+        $site_contribution_pct = ($total_site_all > 0) 
+            ? round(($page_specific_visitors / $total_site_all) * 100, 1) 
             : 0;
         
-        error_log('✅ Webhook stats compiled: ' . $total_interactions . ' interactions, ' . $site_contribution_pct . '% contribution');
+        error_log('✅ Webhook stats compiled: ' . $total_interactions . ' interactions, page visitors: ' . $page_specific_visitors . ', ' . $site_contribution_pct . '% contribution');
         
         return array(
             'total_leads' => $total_leads,
             'total_visitors' => $total_visitors,
             'total_interactions' => $total_interactions,
+            'page_specific_visitors' => $page_specific_visitors,
             'total_site_leads' => (int)$total_site_leads,
+            'total_site_visitors' => (int)$total_site_visitors,
             'site_contribution_pct' => $site_contribution_pct,
-            'recent_leads_7d' => (int)$recent_leads,
-            'recent_visitors_7d' => (int)$recent_visitors,
-            'recent_activity_7d' => (int)($recent_leads + $recent_visitors),
+            'used_fallback' => $used_fallback,
             'top_companies' => $top_companies,
             'top_domains' => $top_domains,
+            'top_industries' => $top_industries,
+            'top_job_titles' => $top_job_titles,
+            'decision_maker_tiers' => $decision_maker_tiers,
+            'top_locations' => $top_locations,
+            'company_intelligence' => $company_intelligence,
             'peak_weekday' => !empty($weekday_counts) ? array_key_first($weekday_counts) : 'Unknown',
             'peak_hour' => !empty($hour_counts) ? array_key_first($hour_counts) : 'Unknown',
-            'has_recent_activity' => ($recent_leads + $recent_visitors) > 0,
             'sample_leads' => array_slice($leads, 0, 5),
             'sample_visitors' => array_slice($visitors, 0, 5),
         );
@@ -667,226 +796,245 @@ class ConversionIQ_AI
     }
 
     /**
-     * Build comprehensive prompt for AI analysis
+     * Build the system prompt — scoring rubric, persona, calibration examples, output format.
+     * This is constant across all audits so the model treats it as immutable rules.
      */
-    private static function build_prompt($title, $content, $url, $word_count, $html_structure, $business, $section_name = null)
+    private static function build_system_prompt($section_name = null)
+    {
+        $section_context = '';
+        if ($section_name) {
+            $section_context = "\nYou are analyzing one SECTION ('{$section_name}') of a larger page. Focus on this section's contribution to conversion.\n";
+        }
+
+        return "You are an expert conversion rate optimization (CRO) analyst. You produce consistent, calibrated scores based on a fixed rubric. You never guess or estimate — you score only what is present on the page.{$section_context}
+
+LANGUAGE RULE: Regardless of the page content language, ALL output must be in English.
+
+─── SCORING RUBRIC (0-100, integer only) ───
+
+clarity_score (How clearly does the page communicate its value proposition?)
+  0-30: No clear value proposition, visitor cannot tell what is offered within 5 seconds
+  31-50: Vague value proposition, generic language like \"quality solutions\"
+  51-65: Value prop exists but lacks specificity — missing who/what/why
+  66-80: Clear value prop with specific audience, offering, and benefit
+  81-100: Exceptional — benefit-driven headline, immediate understanding, differentiation obvious
+
+emotional_score (Does the copy connect emotionally with the target audience?)
+  0-30: Pure feature list, no benefit language, no pain points addressed
+  31-50: Some benefits mentioned but generic (\"save time\", \"grow your business\")
+  51-65: Pain points acknowledged, some storytelling or empathy
+  66-80: Strong emotional hooks, clear before/after transformation
+  81-100: Deep empathy, aspirational language, authentic stories, reader feels understood
+
+cta_strength (How compelling are the calls-to-action?)
+  0-30: No CTA, or only generic text like \"Submit\" / \"Click Here\"
+  31-50: Basic CTAs like \"Get Started\" / \"Learn More\" without urgency or benefit
+  51-65: Action-oriented CTAs with some benefit (\"Get Your Free Quote\")
+  66-80: Strong CTAs — action verb + benefit + visual prominence
+  81-100: Multiple strategic CTAs with urgency, benefit, high contrast, above and below fold
+
+readability_score (Is the page easy to scan and read?)
+  0-30: Wall of text, no subheadings, paragraphs 100+ words
+  31-50: Some structure but dense paragraphs (60-100 words), inconsistent hierarchy
+  51-65: Reasonable structure with subheadings, 40-60 word paragraphs
+  66-80: Clear visual hierarchy, short paragraphs, bullet points, scannable
+  81-100: Excellent typography, whitespace, 20-40 word blocks, F-pattern optimized
+
+engagement_score (Does the page encourage interaction and keep visitors engaged?)
+  0-30: Static text only, no interactive elements, basic contact form at most
+  31-50: Images present, one form or basic interactivity
+  51-65: Multiple media types, embedded video or interactive elements
+  66-80: Rich interactive content, calculators, quizzes, animations, multiple CTAs
+  81-100: Personalization, dynamic content, gamification, deeply interactive experience
+
+trust_score (Does the page establish credibility and reduce risk?)
+  0-30: No social proof, no trust badges, no testimonials
+  31-50: Anonymous testimonials (\"A satisfied customer\") OR basic trust badges, not both
+  51-65: Named testimonials (First Last) without photos, OR logos, OR case study mentions
+  66-80: Named testimonials with some detail + trust badges + client logos
+  81-100: Full testimonials (name+photo+company+result) + badges + security seals + case studies
+
+TRUST CALIBRATION: If you find full person names (First Last) in testimonials, the minimum trust score is 60. Anonymous roles only = 40-60 cap.
+
+─── CALIBRATION EXAMPLES ───
+
+Example A — SaaS landing page with \"Streamline Your Workflow\" headline, bullet-point features, one \"Start Free Trial\" button, stock photo, no testimonials:
+  clarity: 58, emotional: 35, cta: 52, readability: 70, engagement: 40, trust: 20
+
+Example B — Law firm homepage with named partner testimonials (3 with full names), \"Protecting Your Rights Since 1985\" headline, consultation booking form, team photos, BBB badge:
+  clarity: 72, emotional: 65, cta: 68, readability: 62, engagement: 55, trust: 78
+
+Example C — E-commerce product page with benefit-driven headline, before/after photos, video demo, 47 reviews with names/photos, urgency timer, \"Add to Cart - Free Shipping\" CTA, trust badges:
+  clarity: 85, emotional: 78, cta: 88, readability: 75, engagement: 82, trust: 90
+
+Use these as anchors. A page similar to Example A should score similarly. Do not inflate or deflate relative to these benchmarks.
+
+─── CONSISTENCY RULES ───
+
+1. Score ONLY what is present on the page. Do not give credit for what \"could be\" there.
+2. Scores must be internally consistent — if you mention \"no testimonials\" in insights, trust_score cannot be above 50.
+3. If page content is unchanged between audits, scores should vary by no more than ±3 points.
+4. The overall_score is the weighted average: clarity(20%) + emotional(15%) + cta(20%) + readability(15%) + engagement(15%) + trust(15%).
+5. Always compute overall_score yourself using the weights above. Never estimate it.
+6. For benchmark_research, estimate industry_average and top_performers_threshold based on the business's industry. industry_average reflects a typical website in that sector; top_performers_threshold is the score the top 10% achieve. competitive_context should compare the page's overall score to these benchmarks with specific, grounded reasoning.
+
+─── FUNCTIONALITY SUGGESTIONS ───
+
+Select 3-5 from this catalog based on score gaps (do NOT suggest features the page already has):
+- Conversion: A/B Testing, Exit-Intent Popups, Smart Forms, Heatmap & Session Recording
+- Trust: Review Widgets, Trust Badges, Case Study Showcase, Client Logo Bar
+- Engagement: AI Chatbot/Live Chat, Email Capture, Push Notifications, Interactive Calculators/Quizzes
+- SEO: Technical SEO Audit, Schema Markup, Content Strategy, Local SEO
+- Analytics: Conversion Funnel Tracking, Visitor Identification, Goal Tracking, CRM Integration
+- Personalization: Dynamic Content, Geo-targeted Offers, Returning Visitor Recognition
+
+Rules: trust<60 → include Trust feature. engagement<50 → include Engagement feature. cta<50 → include Conversion feature.
+
+─── OUTPUT FORMAT ───
+
+Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact structure:
+
+{
+  \"clarity_score\": <int 0-100>,
+  \"emotional_score\": <int 0-100>,
+  \"cta_strength\": <int 0-100>,
+  \"readability_score\": <int 0-100>,
+  \"engagement_score\": <int 0-100>,
+  \"trust_score\": <int 0-100>,
+  \"overall_score\": <int 0-100, computed from weights above>,
+  \"suggestions\": [
+    {\"text\": \"Specific actionable suggestion\", \"section\": \"Page section name\", \"why\": \"Why this matters — reference specific score\", \"impact\": \"Which metrics improve\", \"implementation\": \"How to do it\"}
+  ],
+  \"functionality_suggestions\": [
+    {\"title\": \"Feature name\", \"category\": \"Category\", \"description\": \"2-3 sentences\", \"why\": \"Reference the specific score gap\", \"impact\": \"Expected improvement\", \"implementation\": \"Specific tools/plugins\", \"icon\": \"emoji\"}
+  ],
+  \"rewrites\": {
+    \"headline\": \"Improved headline\",
+    \"subheadline\": \"Improved subheadline\",
+    \"primary_cta\": \"Primary CTA text\",
+    \"secondary_cta\": \"Secondary CTA text\",
+    \"value_proposition\": \"Clear value proposition\",
+    \"social_proof_intro\": \"Testimonials section intro\",
+    \"feature_1\": \"Feature description 1\",
+    \"feature_2\": \"Feature description 2\",
+    \"feature_3\": \"Feature description 3\",
+    \"faq_answer_1\": \"Top FAQ answer\",
+    \"closing_statement\": \"Closing conversion statement\"
+  },
+  \"insights\": {
+    \"executive_summary\": \"2-3 sentences: conversion health, #1 priority, positive tone. Reference scores.\",
+    \"strengths\": [\"Strength with specific score reference\", \"Strength 2\"],
+    \"weaknesses\": [\"Weakness with score and what's missing\", \"Weakness 2\"],
+    \"opportunities\": [\"Opportunity with expected outcome\", \"Opportunity 2\"],
+    \"top_priority_insight\": \"#1 focus area: why (lowest score), impact (expected improvement), timeframe\",
+    \"audience_alignment\": \"How well page speaks to target audience — cite specific language from the page\"
+  },
+  \"recommendations\": {
+    \"quick_wins\": [
+      {\"text\": \"Page-specific quick win\", \"why\": \"Reference actual weakness\", \"impact\": \"Expected improvement\", \"difficulty\": \"Easy\"}
+    ],
+    \"long_term\": [
+      {\"text\": \"Strategic improvement\", \"why\": \"Strategic value\", \"impact\": \"Long-term improvement\", \"difficulty\": \"Medium\", \"timeframe\": \"2-4 weeks\"}
+    ],
+    \"priority\": {
+      \"text\": \"Top priority recommendation\", \"why\": \"Why #1\", \"impact\": \"Expected lift\", \"next_steps\": \"1. First step, 2. Second step, 3. Third step\"
+    }
+  },
+  \"benchmark_research\": {
+    \"industry_average\": 55,
+    \"top_performers_threshold\": 80,
+    \"competitive_context\": \"2-3 sentences comparing this page's performance to typical sites in the same industry. Reference the business's industry and explain what top performers in that space typically score and why.\"
+  },
+  \"ai_used\": true
+}";
+    }
+
+    /**
+     * Build the user prompt — page content, business context, lead intelligence.
+     * This changes for every audit.
+     */
+    private static function build_user_prompt($title, $content, $url, $word_count, $html_structure, $business)
     {
         $industry = isset($business['industry']) ? $business['industry'] : 'Not specified';
         $product = isset($business['product']) ? $business['product'] : 'Not specified';
         $audience = isset($business['audience']) ? $business['audience'] : 'Not specified';
         $pain_points = isset($business['pain_points']) ? $business['pain_points'] : 'Not specified';
-        $competitors = isset($business['competitors']) ? $business['competitors'] : 'Not specified';
         $goal = isset($business['goal']) ? $business['goal'] : 'Not specified';
 
         $page_type_info = self::detect_page_type($title, $url);
         $page_type = $page_type_info['type'];
-        $page_context = $page_type_info['context'];
         $conversion_goal = $page_type_info['conversion_goal'];
 
         error_log('🎯 Detected page type: ' . $page_type . ' | Conversion goal: ' . $conversion_goal);
 
-        // Get webhook statistics for this page - CONCISE version to avoid API timeouts
+        // Get webhook statistics for lead intelligence context
         $webhook_stats = self::get_webhook_statistics($url);
         $leads_context = '';
 
         if ($webhook_stats) {
-            error_log('📊 Webhook stats loaded: ' . $webhook_stats['total_interactions'] . ' interactions, ' . $webhook_stats['total_leads'] . ' leads');
+            error_log('📊 Webhook stats loaded: ' . $webhook_stats['total_interactions'] . ' interactions, page visitors: ' . $webhook_stats['page_specific_visitors']);
             
-            // ULTRA-CONCISE format to minimize prompt size
-            $leads_context .= "\n\n**LEAD INTELLIGENCE DATA:**\n";
-            $leads_context .= "This page: {$webhook_stats['total_leads']} leads, {$webhook_stats['total_visitors']} visitors ({$webhook_stats['site_contribution_pct']}% of site total). ";
-            $leads_context .= "Recent: {$webhook_stats['recent_activity_7d']} interactions (7d). ";
+            $page_visitors = $webhook_stats['page_specific_visitors'];
+            $site_total = (int)$webhook_stats['total_site_leads'] + (int)$webhook_stats['total_site_visitors'];
+            $leads_context = "\n\nLEAD INTELLIGENCE DATA:\n";
+            $leads_context .= "Site-wide: {$site_total} identified visitors. This page: {$page_visitors} ({$webhook_stats['site_contribution_pct']}% of site). ";
             $leads_context .= "Peak: {$webhook_stats['peak_weekday']} at {$webhook_stats['peak_hour']}:00. ";
             
-            // Top companies (max 3, condensed)
             if (!empty($webhook_stats['top_companies'])) {
-                $top3 = array_slice($webhook_stats['top_companies'], 0, 3, true);
-                $companies = array_keys($top3);
-                $leads_context .= "Top companies: " . implode(', ', $companies) . ". ";
+                $leads_context .= "Top companies: " . implode(', ', array_keys(array_slice($webhook_stats['top_companies'], 0, 3, true))) . ". ";
             }
-            
-            // Top domains (max 3, condensed)
-            if (!empty($webhook_stats['top_domains'])) {
-                $top3 = array_slice($webhook_stats['top_domains'], 0, 3, true);
-                $domains = array_keys($top3);
-                $leads_context .= "Top domains: " . implode(', ', $domains) . ". ";
+            if (!empty($webhook_stats['top_industries'])) {
+                $leads_context .= "Industries: " . implode(', ', array_keys(array_slice($webhook_stats['top_industries'], 0, 3, true))) . ". ";
             }
-            
-            $leads_context .= "\n**INSTRUCTIONS:** Use ONLY these real numbers in lead_intelligence_summary. Do NOT invent or estimate any stats.\n";
-        } else {
-            error_log('ℹ️ No webhook data available for AI analysis (URL: ' . $url . ')');
+            if (!empty($webhook_stats['top_job_titles'])) {
+                $leads_context .= "Job titles: " . implode(', ', array_keys(array_slice($webhook_stats['top_job_titles'], 0, 3, true))) . ". ";
+            }
+            if (!empty($webhook_stats['decision_maker_tiers'])) {
+                $tier_parts = array();
+                foreach ($webhook_stats['decision_maker_tiers'] as $tier => $count) {
+                    $tier_parts[] = $tier . ' (' . $count . ')';
+                }
+                $leads_context .= "Decision-maker tiers: " . implode(', ', $tier_parts) . ". ";
+            }
+            if (!empty($webhook_stats['top_locations'])) {
+                $leads_context .= "Locations: " . implode(', ', array_keys(array_slice($webhook_stats['top_locations'], 0, 3, true))) . ". ";
+            }
+            $leads_context .= "\nUse ONLY these real numbers in lead_intelligence_summary. Do NOT invent stats.\n";
         }
 
-
-        // Section context for chunked analysis
-        $section_context = '';
-        if ($section_name) {
-            $section_context = "\n**ANALYSIS CONTEXT:**\nThis is a SECTION of a larger page. You are analyzing the '{$section_name}' section specifically.\nFocus your analysis on this section's content and contribution to overall page conversion.\nProvide section-specific suggestions.\n";
-            error_log('📍 Building prompt for section: ' . $section_name);
-        }
-
-        // Limit content length to prevent token overflow (max ~8000 chars for quality analysis)
+        // Limit content length
         if (strlen($content) > 8000) {
-            $content = substr($content, 0, 8000) . '... [content truncated]';
-            error_log('⚠️ Content truncated to 8000 chars to fit token limit');
+            $content = substr($content, 0, 8000) . '... [truncated]';
         }
-
-        // Limit HTML structure to 2000 chars
         if (strlen($html_structure) > 2000) {
-            $html_structure = substr($html_structure, 0, 2000) . '... [structure truncated]';
+            $html_structure = substr($html_structure, 0, 2000) . '... [truncated]';
         }
 
-        $prompt = "You are an expert conversion specialist. Analyze this {$page_type} page for: {$conversion_goal}{$section_context}
+        // Build lead intelligence JSON fragment if data exists
+        $lead_json_fragment = '';
+        if ($webhook_stats) {
+            $lead_json_fragment = "\n\nInclude this additional field in your JSON output:\n\"lead_intelligence_summary\": {\n  \"insight\": \"2-3 sentences analyzing what lead data reveals about page performance\",\n  \"recommendations\": [\"Action item based on lead patterns\", \"Action item 2\", \"Action item 3\"]\n}";
+        }
 
-**Business:** {$industry} | {$product} | Audience: {$audience} | Goal: {$goal}
-**Page:** {$title} ({$word_count} words)
+        $prompt = "Analyze this {$page_type} page for conversion optimization.
 
-**SCORING RUBRIC (0-100):**
+BUSINESS CONTEXT:
+- Industry: {$industry}
+- Product/Service: {$product}
+- Target Audience: {$audience}
+- Pain Points: {$pain_points}
+- Conversion Goal: {$goal}
+- Page Conversion Goal: {$conversion_goal}
 
-clarity_score: 0-40=vague/generic headline, unclear offering | 40-60=basic value prop | 60-75=clear what/who/why | 75+=benefit-driven, immediate understanding
+PAGE: {$title} ({$word_count} words)
 
-cta_strength: 0-40='Learn More'/'Submit' (weak) | 40-60='Get Started' (basic) | 60-75=action verb+benefit | 75+=action+benefit+urgency, high contrast
-
-readability_score: 0-40=100+ word paragraphs, no subheadings | 40-60=60-100 word paragraphs, some subheadings | 60-75=40-60 words, clear structure | 75+=20-40 words, scannable, visual hierarchy
-
-emotional_score: 0-40=features only, no pain points | 40-60=some benefits, generic language | 60-75=pain points addressed, storytelling | 75+=deep empathy, aspirational, authentic
-
-engagement_score: 0-40=static text, basic contact form | 40-60=images, basic interactivity | 60-75=multimedia, multiple interactions | 75+=rich interactive elements, personalization
-
-trust_score: 0-40=minimal/no social proof | 40-60=anonymous testimonials OR basic badges | 60-75=person names OR photos (not both) | 75+=full testimonials (name+photo+company) + badges + logos
-
-**TRUST SCORING:** Search content for full person names (First Last). If found → minimum 60 points. Anonymous roles only → 40-60.
-
-**Lead Intelligence Data:**{$leads_context}
-
-**Content:**
+CONTENT:
 {$content}
 
-**Structure:**
-{$html_structure}
+HTML STRUCTURE:
+{$html_structure}{$leads_context}
 
-**REQUIREMENTS:**
-- All suggestions must reference SPECIFIC page elements (sections, headlines, CTAs)
-- Connect recommendations to actual weaknesses found (cite scores)
-- Quick wins: actionable within 1-2 days, page-specific (not generic advice)
-- Features: only recommend if solving a gap you identified in THIS audit
-- Reference exact scores in your why/impact text (consistency critical)
-
-**OUTPUT JSON (no markdown):**";
-
-        // Lead intelligence: AI provides brief insight + recommendations only when real data exists
-        // The actual stats/numbers are stored separately as webhook_stats (real DB data, never AI-generated)
-        $lead_intelligence_json = '';
-        if ($webhook_stats) {
-            $lead_intelligence_json = ',
-    \"lead_intelligence_summary\": {
-        \"insight\": \"In 2-3 sentences, analyze what the lead data reveals about this page performance. Reference the specific companies, domains, and patterns from the data provided. What does the data tell us about who this page attracts vs who it should attract?\",
-        \"recommendations\": [
-            \"Specific action item #1 based on actual lead data patterns - reference real company types or domains\",
-            \"Specific action item #2 addressing a gap between page messaging and who actually converts\",
-            \"Specific action item #3 for improving lead quality or volume based on the data trends\"
-        ]
-    }';
-        }
-
-        $prompt .= "
-
-**Required Output (JSON only, no markdown):**
-{
-  \"clarity_score\": [0-100],
-  \"emotional_score\": [0-100],
-  \"cta_strength\": [0-100],
-  \"readability_score\": [0-100],
-  \"engagement_score\": [0-100],
-  \"trust_score\": [0-100],
-    \"suggestions\": [
-        {
-            \"text\": \"Specific, actionable suggestion based on page content and business context\",
-            \"section\": \"Section name (e.g., 'Hero Section', 'Features Section', 'CTA Section')\",
-            \"why\": \"Explain why this change is important for conversion - reference specific weaknesses or opportunities you identified\",
-            \"impact\": \"Which metrics this will improve (e.g., 'Improves trust score and emotional resonance', 'Increases CTA strength and clarity')\",
-            \"implementation\": \"Brief guidance on how to implement this (e.g., 'Add a testimonials widget in the sidebar', 'Replace current headline with suggested rewrite')\"
-        }
-    ]" . $lead_intelligence_json . ",
-    \"functionality_suggestions\": [
-        {
-            \"title\": \"Specific feature name that addresses an identified gap\",
-            \"description\": \"What this feature does and how it works (2-3 sentences)\",
-            \"why\": \"Detailed, specific explanation referencing: (1) specific audit score weaknesses, (2) how it helps achieve their business goal '{$goal}', (3) why their target audience '{$audience}' needs this, (4) what problem/gap from your analysis it solves. Be specific and reference actual findings from this audit.\",
-            \"icon\": \"Single emoji representing the feature\"
-        }
-    ],
-    \"rewrites\": {
-        \"headline\": \"Improved headline for {$audience}\",
-        \"subheadline\": \"Subheadline addressing {$pain_points}\",
-        \"primary_cta\": \"Primary CTA button text aligned with {$goal}\",
-        \"secondary_cta\": \"Secondary CTA if applicable\",
-        \"value_proposition\": \"Clear value proposition statement\",
-        \"social_proof_intro\": \"Introduction for testimonials/reviews section\",
-        \"feature_1\": \"First key feature description\",
-        \"feature_2\": \"Second key feature description\",
-        \"feature_3\": \"Third key feature description\",
-        \"faq_answer_1\": \"Improved answer to top FAQ\",
-        \"closing_statement\": \"Final conversion-focused statement\"
-    },
-  \"insights\": {
-    \"executive_summary\": \"2-3 sentence client-facing overview that summarizes conversion health, highlights #1 priority, and sets positive tone. Reference specific scores and expected improvement.\",
-    \"strengths\": [
-        \"Specific strength #1 with reference to actual page content and scores (e.g., 'Strong value proposition in hero section addresses {$audience}'s need for X, achieving clarity score of 85')\",
-        \"Specific strength #2 connecting to business goals\"
-    ],
-    \"weaknesses\": [
-        \"Constructive weakness #1 with specific score and what's missing (e.g., 'Trust score of 58 indicates missing social proof - no testimonials or client logos visible, unlike competitors')\",
-        \"Constructive weakness #2 framed as missed opportunity\"
-    ],
-    \"opportunities\": [
-        \"High-impact opportunity #1 presented positively with expected outcome (e.g., 'Strengthening CTAs could increase conversions by 15-25%')\",
-        \"High-impact opportunity #2 tied to business goals\"
-    ],
-    \"top_priority_insight\": \"Client-friendly explanation of the #1 focus area: why it's the priority (reference lowest score), impact of fixing it (expected % improvement), realistic timeframe. Make it digestible for non-technical business owners.\",
-    \"audience_alignment\": \"Specific analysis of how well page speaks to {$audience} - reference actual language, tone, and messaging from the page. Identify gaps between current copy and audience expectations with specific examples.\"
-  },
-  \"recommendations\": {
-    \"quick_wins\": [
-        {
-            \"text\": \"Specific, actionable quick win tied to THIS PAGE's actual content (e.g., 'Add customer testimonials above the CTA button in the hero section' NOT generic advice like 'Improve social proof'). Reference specific sections, headlines, or CTAs from the page.\",
-            \"why\": \"Why this specific change matters for THIS page - reference actual weaknesses found in the analysis (e.g., 'Your trust score of 62 reflects the absence of social proof in the hero section where visitors make their first impression')\",
-            \"impact\": \"Expected measurable improvement specific to this page's weaknesses (e.g., 'Could increase trust score from 62 to 75-80' or 'Likely to reduce bounce rate by 15-20%')\",
-            \"difficulty\": \"Easy\"
-        },
-        {
-            \"text\": \"Second page-specific quick win - must be different from the first and reference different aspects of the page\",
-            \"why\": \"Explain why based on this page's specific gaps\",
-            \"impact\": \"Measurable impact prediction\",
-            \"difficulty\": \"Easy\"
-        },
-        {
-            \"text\": \"Third page-specific quick win\",
-            \"why\": \"Explain based on page analysis\",
-            \"impact\": \"Expected improvement\",
-            \"difficulty\": \"Easy\"
-        }
-    ],
-    \"long_term\": [
-        {
-            \"text\": \"Long-term strategic improvement\",
-            \"why\": \"Why this requires more time/resources and its strategic value\",
-            \"impact\": \"Expected long-term conversion improvement\",
-            \"difficulty\": \"Medium\" or \"Hard\",
-            \"timeframe\": \"Estimated implementation time (e.g., '2-4 weeks', '1-2 months')\"
-        }
-    ],
-    \"priority\": {
-        \"text\": \"Top priority recommendation that will have the biggest impact\",
-        \"why\": \"Why this is the #1 priority - reference the most critical weakness or opportunity\",
-        \"impact\": \"Expected conversion lift and which metrics will improve most\",
-        \"next_steps\": \"Specific first steps to take (e.g., '1. Research competitor testimonials, 2. Reach out to satisfied clients, 3. Design testimonial section')\"
-    }
-  },
-  \"ai_used\": true
-}
-
-CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanatory text. Provide specific section names for each suggestion.";
+Score this page using the rubric from your instructions. Provide all suggestions referencing SPECIFIC page elements. Connect recommendations to actual weaknesses (cite scores). Compute overall_score using the weights specified.{$lead_json_fragment}";
 
         return $prompt;
     }
@@ -913,16 +1061,17 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanatory te
     /**
      * Call Abacus.ai route-llm API
      */
-    private static function call_abacus_ai($prompt)
+    private static function call_abacus_ai($prompt, $system_prompt = null)
     {
+        $messages = array();
+        if ($system_prompt) {
+            $messages[] = array('role' => 'system', 'content' => $system_prompt);
+        }
+        $messages[] = array('role' => 'user', 'content' => $prompt);
+
         $body = array(
-            'model' => 'gpt-4o-mini',
-            'messages' => array(
-                    array(
-                    'role' => 'user',
-                    'content' => $prompt
-                )
-            ),
+            'model' => 'gpt-4o',
+            'messages' => $messages,
             'max_tokens' => 4000,
             'temperature' => 0.1,
             'stream' => false
@@ -1033,7 +1182,18 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanatory te
         }
 
         error_log('✅ AI response parsed successfully (suggestions: ' . (isset($parsed['suggestions']) ? count($parsed['suggestions']) : 0) . ')');
-        error_log('✅ Returning success=true with data');
+
+        // Ensure overall_score is computed correctly using the weighted formula
+        $parsed['overall_score'] = (int) round(
+            ($parsed['clarity_score'] ?? 0) * 0.20 +
+            ($parsed['emotional_score'] ?? 0) * 0.15 +
+            ($parsed['cta_strength'] ?? 0) * 0.20 +
+            ($parsed['readability_score'] ?? 0) * 0.15 +
+            ($parsed['engagement_score'] ?? 0) * 0.15 +
+            ($parsed['trust_score'] ?? 0) * 0.15
+        );
+
+        error_log('✅ Returning success=true with data (overall_score: ' . $parsed['overall_score'] . ')');
         return array('success' => true, 'data' => $parsed);
     }
 
@@ -1050,6 +1210,7 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanatory te
             'readability_score' => 75,
             'engagement_score' => 65,
             'trust_score' => 68,
+            'overall_score' => 70,
             'suggestions' => array(
                     array(
                     'text' => 'AI analysis unavailable - using fallback scores. Check WordPress debug.log for API error details.',

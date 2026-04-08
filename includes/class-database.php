@@ -152,6 +152,40 @@ class ConversionIQ_DB
             $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN initial_page_visit TEXT AFTER page_url");
             error_log('ConversionIQ: Added initial_page_visit column to visitor_sessions table');
         }
+
+        // Add location columns to leads table if they don't exist
+        $leads_columns = $wpdb->get_col("DESCRIBE $table_leads");
+        if (!in_array('city', $leads_columns)) {
+            $wpdb->query("ALTER TABLE $table_leads ADD COLUMN city VARCHAR(100) AFTER phone");
+            $wpdb->query("ALTER TABLE $table_leads ADD COLUMN state VARCHAR(100) AFTER city");
+            $wpdb->query("ALTER TABLE $table_leads ADD COLUMN country VARCHAR(100) AFTER state");
+            error_log('ConversionIQ: Added city/state/country columns to leads table');
+        }
+        if (!in_array('company_name', $leads_columns)) {
+            $wpdb->query("ALTER TABLE $table_leads ADD COLUMN company_name VARCHAR(255) AFTER country");
+            $wpdb->query("ALTER TABLE $table_leads ADD COLUMN company_domain VARCHAR(255) AFTER company_name");
+            $wpdb->query("ALTER TABLE $table_leads ADD COLUMN company_industry VARCHAR(255) AFTER company_domain");
+            $wpdb->query("ALTER TABLE $table_leads ADD COLUMN job_title VARCHAR(255) AFTER company_industry");
+            $wpdb->query("ALTER TABLE $table_leads ADD COLUMN linkedin_url TEXT AFTER job_title");
+            error_log('ConversionIQ: Added company/job/linkedin columns to leads table');
+        }
+
+        // Add location columns to visitor_sessions table if they don't exist
+        $sessions_columns = $wpdb->get_col("DESCRIBE $table_sessions");
+        if (!in_array('city', $sessions_columns)) {
+            $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN city VARCHAR(100) AFTER email");
+            $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN state VARCHAR(100) AFTER city");
+            $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN country VARCHAR(100) AFTER state");
+            error_log('ConversionIQ: Added city/state/country columns to visitor_sessions table');
+        }
+        if (!in_array('company_name', $sessions_columns)) {
+            $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN company_name VARCHAR(255) AFTER country");
+            $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN company_domain VARCHAR(255) AFTER company_name");
+            $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN company_industry VARCHAR(255) AFTER company_domain");
+            $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN job_title VARCHAR(255) AFTER company_industry");
+            $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN linkedin_url TEXT AFTER job_title");
+            error_log('ConversionIQ: Added company/job/linkedin columns to visitor_sessions table');
+        }
     }
 
     public static function insert_audit($page_id, $page_title, $data, $content_hash = null)
@@ -177,6 +211,42 @@ class ConversionIQ_DB
             $r['data'] = json_decode($r['data'], true);
         }
         return $rows;
+    }
+
+    /**
+     * Get all audits with scores for score-history tracking.
+     * Returns lightweight rows (no full data blob) ordered oldest-first.
+     */
+    public static function get_score_history($limit = 500)
+    {
+        global $wpdb;
+        $table = self::get_table_name();
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT id, page_id, page_title, data, created_at FROM $table ORDER BY created_at ASC LIMIT %d",
+            $limit
+        ), ARRAY_A);
+
+        $result = array();
+        foreach ($rows as $row) {
+            $data = json_decode($row['data'], true);
+            if (!$data || !isset($data['overall_score'])) {
+                continue;
+            }
+            $result[] = array(
+                'id'               => (int) $row['id'],
+                'page_id'          => (int) $row['page_id'],
+                'page_title'       => $row['page_title'],
+                'created_at'       => $row['created_at'],
+                'overall_score'    => isset($data['overall_score']) ? (int) $data['overall_score'] : null,
+                'clarity_score'    => isset($data['clarity_score']) ? (int) $data['clarity_score'] : null,
+                'emotional_score'  => isset($data['emotional_score']) ? (int) $data['emotional_score'] : null,
+                'cta_strength'     => isset($data['cta_strength']) ? (int) $data['cta_strength'] : null,
+                'readability_score'=> isset($data['readability_score']) ? (int) $data['readability_score'] : null,
+                'engagement_score' => isset($data['engagement_score']) ? (int) $data['engagement_score'] : null,
+                'trust_score'      => isset($data['trust_score']) ? (int) $data['trust_score'] : null,
+            );
+        }
+        return $result;
     }
 
     public static function get_audit($id)

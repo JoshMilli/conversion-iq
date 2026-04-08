@@ -1,51 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-
-type Suggestion = {
-  text: string;
-  section?: string; // Page section (e.g., "Hero Section", "Features")
-  why?: string;
-  impact?: string;
-  implementation?: string;
-};
-
-type Audit = {
-  insert_id?: number;
-  clarity_score?: number;
-  emotional_score?: number;
-  cta_strength?: number;
-  readability_score?: number;
-  engagement_score?: number;
-  trust_score?: number;
-  suggestions?: Suggestion[] | string[]; // Support both old and new format
-  functionality_suggestions?: {
-    title: string;
-    description: string;
-    why: string;
-    icon?: string;
-  }[];
-  rewrites?: Record<string, string>;
-  page_id?: number;
-  page_title?: string;
-  page_url?: string;
-  ai_used?: boolean;
-  created_at?: string;
-  content_changed?: boolean;
-  insights?: {
-    strengths?: string[];
-    weaknesses?: string[];
-    opportunities?: string[];
-    audience_alignment?: string;
-    tone_analysis?: string;
-    executive_summary?: string;
-    top_priority_insight?: string;
-  };
-  recommendations?: {
-    quick_wins?: Array<string | { text: string; why?: string; impact?: string; difficulty?: string }>;
-    long_term?: Array<string | { text: string; why?: string; impact?: string; difficulty?: string; timeframe?: string }>;
-    priority?: string | { text: string; why?: string; impact?: string; next_steps?: string };
-  };
-};
+import type { Suggestion, Audit, Page, Branding } from './types';
+import OverviewTab from './OverviewTab';
+import FaqTab from './FaqTab';
 
 type Page = { id: number; title: string; permalink: string };
 
@@ -56,23 +13,39 @@ const api = (path: string) => {
 };
 const nonce = (window as any).ConversionIQData?.nonce;
 
+// Branding config (injected from PHP via ConversionIQData)
+const branding = (window as any).ConversionIQData?.branding || {};
+const features = (window as any).ConversionIQData?.features || {};
+const currentPlan: string = (window as any).ConversionIQData?.plan || 'starter';
+
+// Feature flag helper — checks if a feature is enabled for the current plan
+const canUse = (feature: string): boolean => !!features[feature];
+
+const B = {
+  company: branding.company_name || 'Webtec',
+  product: branding.product_name || 'Conversion IQ',
+  supportEmail: branding.support_email || 'support@trywebtec.com',
+  websiteUrl: branding.website_url || 'https://trywebtec.com',
+  contactUrl: branding.contact_url || 'https://trywebtec.com/contact',
+  primaryColor: branding.primary_color || '#1e3a5f',
+  accentColor: branding.accent_color || '#2563eb',
+  logoUrl: branding.logo_url || '',
+  hidePoweredBy: branding.hide_powered_by || false,
+  faqItems: branding.faq_items || [],
+};
+
 export default function App() {
-  // Authentication & Account
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [showLogin, setShowLogin] = useState(true);
-  const [account, setAccount] = useState<any>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  
-  // Login/Register form
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [authForm, setAuthForm] = useState({
-    username: '',
-    password: '',
-    email: '',
-    fullName: '',
-    company: ''
-  });
-  
+  // License
+  const [licenseStatus, setLicenseStatus] = useState<'active' | 'inactive' | 'checking'>('checking');
+  const [licenseKey, setLicenseKey] = useState('');
+  const [licenseLoading, setLicenseLoading] = useState(false);
+  const [licenseCustomer, setLicenseCustomer] = useState<{ name: string; email: string; company: string; plan?: string } | null>(null);
+  const [licenseValidatedAt, setLicenseValidatedAt] = useState<number>(0);
+  const [noticeType, setNoticeType] = useState<'success' | 'error' | null>(null);
+  const TOAST_MS = 4000; // Consistent auto-dismiss duration
+  const showError = (msg: string) => { setNotice(msg); setNoticeType('error'); };
+  const showSuccess = (msg: string) => { setNotice(msg); setNoticeType('success'); };
+
   const [settings, setSettings] = useState<any>({});
   const [pages, setPages] = useState<Page[]>([]);
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
@@ -80,9 +53,13 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
+  // Per-section loading states
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [savingAutomated, setSavingAutomated] = useState(false);
+  const [auditRunning, setAuditRunning] = useState(false);
   const [modal, setModal] = useState<{ audit?: Audit; open: boolean; tab?: string; gaData?: any }>({ open: false, tab: 'overview' });
   const [expandedSuggestions, setExpandedSuggestions] = useState<Set<number>>(new Set([0])); // First suggestion expanded by default
-  const [activeTab, setActiveTab] = useState<'settings' | 'automated' | 'audits' | 'knockknock' | 'account' | 'faq'>('settings');
+  const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'automated' | 'audits' | 'knockknock' | 'license' | 'faq'>('overview');
   const [automatedReporting, setAutomatedReporting] = useState({
     enabled: false,
     frequency: 'weekly',
@@ -91,6 +68,8 @@ export default function App() {
   });
   const [testEmail, setTestEmail] = useState('');
   const [testEmailLoading, setTestEmailLoading] = useState(false);
+  const [scoreHistory, setScoreHistory] = useState<any[]>([]);
+  const [overviewPageFilter, setOverviewPageFilter] = useState<string>('all');
   const [manualReportEmail, setManualReportEmail] = useState('');
   const [manualReportLoading, setManualReportLoading] = useState(false);
   const [manualReportLog, setManualReportLog] = useState<string[]>([]);
@@ -104,21 +83,16 @@ export default function App() {
   const [auditFilter, setAuditFilter] = useState<'all' | 'ai' | 'fallback'>('all');
   const [auditSearchQuery, setAuditSearchQuery] = useState('');
   
-  // Account editing state
-  const [isEditingAccount, setIsEditingAccount] = useState(false);
-  const [accountForm, setAccountForm] = useState({
-    full_name: '',
-    email: '',
-    company: '',
-    username: ''
-  });
-  
   // Google Analytics state
   const [gaStatus, setGaStatus] = useState<any>({ connected: false, has_credentials: false });
   const [gaClientId, setGaClientId] = useState('');
   const [gaClientSecret, setGaClientSecret] = useState('');
   const [gaProperties, setGaProperties] = useState<any[]>([]);
   const [gaLoading, setGaLoading] = useState(false);
+
+  // License display state
+  const [showLicenseKey, setShowLicenseKey] = useState(false);
+  const [fullLicenseKey, setFullLicenseKey] = useState('');
 
   // KnockKnock Webhook state
   const [knockKnockCompanyId, setKnockKnockCompanyId] = useState('');
@@ -135,63 +109,32 @@ export default function App() {
   const [knockKnockStats, setKnockKnockStats] = useState({ totalLeads: 0, totalVisitors: 0, totalToday: 0 });
   const [selectedLead, setSelectedLead] = useState<any>(null);
 
-  // Check authentication status on mount
+  // Auto-dismiss toast notifications after a consistent duration
   useEffect(() => {
-    console.log('=== Conversion IQ: Authentication Check Started ===');
-    console.log('Timestamp:', new Date().toISOString());
-    console.log('API Base URL:', (window as any).ConversionIQData?.restUrl || 'NOT FOUND');
-    console.log('Nonce Status:', nonce ? '✓ Present' : '✗ Missing');
-    console.log('ConversionIQData object:', (window as any).ConversionIQData);
-    
-    if (!nonce) {
-      console.error('✗ CRITICAL ERROR: Nonce is missing!');
-      console.error('This means wp_localize_script() did not run properly.');
-      console.error('Check:');
-      console.error('  1. WordPress REST nonce generation');
-      console.error('  2. Admin menu page hook (toplevel_page_conversion-iq)');
-      console.error('  3. Browser console for any other errors');
-      setAuthLoading(false);
-      setIsAuthenticated(false);
-      return;
-    }
-    
-    console.log('→ Calling auth/status endpoint...');
-    axios.get(api('auth/status'), { headers: { 'X-WP-Nonce': nonce } })
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  // Check license status on mount
+  useEffect(() => {
+    axios.get(api('license/status'), { headers: { 'X-WP-Nonce': nonce } })
       .then(r => {
-        console.log('✓ Auth API Response:', r.data);
-        if (r.data.authenticated) {
-          console.log('✓ User authenticated successfully');
-          setIsAuthenticated(true);
-          setAccount(r.data.account);
-          setShowLogin(false);
+        if (r.data.activated === true) {
+          setLicenseStatus('active');
+          setLicenseCustomer(r.data.customer || null);
+          setLicenseKey(r.data.license_key || '');
+          setFullLicenseKey(r.data.license_key_full || '');
+          setLicenseValidatedAt(r.data.validated_at || 0);
         } else {
-          console.log('⚠ User not authenticated');
-          setIsAuthenticated(false);
+          setLicenseStatus('inactive');
         }
       })
-      .catch(err => {
-        console.error('✗ Auth API Call Failed:');
-        console.error('  URL:', api('auth/status'));
-        console.error('  Status:', err.response?.status);
-        console.error('  Error:', err.message);
-        console.error('  Response Data:', err.response?.data);
-        setIsAuthenticated(false);
-      })
-      .finally(() => {
-        console.log('=== Authentication Check Complete ===');
-        setAuthLoading(false);
-      });
+      .catch(() => setLicenseStatus('inactive'));
   }, []);
 
-  // Load settings, pages, audits, automated settings (only when authenticated)
+  // Load settings, pages, audits, automated settings
   useEffect(() => {
-    if (!isAuthenticated) {
-      console.log('→ Skipping data load - user not authenticated');
-      return;
-    }
-    
-    console.log('=== Loading Plugin Data ===');
-    
     axios.get(api('settings'), { headers: { 'X-WP-Nonce': nonce } })
       .then(r => {
         console.log('✓ Settings loaded');
@@ -220,6 +163,13 @@ export default function App() {
       })
       .catch(err => console.error('✗ Failed to load audits:', err));
     
+    axios.get(api('score-history'), { headers: { 'X-WP-Nonce': nonce } })
+      .then(r => {
+        console.log('✓ Score history loaded:', r.data.length, 'data points');
+        setScoreHistory(r.data);
+      })
+      .catch(err => console.error('✗ Failed to load score history:', err));
+
     axios.get(api('automated-settings'), { headers: { 'X-WP-Nonce': nonce } })
       .then(r => {
         console.log('✓ Automated settings loaded');
@@ -238,7 +188,7 @@ export default function App() {
         setGaStatus(r.data);
       })
       .catch(err => console.error('✗ Failed to load GA status:', err));
-  }, [isAuthenticated]);
+  }, []);
 
   // Check for GA OAuth callback
   useEffect(() => {
@@ -282,143 +232,37 @@ export default function App() {
   }, [modal.open, modal.audit?.page_url, gaStatus.connected]);
 
   // Handlers
-  const handleAuthFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setAuthForm({ ...authForm, [e.target.name]: e.target.value });
-  };
-
-  const handleLogin = async () => {
-    setLoading(true);
-    setNotice(null);
-    try {
-      const response = await axios.post(api('auth/login'), {
-        username: authForm.username,
-        password: authForm.password
-      }, { headers: { 'X-WP-Nonce': nonce } });
-
-      if (response.data.success) {
-        setIsAuthenticated(true);
-        setAccount(response.data.account);
-        setShowLogin(false);
-        setNotice('✅ Welcome back!');
-      } else {
-        setNotice('❌ ' + response.data.message);
-      }
-    } catch (err: any) {
-      setNotice('❌ Login failed: ' + (err.response?.data?.message || 'Invalid credentials'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRegister = async () => {
-    if (!authForm.fullName || !authForm.email || !authForm.company || !authForm.username || !authForm.password) {
-      setNotice('❌ Please fill out all fields');
+  const handleLicenseActivate = async () => {
+    if (!licenseKey.trim()) {
+      showError('Please enter a license key');
       return;
     }
-
-    setLoading(true);
+    setLicenseLoading(true);
     setNotice(null);
+    setNoticeType(null);
     try {
-      const response = await axios.post(api('auth/register'), {
-        full_name: authForm.fullName,
-        email: authForm.email,
-        company: authForm.company,
-        username: authForm.username,
-        password: authForm.password
-      }, { headers: { 'X-WP-Nonce': nonce } });
-
-      if (response.data.success) {
-        setIsAuthenticated(true);
-        setAccount(response.data.account);
-        setShowLogin(false);
-        setNotice('✅ Account created successfully!');
-      } else {
-        setNotice('❌ ' + response.data.message);
-      }
-    } catch (err: any) {
-      console.error('Registration Error:', err);
-      console.error('Error Response:', err.response?.data);
-      
-      const errorData = err.response?.data;
-      let errorMessage = err.response?.data?.message || 'Please try again';
-      
-      // Log debug information if available
-      if (errorData?.debug) {
-        console.error('Debug Info:', errorData.debug);
-      }
-      if (errorData?.error) {
-        console.error('Error Details:', errorData.error);
-        errorMessage += '\n\nCheck browser console for details.';
-      }
-      
-      setNotice('❌ Registration failed: ' + errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await axios.post(api('auth/logout'), {}, { headers: { 'X-WP-Nonce': nonce } });
-      setIsAuthenticated(false);
-      setAccount(null);
-      setShowLogin(true);
-      setNotice('👋 Logged out successfully');
-    } catch (err) {
-      console.error('Logout error:', err);
-    }
-  };
-
-  const handleAccountFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setAccountForm({ ...accountForm, [e.target.name]: e.target.value });
-  };
-
-  const handleEditAccount = () => {
-    setAccountForm({
-      full_name: account?.full_name || '',
-      email: account?.email || '',
-      company: account?.company || '',
-      username: account?.username || ''
-    });
-    setIsEditingAccount(true);
-  };
-
-  const handleCancelEditAccount = () => {
-    setIsEditingAccount(false);
-    setAccountForm({
-      full_name: '',
-      email: '',
-      company: '',
-      username: ''
-    });
-  };
-
-  const handleUpdateAccount = async () => {
-    if (!accountForm.full_name || !accountForm.email || !accountForm.company || !accountForm.username) {
-      setNotice('❌ Please fill out all fields');
-      return;
-    }
-
-    setLoading(true);
-    setNotice(null);
-    try {
-      const response = await axios.post(api('account/update'), accountForm, {
+      const response = await axios.post(api('license/activate'), { license_key: licenseKey.trim() }, {
         headers: { 'X-WP-Nonce': nonce }
       });
-
       if (response.data.success) {
-        setAccount(response.data.account);
-        setIsEditingAccount(false);
-        setNotice('✅ Account updated successfully!');
-        setTimeout(() => setNotice(null), 3000);
+        setLicenseStatus('active');
+        setLicenseCustomer(response.data.customer || null);
+        showSuccess('License activated successfully!');
       } else {
-        setNotice('❌ ' + response.data.message);
+        showError(response.data.message || 'Activation failed');
       }
     } catch (err: any) {
-      setNotice('❌ Failed to update account: ' + (err.response?.data?.message || 'Please try again'));
+      showError(err.response?.data?.message || 'Could not activate license. Please try again.');
     } finally {
-      setLoading(false);
+      setLicenseLoading(false);
     }
+  };
+
+  const handleLicenseDeactivate = () => {
+    setLicenseStatus('inactive');
+    setLicenseCustomer(null);
+    setLicenseKey('');
+    showSuccess('License deactivated.');
   };
 
   const handleSettingsChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -437,7 +281,6 @@ export default function App() {
       if (response.data.success && response.data.fields) {
         setSettings({ ...settings, ...response.data.fields });
         setNotice('✅ Business information extracted successfully!');
-        setTimeout(() => setNotice(null), 3000);
       } else {
         throw new Error('Failed to extract information');
       }
@@ -453,39 +296,37 @@ export default function App() {
       }
       
       setNotice('❌ ' + errorMsg + ' - check console for details');
-      setTimeout(() => setNotice(null), 5000);
     } finally {
       setLoading(false);
     }
   };
   const handleSaveSettings = () => {
-    setLoading(true);
+    setSavingSettings(true);
     axios.post(api('settings'), settings, { headers: { 'X-WP-Nonce': nonce } })
-      .then(() => setNotice('Settings saved!'))
-      .catch(() => setNotice('Failed to save settings'))
-      .finally(() => setLoading(false));
+      .then(() => showSuccess('Settings saved!'))
+      .catch(() => showError('Failed to save settings'))
+      .finally(() => setSavingSettings(false));
   };
   const handleSaveAutomatedSettings = async () => {
     // Check if business information is filled out
     const hasBusinessInfo = settings.industry && settings.product && settings.audience && settings.goal;
     if (!hasBusinessInfo) {
-      setNotice('❌ Please fill out Business Information tab first before enabling automated audits');
-      setTimeout(() => setNotice(null), 5000);
+      showError('Please fill out Business Information tab first before enabling automated audits');
       return;
     }
     
-    setLoading(true);
+    setSavingAutomated(true);
     try {
       const response = await axios.post(api('automated-settings'), automatedReporting, { headers: { 'X-WP-Nonce': nonce } });
       if (response.data.success) {
-        setNotice('✅ Automated report settings saved! ' + (response.data.next_run ? `Next run: ${new Date(response.data.next_run).toLocaleString()}` : ''));
+        showSuccess('Automated report settings saved! ' + (response.data.next_run ? `Next run: ${new Date(response.data.next_run).toLocaleString()}` : ''));
       } else {
-        setNotice('❌ ' + response.data.message);
+        showError(response.data.message);
       }
     } catch (err: any) {
-      setNotice('❌ Failed to save automated settings: ' + (err.response?.data?.message || err.message));
+      showError('Failed to save automated settings: ' + (err.response?.data?.message || err.message));
     } finally {
-      setLoading(false);
+      setSavingAutomated(false);
     }
   };
 
@@ -494,7 +335,6 @@ export default function App() {
     
     if (!emailToTest || !emailToTest.includes('@')) {
       setNotice('❌ Please enter a valid email address');
-      setTimeout(() => setNotice(null), 3000);
       return;
     }
 
@@ -511,7 +351,6 @@ export default function App() {
       setNotice('❌ Failed to send test email: ' + (err.response?.data?.message || err.message));
     } finally {
       setTestEmailLoading(false);
-      setTimeout(() => setNotice(null), 8000);
     }
   };
 
@@ -520,13 +359,11 @@ export default function App() {
     
     if (!emailToSend || !emailToSend.includes('@')) {
       setNotice('❌ Please enter a valid email address');
-      setTimeout(() => setNotice(null), 3000);
       return;
     }
 
     if (automatedReporting.defaultPages.length === 0) {
       setNotice('❌ Please select at least one page in "Default Pages to Audit" above');
-      setTimeout(() => setNotice(null), 3000);
       return;
     }
 
@@ -553,7 +390,6 @@ export default function App() {
       setManualReportLog(err.response?.data?.log || [errorMsg]);
     } finally {
       setManualReportLoading(false);
-      setTimeout(() => setNotice(null), 8000);
     }
   };
 
@@ -651,7 +487,6 @@ export default function App() {
     // Require at least one authentication method
     if (!knockKnockCompanyId.trim() && !knockKnockWebhookSecret.trim()) {
       setNotice('❌ Please enter either a Company ID or Webhook Secret (or both)');
-      setTimeout(() => setNotice(null), 4000);
       return;
     }
 
@@ -672,7 +507,6 @@ export default function App() {
       setNotice('❌ Failed to save: ' + (err.response?.data?.message || err.message));
     } finally {
       setLoading(false);
-      setTimeout(() => setNotice(null), 3000);
     }
   };
 
@@ -705,45 +539,29 @@ export default function App() {
   const copyKnockKnockUrl = () => {
     navigator.clipboard.writeText(knockKnockWebhookUrl);
     setNotice('✅ Webhook URL copied to clipboard!');
-    setTimeout(() => setNotice(null), 2000);
   };
 
   // Load KnockKnock leads when Growth Machine tab is opened
   useEffect(() => {
     const hasAuth = knockKnockCompanyId || knockKnockWebhookSecret;
-    console.log('KnockKnock useEffect triggered:', {
-      activeTab,
-      isAuthenticated,
-      knockKnockCompanyId,
-      knockKnockWebhookSecret: knockKnockWebhookSecret ? 'SET' : 'NOT SET',
-      hasAuth,
-      shouldFetch: activeTab === 'knockknock' && isAuthenticated && hasAuth
-    });
     
-    if (activeTab === 'knockknock' && isAuthenticated && hasAuth) {
-      console.log('Conditions met, fetching leads...');
+    if (activeTab === 'knockknock' && hasAuth) {
       fetchKnockKnockLeads();
-    } else {
-      console.log('Conditions not met for fetching leads');
     }
-  }, [activeTab, isAuthenticated, knockKnockCompanyId, knockKnockWebhookSecret]);
+  }, [activeTab, knockKnockCompanyId, knockKnockWebhookSecret]);
 
   // Auto-refresh leads every 30 seconds when on Growth Machine tab
   useEffect(() => {
     const hasAuth = knockKnockCompanyId || knockKnockWebhookSecret;
     
-    if (activeTab === 'knockknock' && isAuthenticated && hasAuth) {
+    if (activeTab === 'knockknock' && hasAuth) {
       const intervalId = setInterval(() => {
-        console.log('Auto-refreshing leads...');
         fetchKnockKnockLeads();
       }, 30000); // 30 seconds
       
-      return () => {
-        console.log('Clearing auto-refresh interval');
-        clearInterval(intervalId);
-      };
+      return () => clearInterval(intervalId);
     }
-  }, [activeTab, isAuthenticated, knockKnockCompanyId, knockKnockWebhookSecret]);
+  }, [activeTab, knockKnockCompanyId, knockKnockWebhookSecret]);
 
   const handlePageSelect = (id: number) => {
     setSelectedPages(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
@@ -755,7 +573,6 @@ export default function App() {
     const hasBusinessInfo = settings.industry && settings.product && settings.audience && settings.goal;
     if (!hasBusinessInfo) {
       setNotice('❌ Please fill out Business Information tab first before running audits');
-      setTimeout(() => setNotice(null), 5000);
       return;
     }
     
@@ -986,7 +803,6 @@ export default function App() {
           document.body.removeChild(link);
           
           setNotice('✅ Report downloaded successfully!');
-          setTimeout(() => setNotice(null), 3000);
         } else if (r.data && r.data.test) {
           console.log('🧪 Test response received:', r.data.test);
           setNotice('Test response: ' + r.data.test);
@@ -1016,221 +832,28 @@ export default function App() {
       .finally(() => setLoading(false));
   };
 
-  // Show loading spinner while checking auth
-  if (authLoading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#f3f4f6' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
-          <div style={{ fontSize: 18, color: '#6b7280' }}>Loading...</div>
-        </div>
-      </div>
-    );
-  }
-
-  // Show login/register screen if not authenticated
-  if (!isAuthenticated) {
-    return (
-      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-        <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', maxWidth: 480, width: '100%', overflow: 'hidden' }}>
-          <div style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', color: '#fff', padding: 32, textAlign: 'center' }}>
-            <h1 style={{ margin: 0, fontSize: 32, fontWeight: 800 }}>Conversion IQ</h1>
-            <p style={{ margin: '8px 0 0 0', opacity: 0.9 }}>AI-Powered Conversion Audits</p>
-          </div>
-
-          <div style={{ padding: 32 }}>
-            {notice && (
-              <div style={{ background: notice.includes('❌') ? '#fee2e2' : '#d1fae5', border: `1px solid ${notice.includes('❌') ? '#fca5a5' : '#6ee7b7'}`, color: notice.includes('❌') ? '#991b1b' : '#065f46', borderRadius: 8, padding: 12, marginBottom: 20, fontSize: 14 }}>
-                {notice}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '2px solid #e5e7eb' }}>
-              <button
-                onClick={() => setAuthMode('login')}
-                style={{
-                  flex: 1,
-                  padding: '12px',
-                  background: 'none',
-                  border: 'none',
-                  borderBottom: authMode === 'login' ? '2px solid #7c3aed' : 'none',
-                  color: authMode === 'login' ? '#7c3aed' : '#6b7280',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontSize: 16,
-                  marginBottom: -2
-                }}
-              >
-                Login
-              </button>
-              <button
-                onClick={() => setAuthMode('register')}
-                style={{
-                  flex: 1,
-                  padding: '12px',
-                  background: 'none',
-                  border: 'none',
-                  borderBottom: authMode === 'register' ? '2px solid #7c3aed' : 'none',
-                  color: authMode === 'register' ? '#7c3aed' : '#6b7280',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontSize: 16,
-                  marginBottom: -2
-                }}
-              >
-                Create Account
-              </button>
-            </div>
-
-            {authMode === 'login' ? (
-              <div>
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, color: '#111827', fontSize: 14 }}>Username</label>
-                  <input
-                    type="text"
-                    name="username"
-                    value={authForm.username}
-                    onChange={handleAuthFormChange}
-                    placeholder="Enter your username"
-                    style={{ width: '100%', padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none' }}
-                    onFocus={(e) => e.target.style.borderColor = '#7c3aed'}
-                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
-                  />
-                </div>
-
-                <div style={{ marginBottom: 20 }}>
-                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, color: '#111827', fontSize: 14 }}>Password</label>
-                  <input
-                    type="password"
-                    name="password"
-                    value={authForm.password}
-                    onChange={handleAuthFormChange}
-                    placeholder="Enter your password"
-                    style={{ width: '100%', padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none' }}
-                    onFocus={(e) => e.target.style.borderColor = '#7c3aed'}
-                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
-                    onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-                  />
-                </div>
-
-                <button
-                  onClick={handleLogin}
-                  disabled={loading}
-                  style={{ width: '100%', padding: '14px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, fontSize: 16, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}
-                >
-                  {loading ? 'Logging in...' : 'Login'}
-                </button>
-              </div>
-            ) : (
-              <div>
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, color: '#111827', fontSize: 14 }}>Full Name</label>
-                  <input
-                    type="text"
-                    name="fullName"
-                    value={authForm.fullName}
-                    onChange={handleAuthFormChange}
-                    placeholder="John Doe"
-                    style={{ width: '100%', padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none' }}
-                    onFocus={(e) => e.target.style.borderColor = '#7c3aed'}
-                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
-                  />
-                </div>
-
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, color: '#111827', fontSize: 14 }}>Email</label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={authForm.email}
-                    onChange={handleAuthFormChange}
-                    placeholder="john@company.com"
-                    style={{ width: '100%', padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none' }}
-                    onFocus={(e) => e.target.style.borderColor = '#7c3aed'}
-                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
-                  />
-                </div>
-
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, color: '#111827', fontSize: 14 }}>Company</label>
-                  <input
-                    type="text"
-                    name="company"
-                    value={authForm.company}
-                    onChange={handleAuthFormChange}
-                    placeholder="Acme Inc"
-                    style={{ width: '100%', padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none' }}
-                    onFocus={(e) => e.target.style.borderColor = '#7c3aed'}
-                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
-                  />
-                </div>
-
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, color: '#111827', fontSize: 14 }}>Username</label>
-                  <input
-                    type="text"
-                    name="username"
-                    value={authForm.username}
-                    onChange={handleAuthFormChange}
-                    placeholder="Choose a username"
-                    style={{ width: '100%', padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none' }}
-                    onFocus={(e) => e.target.style.borderColor = '#7c3aed'}
-                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
-                  />
-                </div>
-
-                <div style={{ marginBottom: 20 }}>
-                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, color: '#111827', fontSize: 14 }}>Password</label>
-                  <input
-                    type="password"
-                    name="password"
-                    value={authForm.password}
-                    onChange={handleAuthFormChange}
-                    placeholder="Create a password"
-                    style={{ width: '100%', padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none' }}
-                    onFocus={(e) => e.target.style.borderColor = '#7c3aed'}
-                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
-                    onKeyPress={(e) => e.key === 'Enter' && handleRegister()}
-                  />
-                </div>
-
-                <button
-                  onClick={handleRegister}
-                  disabled={loading}
-                  style={{ width: '100%', padding: '14px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, fontSize: 16, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}
-                >
-                  {loading ? 'Creating Account...' : 'Create Account'}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="ciq-frontend-root" style={{ minHeight: '100vh', background: '#f3f4f6', padding: 0, fontFamily: 'Inter,Arial,Helvetica,sans-serif' }}>
-      <header style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)', color: '#fff', padding: '32px 0', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', marginBottom: 40 }}>
+      <header style={{ background: `linear-gradient(135deg, ${B.primaryColor} 0%, ${B.accentColor} 100%)`, color: '#fff', padding: '32px 0', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', marginBottom: 40 }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 32px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginBottom: 20 }}>
             <img 
-              src={`${(window as any).ConversionIQData?.pluginUrl || ''}/assets/images/Webtec.png`} 
-              alt="Webtec" 
+              src={B.logoUrl || `${(window as any).ConversionIQData?.pluginUrl || ''}/assets/images/Webtec.png`} 
+              alt={B.company} 
               style={{ width: 140, height: 'auto' }} 
             />
             <div style={{ height: 40, width: 1, background: 'rgba(255,255,255,0.3)' }}></div>
             <div>
-              <h1 style={{ margin: 0, fontWeight: 800, fontSize: 36, letterSpacing: -1 }}>Conversion IQ</h1>
+              <h1 style={{ margin: 0, fontWeight: 800, fontSize: 36, letterSpacing: -1 }}>{B.product}</h1>
               <p style={{ margin: '4px 0 0 0', fontSize: 16, opacity: 0.9 }}>AI-powered conversion audits & recommendations</p>
             </div>
           </div>
           <div style={{ padding: '16px 20px', background: 'rgba(255,255,255,0.12)', borderRadius: 12, fontSize: 14, lineHeight: 1.7, borderLeft: '4px solid rgba(255,255,255,0.3)' }}>
             <p style={{ margin: 0, opacity: 0.95 }}>
-              <strong>Built by Webtec</strong> for conversion audits. Our audits are based on best practices and validated tests over thousands of customers.
+              {B.hidePoweredBy ? '' : <><strong>Built by {B.company}</strong> for conversion audits. </>}Our audits are based on best practices and validated tests over thousands of customers.
             </p>
             <p style={{ margin: '8px 0 0 0', opacity: 0.9, fontSize: 13 }}>
-              Unsure about your results? <a href="mailto:support@trywebtec.com" style={{ color: '#fff', textDecoration: 'underline', fontWeight: 500 }}>Contact our support team</a> for assistance.
+              Unsure about your results? <a href={`mailto:${B.supportEmail}`} style={{ color: '#fff', textDecoration: 'underline', fontWeight: 500 }}>Contact our support team</a> for assistance.
             </p>
           </div>
         </div>
@@ -1238,7 +861,13 @@ export default function App() {
 
       <main style={{ maxWidth: 1200, margin: '0 auto', padding: '0 32px 60px 32px' }}>
         {notice && (
-          <div style={{ background: '#7c3aed', border: 'none', color: '#fff', borderRadius: 12, padding: 16, marginBottom: 24, fontWeight: 500, boxShadow: '0 4px 12px rgba(124, 58, 237, 0.2)' }}>
+          <div style={{
+            background: noticeType === 'error' ? '#fee2e2' : noticeType === 'success' ? '#d1fae5' : '#7c3aed',
+            border: noticeType === 'error' ? '1px solid #fca5a5' : noticeType === 'success' ? '1px solid #6ee7b7' : 'none',
+            color: noticeType === 'error' ? '#991b1b' : noticeType === 'success' ? '#065f46' : '#fff',
+            borderRadius: 12, padding: 16, marginBottom: 24, fontWeight: 500,
+            boxShadow: noticeType ? 'none' : '0 4px 12px rgba(124, 58, 237, 0.2)'
+          }}>
             {notice}
           </div>
         )}
@@ -1264,6 +893,23 @@ export default function App() {
         {/* Tab Navigation */}
         <div style={{ background: '#fff', borderRadius: 12, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
           <div style={{ display: 'flex', borderBottom: '2px solid #f3f4f6' }}>
+            <button
+              onClick={() => setActiveTab('overview')}
+              style={{
+                flex: 1,
+                padding: '16px 24px',
+                background: activeTab === 'overview' ? '#7c3aed' : '#fff',
+                color: activeTab === 'overview' ? '#fff' : '#6b7280',
+                border: 'none',
+                borderBottom: activeTab === 'overview' ? '3px solid #5b21b6' : '3px solid transparent',
+                cursor: 'pointer',
+                fontSize: 16,
+                fontWeight: 600,
+                transition: 'all 0.2s'
+              }}
+            >
+              Overview
+            </button>
             <button
               onClick={() => setActiveTab('settings')}
               style={{
@@ -1330,24 +976,24 @@ export default function App() {
                 transition: 'all 0.2s'
               }}
             >
-              � Growth Machine
+              KnockKnock
             </button>
             <button
-              onClick={() => setActiveTab('account')}
+              onClick={() => setActiveTab('license')}
               style={{
                 flex: 1,
                 padding: '16px 24px',
-                background: activeTab === 'account' ? '#7c3aed' : '#fff',
-                color: activeTab === 'account' ? '#fff' : '#6b7280',
+                background: activeTab === 'license' ? '#7c3aed' : '#fff',
+                color: activeTab === 'license' ? '#fff' : '#6b7280',
                 border: 'none',
-                borderBottom: activeTab === 'account' ? '3px solid #5b21b6' : '3px solid transparent',
+                borderBottom: activeTab === 'license' ? '3px solid #5b21b6' : '3px solid transparent',
                 cursor: 'pointer',
                 fontSize: 16,
                 fontWeight: 600,
                 transition: 'all 0.2s'
               }}
             >
-              Account
+              License
             </button>
             <button
               onClick={() => setActiveTab('faq')}
@@ -1368,6 +1014,19 @@ export default function App() {
             </button>
           </div>
         </div>
+
+        {/* Overview Tab */}
+        {activeTab === 'overview' && (
+          <OverviewTab
+            scoreHistory={scoreHistory}
+            overviewPageFilter={overviewPageFilter}
+            setOverviewPageFilter={setOverviewPageFilter}
+            pages={pages}
+            audits={audits}
+            setActiveTab={setActiveTab as any}
+            setModal={setModal}
+          />
+        )}
 
         {/* Settings Tab */}
         {activeTab === 'settings' && (
@@ -1431,8 +1090,8 @@ export default function App() {
               />
             </div>
 
-            <button className="ciq-btn primary" onClick={handleSaveSettings} disabled={loading} style={{ marginTop: 20, padding: '12px 24px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, transition: 'all 0.2s' }} onMouseEnter={(e) => !loading && (e.currentTarget.style.background = '#6d28d9')} onMouseLeave={(e) => !loading && (e.currentTarget.style.background = '#7c3aed')}>
-              Save Settings
+            <button className="ciq-btn primary" onClick={handleSaveSettings} disabled={savingSettings} style={{ marginTop: 20, padding: '12px 24px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: savingSettings ? 'not-allowed' : 'pointer', opacity: savingSettings ? 0.6 : 1, transition: 'all 0.2s' }} onMouseEnter={(e) => !savingSettings && (e.currentTarget.style.background = '#6d28d9')} onMouseLeave={(e) => !savingSettings && (e.currentTarget.style.background = '#7c3aed')}>
+              {savingSettings ? 'Saving...' : 'Save Settings'}
             </button>
           </section>
         )}
@@ -1531,7 +1190,7 @@ export default function App() {
                 <button
                   className="ciq-btn primary"
                   onClick={handleSaveAutomatedSettings}
-                  disabled={loading || automatedReporting.defaultPages.length === 0 || !automatedReporting.email}
+                  disabled={savingAutomated || automatedReporting.defaultPages.length === 0 || !automatedReporting.email}
                   style={{
                     padding: '12px 24px',
                     background: (automatedReporting.defaultPages.length === 0 || !automatedReporting.email) ? '#d1d5db' : '#7c3aed',
@@ -1540,13 +1199,13 @@ export default function App() {
                     borderRadius: 8,
                     fontSize: 15,
                     fontWeight: 600,
-                    cursor: (loading || automatedReporting.defaultPages.length === 0 || !automatedReporting.email) ? 'not-allowed' : 'pointer',
+                    cursor: (savingAutomated || automatedReporting.defaultPages.length === 0 || !automatedReporting.email) ? 'not-allowed' : 'pointer',
                     transition: 'all 0.2s'
                   }}
-                  onMouseEnter={(e) => !loading && automatedReporting.defaultPages.length > 0 && automatedReporting.email && (e.currentTarget.style.background = '#6d28d9')}
-                  onMouseLeave={(e) => !loading && automatedReporting.defaultPages.length > 0 && automatedReporting.email && (e.currentTarget.style.background = '#7c3aed')}
+                  onMouseEnter={(e) => !savingAutomated && automatedReporting.defaultPages.length > 0 && automatedReporting.email && (e.currentTarget.style.background = '#6d28d9')}
+                  onMouseLeave={(e) => !savingAutomated && automatedReporting.defaultPages.length > 0 && automatedReporting.email && (e.currentTarget.style.background = '#7c3aed')}
                 >
-                  Save Automated Settings
+                  {savingAutomated ? 'Saving...' : 'Save Automated Settings'}
                 </button>
 
                 {/* Test Email Section */}
@@ -1913,6 +1572,23 @@ export default function App() {
                 </div>
               </div>
               
+              {/* Overall Score Hero */}
+              {(() => {
+                const os = a.overall_score || Math.round(((a.clarity_score || 0) * 0.20 + (a.emotional_score || 0) * 0.15 + (a.cta_strength || 0) * 0.20 + (a.readability_score || 0) * 0.15 + (a.engagement_score || 0) * 0.15 + (a.trust_score || 0) * 0.15));
+                const scoreColor = os >= 75 ? '#10b981' : os >= 50 ? '#f59e0b' : '#ef4444';
+                return os > 0 ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16, padding: '16px 20px', background: `linear-gradient(135deg, ${scoreColor}10, ${scoreColor}08)`, borderRadius: 12, border: `1px solid ${scoreColor}30` }}>
+                    <div style={{ width: 56, height: 56, borderRadius: '50%', background: `conic-gradient(${scoreColor} ${os * 3.6}deg, #e5e7eb ${os * 3.6}deg)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: scoreColor }}>{os}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>Overall Score</div>
+                      <div style={{ fontSize: 12, color: '#6b7280' }}>{os >= 75 ? 'Great — high conversion potential' : os >= 50 ? 'Needs work — room to improve' : 'Critical — significant issues found'}</div>
+                    </div>
+                  </div>
+                ) : null;
+              })()}
+
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 12, marginBottom: 16 }}>
                 <div style={{ textAlign: 'center', padding: 12, background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', borderRadius: 10 }}>
                   <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4, fontWeight: 500 }}>Conversion Clarity</div>
@@ -1972,14 +1648,12 @@ export default function App() {
                               audit.insert_id === a.insert_id ? newAudit : audit
                             ));
                             setNotice('✅ Audit completed successfully!');
-                            setTimeout(() => setNotice(null), 3000);
                           } else {
                             throw new Error('Retry failed');
                           }
                         } catch (err: any) {
                           console.error('❌ Retry failed:', err);
                           setNotice('Retry failed - please try again later.');
-                          setTimeout(() => setNotice(null), 5000);
                         } finally {
                           setLoading(false);
                         }
@@ -2015,7 +1689,7 @@ export default function App() {
                   )}
                 </div>
                 <a
-                  href={`mailto:support@trywebtec.com?subject=Free 15-Min Expert Review Request - ${encodeURIComponent(a.page_title || 'Audit')}&body=Hi Webtec Team,%0D%0A%0D%0AI'd like to schedule a FREE 15-minute expert review of my Conversion IQ audit results.%0D%0A%0D%0APage: ${encodeURIComponent(a.page_title || 'N/A')}%0D%0AAudit Date: ${a.created_at ? encodeURIComponent(new Date(a.created_at).toLocaleDateString()) : 'N/A'}%0D%0A%0D%0APlease let me know your availability.%0D%0A%0D%0AThank you!`}
+                  href={`mailto:${B.supportEmail}?subject=Free 15-Min Expert Review Request - ${encodeURIComponent(a.page_title || 'Audit')}&body=Hi ${B.company} Team,%0D%0A%0D%0AI'd like to schedule a FREE 15-minute expert review of my ${B.product} audit results.%0D%0A%0D%0APage: ${encodeURIComponent(a.page_title || 'N/A')}%0D%0AAudit Date: ${a.created_at ? encodeURIComponent(new Date(a.created_at).toLocaleDateString()) : 'N/A'}%0D%0A%0D%0APlease let me know your availability.%0D%0A%0D%0AThank you!`}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -2059,7 +1733,7 @@ export default function App() {
           <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
             <div style={{ marginBottom: 32 }}>
               <h2 style={{ margin: '0 0 8px 0', fontSize: 28, fontWeight: 700, color: '#111827' }}>
-                � Growth Machine
+                KnockKnock
               </h2>
               <p style={{ color: '#6b7280', fontSize: 15, margin: 0 }}>
                 Track visitor engagement and lead conversion with advanced analytics and real-time insights
@@ -2617,335 +2291,293 @@ export default function App() {
           </section>
         )}
 
-        {/* Account Tab */}
-        {activeTab === 'account' && (
+        {/* License Tab */}
+        {activeTab === 'license' && (
           <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
-            <h2 style={{ margin: '0 0 8px 0', fontSize: 24, fontWeight: 700, color: '#111827' }}>Account Settings</h2>
+            <h2 style={{ margin: '0 0 8px 0', fontSize: 24, fontWeight: 700, color: '#111827' }}>License</h2>
             <p style={{ color: '#6b7280', marginBottom: 32, fontSize: 15 }}>
-              Manage your account information and API credentials.
+              Activate your Conversion IQ license to enable all features.
             </p>
 
-            <div style={{ background: '#f9fafb', borderRadius: 12, padding: 24, marginBottom: 24, border: '1px solid #e5e7eb' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#111827' }}>Account Information</h3>
-                {!isEditingAccount && (
-                  <button
-                    onClick={handleEditAccount}
-                    style={{
-                      padding: '8px 16px',
-                      background: '#7c3aed',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 6,
-                      fontSize: 14,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#6d28d9'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = '#7c3aed'}
-                  >
-                    ✏️ Edit
-                  </button>
-                )}
+            {/* Status card */}
+            <div style={{
+              background: licenseStatus === 'active' ? '#f0fdf4' : licenseStatus === 'checking' ? '#f9fafb' : '#fef2f2',
+              border: `1px solid ${licenseStatus === 'active' ? '#86efac' : licenseStatus === 'checking' ? '#e5e7eb' : '#fca5a5'}`,
+              borderRadius: 12,
+              padding: 24,
+              marginBottom: 24,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16
+            }}>
+              <div style={{ fontSize: 32 }}>
+                {licenseStatus === 'active' ? '\u2705' : licenseStatus === 'checking' ? '\u23F3' : '\u274C'}
               </div>
-              
-              {!isEditingAccount ? (
-                <div style={{ display: 'grid', gap: 16 }}>
-                  <div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Full Name</div>
-                    <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>{account?.full_name || 'Not set'}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Email</div>
-                    <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>{account?.email || 'Not set'}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Company</div>
-                    <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>{account?.company || 'Not set'}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Username</div>
-                    <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>{account?.username || 'Not set'}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Member Since</div>
-                    <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>
-                      {account?.created_at ? new Date(account.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Unknown'}
-                    </div>
-                  </div>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: licenseStatus === 'active' ? '#166534' : licenseStatus === 'checking' ? '#374151' : '#991b1b' }}>
+                  {licenseStatus === 'active' ? 'License Active' : licenseStatus === 'checking' ? 'Checking...' : 'License Inactive'}
                 </div>
-              ) : (
-                <div style={{ display: 'grid', gap: 16 }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>Full Name</label>
-                    <input
-                      type="text"
-                      name="full_name"
-                      value={accountForm.full_name}
-                      onChange={handleAccountFormChange}
-                      style={{
-                        width: '100%',
-                        padding: '12px 16px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: 8,
-                        fontSize: 14,
-                        outline: 'none',
-                        transition: 'border 0.2s',
-                        background: '#fff',
-                        color: '#111827'
-                      }}
-                      onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
-                      onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>Email</label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={accountForm.email}
-                      onChange={handleAccountFormChange}
-                      style={{
-                        width: '100%',
-                        padding: '12px 16px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: 8,
-                        fontSize: 14,
-                        outline: 'none',
-                        transition: 'border 0.2s',
-                        background: '#fff',
-                        color: '#111827'
-                      }}
-                      onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
-                      onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>Company</label>
-                    <input
-                      type="text"
-                      name="company"
-                      value={accountForm.company}
-                      onChange={handleAccountFormChange}
-                      style={{
-                        width: '100%',
-                        padding: '12px 16px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: 8,
-                        fontSize: 14,
-                        outline: 'none',
-                        transition: 'border 0.2s',
-                        background: '#fff',
-                        color: '#111827'
-                      }}
-                      onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
-                      onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>Username</label>
-                    <input
-                      type="text"
-                      name="username"
-                      value={accountForm.username}
-                      onChange={handleAccountFormChange}
-                      style={{
-                        width: '100%',
-                        padding: '12px 16px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: 8,
-                        fontSize: 14,
-                        outline: 'none',
-                        transition: 'border 0.2s',
-                        background: '#fff',
-                        color: '#111827'
-                      }}
-                      onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
-                      onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                    />
-                  </div>
-                  <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-                    <button
-                      onClick={handleUpdateAccount}
-                      disabled={loading}
-                      style={{
-                        padding: '12px 24px',
-                        background: loading ? '#d1d5db' : '#10b981',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: 8,
-                        fontSize: 15,
-                        fontWeight: 600,
-                        cursor: loading ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                      onMouseEnter={(e) => !loading && (e.currentTarget.style.background = '#059669')}
-                      onMouseLeave={(e) => !loading && (e.currentTarget.style.background = '#10b981')}
-                    >
-                      {loading ? 'Saving...' : '✓ Save Changes'}
-                    </button>
-                    <button
-                      onClick={handleCancelEditAccount}
-                      disabled={loading}
-                      style={{
-                        padding: '12px 24px',
-                        background: '#fff',
-                        color: '#6b7280',
-                        border: '1px solid #d1d5db',
-                        borderRadius: 8,
-                        fontSize: 15,
-                        fontWeight: 600,
-                        cursor: loading ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                      onMouseEnter={(e) => !loading && (e.currentTarget.style.background = '#f9fafb')}
-                      onMouseLeave={(e) => !loading && (e.currentTarget.style.background = '#fff')}
-                    >
-                      Cancel
-                    </button>
-                  </div>
+                <div style={{ fontSize: 14, color: '#6b7280', marginTop: 2 }}>
+                  {licenseStatus === 'active'
+                    ? (licenseCustomer?.name ? `Licensed to ${licenseCustomer.name}` : 'Your license is valid and active')
+                    : licenseStatus === 'checking'
+                    ? 'Verifying license status...'
+                    : 'Enter your license key below to activate'}
                 </div>
-              )}
+              </div>
             </div>
 
-            <button
-              onClick={handleLogout}
-              style={{
-                marginTop: 32,
-                padding: '12px 24px',
-                background: '#ef4444',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 8,
-                fontSize: 15,
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = '#dc2626'}
-              onMouseLeave={(e) => e.currentTarget.style.background = '#ef4444'}
-            >
-              Logout
-            </button>
+            {/* Customer info when active */}
+            {licenseStatus === 'active' && licenseCustomer && (
+              <div style={{ background: '#f9fafb', borderRadius: 12, padding: 24, marginBottom: 24, border: '1px solid #e5e7eb' }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 600, color: '#111827' }}>License Details</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  {licenseCustomer.name && (
+                    <div>
+                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Name</div>
+                      <div style={{ fontSize: 15, color: '#111827', fontWeight: 500 }}>{licenseCustomer.name}</div>
+                    </div>
+                  )}
+                  {licenseCustomer.email && (
+                    <div>
+                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Email</div>
+                      <div style={{ fontSize: 15, color: '#111827', fontWeight: 500 }}>{licenseCustomer.email}</div>
+                    </div>
+                  )}
+                  {licenseCustomer.company && (
+                    <div>
+                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Company</div>
+                      <div style={{ fontSize: 15, color: '#111827', fontWeight: 500 }}>{licenseCustomer.company}</div>
+                    </div>
+                  )}
+                  {licenseCustomer.plan && (
+                    <div>
+                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Plan</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '4px 12px',
+                          borderRadius: 20,
+                          fontSize: 13,
+                          fontWeight: 600,
+                          background: currentPlan === 'agency' ? '#7c3aed' : currentPlan === 'professional' ? '#2563eb' : '#6b7280',
+                          color: '#fff',
+                          textTransform: 'capitalize',
+                        }}>{licenseCustomer.plan}</span>
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Status</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+                      <span style={{ fontSize: 15, color: '#059669', fontWeight: 500 }}>Active</span>
+                    </div>
+                  </div>
+                  {licenseValidatedAt > 0 && (
+                    <div>
+                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Activated</div>
+                      <div style={{ fontSize: 15, color: '#111827', fontWeight: 500 }}>{new Date(licenseValidatedAt * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+                    </div>
+                  )}
+                  {licenseValidatedAt > 0 && (
+                    <div>
+                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Last Verified</div>
+                      <div style={{ fontSize: 15, color: '#111827', fontWeight: 500 }}>{new Date(licenseValidatedAt * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</div>
+                    </div>
+                  )}
+                </div>
+                {/* Plan comparison */}
+                {(() => {
+                  const plans: Record<string, { label: string; price: string; color: string; features: string[] }> = {
+                    starter: { label: 'Starter', price: '$99/mo', color: '#6b7280', features: ['Up to 3 sites', '6 conversion scores per page', 'AI-generated copy rewrites', 'Prioritized quick wins', 'Weekly PDF reports', 'Visitor intelligence'] },
+                    professional: { label: 'Professional', price: '$199/mo', color: '#2563eb', features: ['Up to 10 sites', 'Everything in Starter', 'Custom branding on reports', 'White-label email delivery', 'Priority support', 'Competitor analysis'] },
+                    agency: { label: 'Agency', price: '$499/mo', color: '#7c3aed', features: ['Up to 100 sites', 'Everything in Professional', 'Client license management', 'Full white-label dashboard', 'Custom FAQ & branding', 'Sub-license distribution'] },
+                  };
+                  const order = ['starter', 'professional', 'agency'];
+                  const currentIdx = order.indexOf(currentPlan);
+                  const current = plans[currentPlan] || plans.starter;
+                  const nextKey = currentIdx < order.length - 1 ? order[currentIdx + 1] : null;
+                  const next = nextKey ? plans[nextKey] : null;
+
+                  return (
+                    <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: next ? '1fr 1fr' : '1fr', gap: 16 }}>
+                      {/* Current plan */}
+                      <div style={{ border: `2px solid ${current.color}`, borderRadius: 12, padding: 20, position: 'relative' }}>
+                        <div style={{ position: 'absolute', top: -11, left: 16, background: '#f9fafb', padding: '0 8px', fontSize: 11, fontWeight: 700, color: current.color, textTransform: 'uppercase', letterSpacing: 1 }}>Current Plan</div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
+                          <span style={{ fontSize: 20, fontWeight: 700, color: '#111827' }}>{current.label}</span>
+                          <span style={{ fontSize: 14, color: '#6b7280' }}>{current.price}</span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {current.features.map((f, i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151' }}>
+                              <span style={{ color: '#10b981', fontWeight: 700, fontSize: 14 }}>✓</span>
+                              <span>{f}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      {/* Next plan up */}
+                      {next && nextKey && (
+                        <div style={{ border: '2px solid #e5e7eb', borderRadius: 12, padding: 20, position: 'relative', background: '#fafafa' }}>
+                          <div style={{ position: 'absolute', top: -11, left: 16, background: '#fafafa', padding: '0 8px', fontSize: 11, fontWeight: 700, color: next.color, textTransform: 'uppercase', letterSpacing: 1 }}>Upgrade Available</div>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
+                            <span style={{ fontSize: 20, fontWeight: 700, color: '#111827' }}>{next.label}</span>
+                            <span style={{ fontSize: 14, color: '#6b7280' }}>{next.price}</span>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+                            {next.features.map((f, i) => (
+                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151' }}>
+                                <span style={{ color: next.color, fontWeight: 700, fontSize: 14 }}>✓</span>
+                                <span>{f}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <a
+                            href="https://conversioniq-app.com"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ display: 'block', textAlign: 'center', padding: '10px 20px', background: next.color, color: '#fff', borderRadius: 8, fontSize: 14, fontWeight: 600, textDecoration: 'none', transition: 'opacity 0.2s' }}
+                            onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
+                            onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                          >
+                            Upgrade to {next.label}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* License key section */}
+            {licenseStatus === 'active' ? (
+              <div style={{ marginBottom: 24 }}>
+                <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>
+                  License Key
+                </label>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{
+                    flex: 1,
+                    padding: '12px 16px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: 8,
+                    fontSize: 14,
+                    fontFamily: 'monospace',
+                    color: '#111827',
+                    background: '#f9fafb',
+                    letterSpacing: showLicenseKey ? 0 : 2,
+                  }}>
+                    {showLicenseKey ? fullLicenseKey : licenseKey}
+                  </div>
+                  <button
+                    onClick={() => setShowLicenseKey(!showLicenseKey)}
+                    style={{
+                      padding: '12px 20px',
+                      background: '#fff',
+                      color: '#374151',
+                      border: '1px solid #d1d5db',
+                      borderRadius: 8,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      whiteSpace: 'nowrap',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.color = '#7c3aed'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#374151'; }}
+                  >
+                    {showLicenseKey ? '🙈 Hide' : '👁 Reveal'}
+                  </button>
+                  {showLicenseKey && (
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(fullLicenseKey); showSuccess('License key copied!'); }}
+                      style={{
+                        padding: '12px 20px',
+                        background: '#fff',
+                        color: '#374151',
+                        border: '1px solid #d1d5db',
+                        borderRadius: 8,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        whiteSpace: 'nowrap',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.color = '#7c3aed'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#374151'; }}
+                    >
+                      📋 Copy
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginBottom: 24 }}>
+                <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>
+                  License Key
+                </label>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <input
+                    type="text"
+                    value={licenseKey}
+                    onChange={(e) => setLicenseKey(e.target.value)}
+                    placeholder="CIQ-XXXXX-XXXXX-XXXXX-XXXXX"
+                    style={{
+                      flex: 1,
+                      padding: '12px 16px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: 8,
+                      fontSize: 14,
+                      outline: 'none',
+                      fontFamily: 'monospace',
+                      color: '#111827',
+                      background: '#fff'
+                    }}
+                    onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
+                    onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                  />
+                  <button
+                    onClick={handleLicenseActivate}
+                    disabled={licenseLoading}
+                    style={{
+                      padding: '12px 24px',
+                      background: licenseLoading ? '#d1d5db' : '#7c3aed',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 8,
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: licenseLoading ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.2s',
+                      whiteSpace: 'nowrap'
+                    }}
+                    onMouseEnter={(e) => !licenseLoading && (e.currentTarget.style.background = '#6d28d9')}
+                    onMouseLeave={(e) => !licenseLoading && (e.currentTarget.style.background = '#7c3aed')}
+                  >
+                    {licenseLoading ? 'Activating...' : 'Activate License'}
+                  </button>
+                </div>
+                <p style={{ margin: '8px 0 0 0', fontSize: 13, color: '#6b7280' }}>
+                  Your license key was emailed to you when you purchased {B.product}. Keys follow the format CIQ-XXXXX-XXXXX-XXXXX-XXXXX.{' '}
+                  <a href={`mailto:${B.supportEmail}`} style={{ color: '#7c3aed', textDecoration: 'none', fontWeight: 500 }}>
+                    Contact support
+                  </a>{' '}
+                  if you need help.
+                </p>
+              </div>
+            )}
           </section>
         )}
 
         {/* FAQ Tab */}
         {activeTab === 'faq' && (
-          <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
-            <div style={{ marginBottom: 32, textAlign: 'center' }}>
-              <h2 style={{ margin: '0 0 12px 0', fontSize: 28, fontWeight: 700, color: '#111827' }}>Frequently Asked Questions</h2>
-              <p style={{ color: '#6b7280', fontSize: 16, maxWidth: 700, margin: '0 auto' }}>
-                Everything you need to know about Conversion IQ and how Webtec can help you maximize your website's performance.
-              </p>
-            </div>
-
-            <div style={{ maxWidth: 800, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
-              {[
-                {
-                  q: "What is Conversion IQ and how does it work?",
-                  a: "Conversion IQ is an AI-powered conversion analysis tool that audits your website pages across six critical performance metrics: Conversion Clarity, Emotional Resonance, CTA Strength, Readability, Engagement, and Trust. It analyzes your actual content in the context of your business goals, target audience, and competitive landscape to provide specific, actionable recommendations for improving conversion rates."
-                },
-                {
-                  q: "Why do I need Webtec if the AI provides recommendations?",
-                  a: "While the AI identifies issues and suggests improvements, Webtec ensures proper implementation, testing, and optimization. Our team brings years of conversion expertise to interpret the data, prioritize changes based on impact, and execute solutions correctly. Think of it as the difference between a diagnostic report and professional treatment—both are necessary for optimal results."
-                },
-                {
-                  q: "Are the suggestions personalized to my business?",
-                  a: "Yes. Every audit analyzes your specific page content, business objectives, target audience, and competitive context. The recommendations become increasingly refined as you run audits over time, especially after implementing changes. Additionally, each audit includes a complimentary 15-minute expert consultation with our team to provide personalized guidance."
-                },
-                {
-                  q: "What's included in the FREE 15-minute expert review?",
-                  a: "Each audit includes a complimentary consultation with a Webtec conversion specialist. During this session, we review your audit results, answer questions, help prioritize recommendations by impact, and provide guidance on implementation strategies. This ensures you understand your data and can make informed decisions about next steps."
-                },
-                {
-                  q: "How is this different from SEO or analytics tools?",
-                  a: "Traditional tools focus on traffic acquisition and technical performance. Conversion IQ focuses on what happens after visitors arrive—whether they understand your value proposition, trust your brand, and take desired actions. We analyze conversion psychology, message clarity, and persuasive elements that other tools don't measure."
-                },
-                {
-                  q: "Can I implement changes myself?",
-                  a: "Yes, you can implement recommendations independently if you have the technical capability and conversion expertise. However, many clients choose to work with Webtec to ensure changes follow proven conversion patterns, avoid common pitfalls, and achieve measurable results faster. We provide implementation support at various service levels to match your needs."
-                },
-                {
-                  q: "What is the 'Suggested Functionality' tab?",
-                  a: "Based on your audit results and business goals, this section recommends features or integrations that could enhance conversion performance—such as live chat, e-commerce capabilities, or marketing automation. Each recommendation explains why it would benefit your specific situation. These are optional suggestions to help you identify growth opportunities."
-                },
-                {
-                  q: "How often should I run audits?",
-                  a: "We recommend running audits: (1) As a baseline when starting, (2) After implementing significant changes, (3) Quarterly to track performance trends, (4) Before major campaigns or launches. The Automated Reports feature can schedule regular audits to maintain consistent monitoring without manual intervention."
-                },
-                {
-                  q: "What happens after I receive my audit results?",
-                  a: "You have several options: Review and implement suggestions independently, schedule your complimentary expert consultation for guidance, request a detailed implementation proposal from Webtec, or simply monitor your scores over time. The tool is designed to provide value at whatever level of engagement works for your business."
-                },
-                {
-                  q: "How should I interpret the scoring system?",
-                  a: "Scores range from 0-100 across six metrics. Generally: 80+ indicates strong performance, 60-79 shows room for improvement, and below 60 suggests priority attention needed. However, context matters—your industry, audience, and goals affect what constitutes a 'good' score. Your expert review consultation can help interpret results specific to your situation."
-                }
-              ].map((faq, i) => (
-                <div 
-                  key={i} 
-                  style={{ 
-                    background: '#f9fafb', 
-                    borderRadius: 12, 
-                    padding: 24, 
-                    border: '1px solid #e5e7eb',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = '#7c3aed';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(124, 58, 237, 0.1)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = '#e5e7eb';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                >
-                  <h3 style={{ margin: '0 0 12px 0', fontSize: 18, fontWeight: 700, color: '#111827' }}>
-                    {faq.q}
-                  </h3>
-                  <p style={{ margin: 0, color: '#374151', lineHeight: 1.7, fontSize: 15 }}>
-                    {faq.a}
-                  </p>
-                </div>
-              ))}
-
-              <div style={{ marginTop: 32, padding: 32, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 16, textAlign: 'center', color: '#fff' }}>
-                <h3 style={{ margin: '0 0 12px 0', fontSize: 24, fontWeight: 700 }}>Still Have Questions?</h3>
-                <p style={{ margin: '0 0 20px 0', fontSize: 16, opacity: 0.95 }}>
-                  Our team is here to help. Schedule your FREE expert review or reach out with any questions.
-                </p>
-                <a
-                  href="mailto:support@trywebtec.com?subject=Conversion IQ Question&body=Hi! I have a question about Conversion IQ:%0D%0A%0D%0A[Your question here]"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '12px 32px',
-                    background: '#fff',
-                    color: '#7c3aed',
-                    textDecoration: 'none',
-                    borderRadius: 10,
-                    fontSize: 16,
-                    fontWeight: 600,
-                    transition: 'all 0.2s',
-                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.3)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.2)';
-                  }}
-                >
-                  📧 Contact Webtec Support
-                </a>
-              </div>
-            </div>
-          </section>
+          <FaqTab B={B} />
         )}
       </main>
 
@@ -3359,7 +2991,7 @@ export default function App() {
                                     </div>
                                   </div>
                                   <a
-                                    href={`mailto:support@trywebtec.com?subject=Interested in ${encodeURIComponent(feature.title)}&body=Hi! I'm interested in learning more about adding ${encodeURIComponent(feature.title)} to my website. Based on my Conversion IQ audit, this feature was recommended to improve my conversion rates.%0D%0A%0D%0ACould you provide more details about implementation and pricing?`}
+                                    href={`mailto:${B.supportEmail}?subject=Interested in ${encodeURIComponent(feature.title)}&body=Hi! I'm interested in learning more about adding ${encodeURIComponent(feature.title)} to my website. Based on my ${B.product} audit, this feature was recommended to improve my conversion rates.%0D%0A%0D%0ACould you provide more details about implementation and pricing?`}
                                     style={{
                                       display: 'inline-flex',
                                       alignItems: 'center',
@@ -3383,7 +3015,7 @@ export default function App() {
                                       e.currentTarget.style.boxShadow = '0 2px 8px rgba(124, 58, 237, 0.25)';
                                     }}
                                   >
-                                    <span>📧 Contact Webtec</span>
+                                    <span>📧 Contact {B.company}</span>
                                     <span>→</span>
                                   </a>
                                 </div>
@@ -3404,11 +3036,11 @@ export default function App() {
                         🎯 Custom Solutions Available
                       </h5>
                       <p style={{ margin: '0 0 12px 0', color: '#78350f', fontSize: 14, lineHeight: 1.6 }}>
-                        Don't see what you need? Webtec specializes in custom WordPress solutions tailored to your specific business goals. 
+                        Don't see what you need? {B.company} specializes in custom WordPress solutions tailored to your specific business goals. 
                         From API integrations to complex workflows, we can build it.
                       </p>
                       <a
-                        href="mailto:support@trywebtec.com?subject=Custom Development Inquiry&body=Hi! I have a custom development need that I'd like to discuss. Here's what I'm looking for:%0D%0A%0D%0A[Describe your needs here]"
+                        href={`mailto:${B.supportEmail}?subject=Custom Development Inquiry&body=Hi! I have a custom development need that I'd like to discuss. Here's what I'm looking for:%0D%0A%0D%0A[Describe your needs here]`}
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',

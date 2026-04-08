@@ -110,6 +110,7 @@ class ConversionIQ_Supabase_Sync {
         $response = wp_remote_post($this->supabase_url . '/rest/v1/organizations', [
             'headers' => [
                 'apikey' => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
                 'Content-Type' => 'application/json',
                 'Prefer' => 'return=representation'
             ],
@@ -278,6 +279,7 @@ class ConversionIQ_Supabase_Sync {
         $response = wp_remote_post($url, [
             'headers' => [
                 'apikey' => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
                 'Content-Type' => 'application/json',
                 'Prefer' => 'return=representation'
             ],
@@ -420,6 +422,7 @@ class ConversionIQ_Supabase_Sync {
         $response = wp_remote_get($url, [
             'headers' => [
                 'apikey' => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
                 'Content-Type' => 'application/json'
             ],
             'timeout' => 15
@@ -451,6 +454,7 @@ class ConversionIQ_Supabase_Sync {
         wp_remote_post($this->supabase_url . '/rest/v1/api_usage', [
             'headers' => [
                 'apikey' => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
                 'Content-Type' => 'application/json',
                 'Prefer' => 'return=minimal'
             ],
@@ -483,6 +487,7 @@ class ConversionIQ_Supabase_Sync {
             [
                 'headers' => [
                     'apikey' => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
                     'Content-Type' => 'application/json'
                 ],
                 'timeout' => 10
@@ -503,6 +508,7 @@ class ConversionIQ_Supabase_Sync {
             [
                 'headers' => [
                     'apikey' => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
                     'Content-Type' => 'application/json',
                     'Range' => '0-0',
                     'Prefer' => 'count=exact'
@@ -539,6 +545,7 @@ class ConversionIQ_Supabase_Sync {
             [
                 'headers' => [
                     'apikey' => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
                     'Content-Type' => 'application/json'
                 ],
                 'timeout' => 10
@@ -569,6 +576,7 @@ class ConversionIQ_Supabase_Sync {
             [
                 'headers' => [
                     'apikey' => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
                     'Content-Type' => 'application/json'
                 ],
                 'timeout' => 10
@@ -600,6 +608,7 @@ class ConversionIQ_Supabase_Sync {
             [
                 'headers' => [
                     'apikey' => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
                     'Content-Type' => 'application/json'
                 ],
                 'timeout' => 10
@@ -641,6 +650,7 @@ class ConversionIQ_Supabase_Sync {
             [
                 'headers' => [
                     'apikey' => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
                     'Content-Type' => 'application/json',
                     'Prefer' => 'return=representation'
                 ],
@@ -694,6 +704,7 @@ class ConversionIQ_Supabase_Sync {
             [
                 'headers' => [
                     'apikey' => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
                     'Content-Type' => 'application/json'
                 ],
                 'timeout' => 10
@@ -719,6 +730,7 @@ class ConversionIQ_Supabase_Sync {
             [
                 'headers' => [
                     'apikey' => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
                     'Content-Type' => 'application/json'
                 ],
                 'timeout' => 10
@@ -737,8 +749,81 @@ class ConversionIQ_Supabase_Sync {
     
     /**
      * Update organization information in Supabase
-     * 
-     * @param string $organization_id Organization ID
+     *      * Validate a license key directly against Supabase ciq_licenses + ciq_customers.
+     *
+     * @param string $license_key
+     * @return array { valid: bool, message: string, customer: array|null }
+     */
+    public function validate_license( $license_key ) {
+        if ( ! $this->supabase_anon_key ) {
+            return array( 'valid' => false, 'message' => 'License server not configured.' );
+        }
+
+        $url = $this->supabase_url
+            . '/rest/v1/ciq_licenses'
+            . '?license_key=eq.' . urlencode( $license_key )
+            . '&select=id,license_key,status,expires_at,ciq_customers(id,name,email,company,plan)';
+
+        $response = wp_remote_get( $url, array(
+            'headers' => array(
+                'apikey'        => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                'Content-Type'  => 'application/json',
+            ),
+            'timeout' => 15,
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            error_log( 'ConversionIQ: License validation failed - ' . $response->get_error_message() );
+            return array( 'valid' => false, 'message' => 'Could not reach the license server. Please try again.' );
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+        error_log( 'ConversionIQ: License validation response ' . $code . ' - ' . wp_json_encode( $body ) );
+
+        if ( $code !== 200 || ! is_array( $body ) ) {
+            return array( 'valid' => false, 'message' => 'License validation failed. Please try again.' );
+        }
+
+        if ( empty( $body ) ) {
+            return array( 'valid' => false, 'message' => 'License key not found. Please check your key and try again.' );
+        }
+
+        $license = $body[0];
+        $status  = strtolower( $license['status'] ?? 'inactive' );
+
+        if ( ! in_array( $status, array( 'active', 'trial' ), true ) ) {
+            return array( 'valid' => false, 'message' => 'This license is ' . $status . '. Please contact support.' );
+        }
+
+        if ( ! empty( $license['expires_at'] ) ) {
+            $expires = strtotime( $license['expires_at'] );
+            if ( $expires !== false && $expires < time() ) {
+                return array( 'valid' => false, 'message' => 'This license expired on ' . date( 'F j, Y', $expires ) . '. Please renew at conversioniq-app.com.' );
+            }
+        }
+
+        $customer  = null;
+        $cust_data = $license['ciq_customers'] ?? null;
+        if ( is_array( $cust_data ) ) {
+            $customer = array(
+                'name'    => sanitize_text_field( $cust_data['name'] ?? '' ),
+                'email'   => sanitize_email( $cust_data['email'] ?? '' ),
+                'company' => sanitize_text_field( $cust_data['company'] ?? '' ),
+                'plan'    => sanitize_text_field( $cust_data['plan'] ?? '' ),
+            );
+        }
+
+        return array(
+            'valid'    => true,
+            'message'  => 'License activated successfully!',
+            'customer' => $customer,
+        );
+    }
+
+    /**     * @param string $organization_id Organization ID
      * @param array $data Data to update
      * @return bool Success status
      */
@@ -761,6 +846,7 @@ class ConversionIQ_Supabase_Sync {
                 'method' => 'PATCH',
                 'headers' => [
                     'apikey' => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
                     'Content-Type' => 'application/json',
                     'Prefer' => 'return=representation'
                 ],

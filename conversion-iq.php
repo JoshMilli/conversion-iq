@@ -31,7 +31,13 @@ $conversionIQUpdateChecker = PucFactory::buildUpdateChecker(
 );
 
 $conversionIQUpdateChecker->setBranch('main');
-$conversionIQUpdateChecker->setAuthentication('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');
+
+// Authentication: prefer wp-config constant, then wp_option, then skip
+if ( defined( 'CONVERSIONIQ_GITHUB_TOKEN' ) ) {
+    $conversionIQUpdateChecker->setAuthentication( CONVERSIONIQ_GITHUB_TOKEN );
+} elseif ( $gh_token = get_option( 'conversioniq_github_token', '' ) ) {
+    $conversionIQUpdateChecker->setAuthentication( $gh_token );
+}
 
 // Clear cache after plugin updates
 add_action('upgrader_process_complete', function($upgrader_object, $options) {
@@ -65,7 +71,17 @@ if ( file_exists( CONVERSION_IQ_DIR . 'vendor/autoload.php' ) ) {
     require_once CONVERSION_IQ_DIR . 'vendor/autoload.php';
 }
 
+// Debug logging helper — only writes when WP_DEBUG is enabled
+if (!function_exists('ciq_log')) {
+    function ciq_log($message) {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log($message);
+        }
+    }
+}
+
 // Include required files
+require_once CONVERSION_IQ_DIR . 'includes/class-config-manager.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-database.php';
 require_once CONVERSION_IQ_DIR . 'includes/rest-api.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-ai-engine.php';
@@ -79,6 +95,11 @@ require_once CONVERSION_IQ_DIR . 'includes/class-knockknock-webhook.php';
 add_action( 'init', function() {
     ConversionIQ_Automated_Reports::init();
     
+    // Schedule daily config sync if not already scheduled
+    if ( ! wp_next_scheduled( 'conversioniq_sync_config' ) ) {
+        wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'conversioniq_sync_config' );
+    }
+    
     // Force flush rewrite rules if version changed (for new REST endpoints)
     $stored_version = get_option( 'conversioniq_version', '0' );
     if ( version_compare( $stored_version, CONVERSION_IQ_VERSION, '<' ) ) {
@@ -87,6 +108,11 @@ add_action( 'init', function() {
         flush_rewrite_rules();
         update_option( 'conversioniq_version', CONVERSION_IQ_VERSION );
     }
+} );
+
+// Daily config sync cron
+add_action( 'conversioniq_sync_config', function() {
+    ConversionIQ_Config_Manager::sync_from_saas();
 } );
 
 // Activation hook
@@ -118,9 +144,10 @@ register_activation_hook( __FILE__, 'conversioniq_install' );
 
 // Admin menu
 add_action( 'admin_menu', function() {
+    $product_name = ConversionIQ_Config_Manager::get('product_name', 'Conversion IQ');
     add_menu_page(
-        __( 'Conversion IQ', 'conversion-iq' ),
-        __( 'Conversion IQ', 'conversion-iq' ),
+        $product_name,
+        $product_name,
         'manage_options',
         'conversion-iq',
         'conversioniq_admin_page',

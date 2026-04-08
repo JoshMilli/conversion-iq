@@ -331,6 +331,8 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         // KnockKnock actual structure: data.contact.{firstName, lastName, businessEmail, etc}
         $contact = $data['contact'] ?? [];
         $contact_info = $data['contact_information'] ?? []; // Fallback for different structure
+        $geo = $contact['geo'] ?? [];
+        $company = $data['company'] ?? [];
         
         error_log("ConversionIQ: Contact keys: " . json_encode(array_keys($contact)));
         
@@ -353,6 +355,14 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
             'last_name' => $contact['lastName'] ?? $contact['last_name'] ?? $this->parse_last_name($contact_info['name'] ?? ''),
             'email' => $email,
             'phone' => $contact['phone'] ?? $contact_info['phone'] ?? null,
+            'city' => $geo['city'] ?? null,
+            'state' => $geo['state'] ?? null,
+            'country' => $geo['country'] ?? null,
+            'company_name' => $company['name'] ?? null,
+            'company_domain' => $company['domain'] ?? null,
+            'company_industry' => $company['industry'] ?? null,
+            'job_title' => $contact['position'] ?? null,
+            'linkedin_url' => $contact['linkedin'] ?? null,
             'page_url' => $page_url,
             'page_title' => null,
             'initial_page_visit' => $data['initial_page_visit'] ?? null,
@@ -394,6 +404,8 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         
         // KnockKnock actual structure: data.user_session_id at root, data.contact with user info
         $contact = $data['contact'] ?? [];
+        $geo = $contact['geo'] ?? [];
+        $company = $data['company'] ?? [];
         $user_session_id = $data['user_session_id'] ?? $data['user_session']['_id'] ?? '';
         
         if (empty($user_session_id)) {
@@ -417,6 +429,14 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
             'first_name' => $contact['firstName'] ?? $contact['first_name'] ?? null,
             'last_name' => $contact['lastName'] ?? $contact['last_name'] ?? null,
             'email' => $email,
+            'city' => $geo['city'] ?? null,
+            'state' => $geo['state'] ?? null,
+            'country' => $geo['country'] ?? null,
+            'company_name' => $company['name'] ?? null,
+            'company_domain' => $company['domain'] ?? null,
+            'company_industry' => $company['industry'] ?? null,
+            'job_title' => $contact['position'] ?? null,
+            'linkedin_url' => $contact['linkedin'] ?? null,
             'page_url' => $page_url,
             'initial_page_visit' => $data['initial_page_visit'] ?? null,
             'identified_at' => gmdate('Y-m-d H:i:s', $payload['timestamp'] ?? time()),
