@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 2.0.33
+ * Version: 2.0.35
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
