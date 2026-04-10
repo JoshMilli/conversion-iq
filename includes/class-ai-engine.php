@@ -23,6 +23,7 @@ class ConversionIQ_AI
             return $opt;
         }
         // No key available — audits will fail until a valid license is activated
+        error_log('❌ ConversionIQ: No API key found (conversioniq_api_key is empty). Re-activate your license to provision a key.');
         return '';
     }
 

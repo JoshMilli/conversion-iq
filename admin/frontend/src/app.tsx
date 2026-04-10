@@ -1187,27 +1187,6 @@ export default function App() {
                   </div>
                 </div>
 
-                <button
-                  className="ciq-btn primary"
-                  onClick={handleSaveAutomatedSettings}
-                  disabled={savingAutomated || automatedReporting.defaultPages.length === 0 || !automatedReporting.email}
-                  style={{
-                    padding: '12px 24px',
-                    background: (automatedReporting.defaultPages.length === 0 || !automatedReporting.email) ? '#d1d5db' : '#7c3aed',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 8,
-                    fontSize: 15,
-                    fontWeight: 600,
-                    cursor: (savingAutomated || automatedReporting.defaultPages.length === 0 || !automatedReporting.email) ? 'not-allowed' : 'pointer',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => !savingAutomated && automatedReporting.defaultPages.length > 0 && automatedReporting.email && (e.currentTarget.style.background = '#6d28d9')}
-                  onMouseLeave={(e) => !savingAutomated && automatedReporting.defaultPages.length > 0 && automatedReporting.email && (e.currentTarget.style.background = '#7c3aed')}
-                >
-                  {savingAutomated ? 'Saving...' : 'Save Automated Settings'}
-                </button>
-
                 {/* Test Email Section */}
                 <div style={{ marginTop: 32, paddingTop: 32, borderTop: '2px solid #e5e7eb' }}>
                   <h3 style={{ margin: '0 0 12px 0', fontSize: 18, fontWeight: 700, color: '#111827' }}>Test Email Delivery</h3>
@@ -1383,6 +1362,28 @@ export default function App() {
                 </div>
               </>
             )}
+
+            <button
+              className="ciq-btn primary"
+              onClick={handleSaveAutomatedSettings}
+              disabled={savingAutomated || (automatedReporting.enabled && (automatedReporting.defaultPages.length === 0 || !automatedReporting.email))}
+              style={{
+                marginTop: 24,
+                padding: '12px 24px',
+                background: (automatedReporting.enabled && (automatedReporting.defaultPages.length === 0 || !automatedReporting.email)) ? '#d1d5db' : '#7c3aed',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                fontSize: 15,
+                fontWeight: 600,
+                cursor: (savingAutomated || (automatedReporting.enabled && (automatedReporting.defaultPages.length === 0 || !automatedReporting.email))) ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => !savingAutomated && !(automatedReporting.enabled && (automatedReporting.defaultPages.length === 0 || !automatedReporting.email)) && (e.currentTarget.style.background = '#6d28d9')}
+              onMouseLeave={(e) => !savingAutomated && !(automatedReporting.enabled && (automatedReporting.defaultPages.length === 0 || !automatedReporting.email)) && (e.currentTarget.style.background = '#7c3aed')}
+            >
+              {savingAutomated ? 'Saving...' : 'Save Automated Settings'}
+            </button>
           </section>
         )}
 
@@ -2839,28 +2840,44 @@ export default function App() {
 
                     {modal.audit.recommendations?.quick_wins && modal.audit.recommendations.quick_wins.length > 0 && (
                       <div style={{ marginTop: 24 }}>
-                        <h4 style={{ color: '#27ae60' }}>⚡ Quick Wins</h4>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                          <div>
+                            <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>Quick Wins</div>
+                            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>High-impact changes you can make right away</div>
+                          </div>
+                          <span style={{ marginLeft: 'auto', padding: '3px 10px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 20, fontSize: 11, fontWeight: 600, color: '#15803d', whiteSpace: 'nowrap' }}>Easy to Implement</span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                           {modal.audit.recommendations.quick_wins.map((q, i) => {
                             const quickWin = typeof q === 'string' ? { text: q } : q;
+                            const difficultyColor = quickWin.difficulty?.toLowerCase().includes('hard') ? { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca' } : quickWin.difficulty?.toLowerCase().includes('medium') ? { bg: '#fffbeb', text: '#b45309', border: '#fde68a' } : { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' };
                             return (
-                              <div key={i} style={{ background: '#f0fdf4', padding: 16, borderRadius: 8, borderLeft: '4px solid #27ae60' }}>
-                                <div style={{ fontSize: 15, fontWeight: 600, color: '#27ae60', marginBottom: 8 }}>✓ {quickWin.text}</div>
-                                {quickWin.why && (
-                                  <div style={{ fontSize: 13, color: '#374151', marginBottom: 6, lineHeight: 1.5 }}>
-                                    <strong style={{ color: '#059669' }}>Why:</strong> {quickWin.why}
+                              <div key={i} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', borderTop: '3px solid #10b981', overflow: 'hidden' }}>
+                                <div style={{ padding: '16px 20px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: quickWin.why || quickWin.impact ? 12 : 0 }}>
+                                    <div style={{ width: 28, height: 28, borderRadius: 8, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{i + 1}</div>
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontSize: 14, fontWeight: 700, color: '#111827', lineHeight: 1.5 }}>{quickWin.text}</div>
+                                    </div>
+                                    {quickWin.difficulty && (
+                                      <span style={{ padding: '3px 10px', background: difficultyColor.bg, border: `1px solid ${difficultyColor.border}`, borderRadius: 20, fontSize: 11, fontWeight: 600, color: difficultyColor.text, whiteSpace: 'nowrap', flexShrink: 0 }}>{quickWin.difficulty}</span>
+                                    )}
                                   </div>
-                                )}
-                                {quickWin.impact && (
-                                  <div style={{ fontSize: 13, color: '#374151', marginBottom: 6, lineHeight: 1.5 }}>
-                                    <strong style={{ color: '#059669' }}>Impact:</strong> {quickWin.impact}
-                                  </div>
-                                )}
-                                {quickWin.difficulty && (
-                                  <div style={{ display: 'inline-block', marginTop: 4, padding: '4px 10px', background: '#d1fae5', borderRadius: 4, fontSize: 12, fontWeight: 600, color: '#065f46' }}>
-                                    {quickWin.difficulty}
-                                  </div>
-                                )}
+                                  {(quickWin.why || quickWin.impact) && (
+                                    <div style={{ marginLeft: 42, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                      {quickWin.why && (
+                                        <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6 }}>
+                                          <span style={{ fontWeight: 600, color: '#374151' }}>Why: </span>{quickWin.why}
+                                        </div>
+                                      )}
+                                      {quickWin.impact && (
+                                        <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6, paddingTop: quickWin.why ? 4 : 0, borderTop: quickWin.why ? '1px solid #f3f4f6' : 'none' }}>
+                                          <span style={{ fontWeight: 600, color: '#10b981' }}>Impact: </span>{quickWin.impact}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             );
                           })}
@@ -2869,33 +2886,49 @@ export default function App() {
                     )}
 
                     {modal.audit.recommendations?.long_term && modal.audit.recommendations.long_term.length > 0 && (
-                      <div style={{ marginTop: 24 }}>
-                        <h4 style={{ color: '#9333ea' }}>🎯 Long-term Improvements</h4>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      <div style={{ marginTop: 28 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                          <div>
+                            <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>Strategic Improvements</div>
+                            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>Larger initiatives that drive sustained growth over time</div>
+                          </div>
+                          <span style={{ marginLeft: 'auto', padding: '3px 10px', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 20, fontSize: 11, fontWeight: 600, color: '#6d28d9', whiteSpace: 'nowrap' }}>Long-Term Growth</span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                           {modal.audit.recommendations.long_term.map((l, i) => {
                             const longTerm = typeof l === 'string' ? { text: l } : l;
+                            const accentColors = ['#7c3aed', '#6d28d9', '#5b21b6', '#4c1d95'];
+                            const accent = accentColors[i % accentColors.length];
+                            const difficultyColor = longTerm.difficulty?.toLowerCase().includes('hard') ? { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca' } : longTerm.difficulty?.toLowerCase().includes('medium') ? { bg: '#fffbeb', text: '#b45309', border: '#fde68a' } : { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' };
                             return (
-                              <div key={i} style={{ background: '#faf5ff', padding: 16, borderRadius: 8, borderLeft: '4px solid #9333ea' }}>
-                                <div style={{ fontSize: 15, fontWeight: 600, color: '#9333ea', marginBottom: 8 }}>→ {longTerm.text}</div>
-                                {longTerm.why && (
-                                  <div style={{ fontSize: 13, color: '#374151', marginBottom: 6, lineHeight: 1.5 }}>
-                                    <strong style={{ color: '#7e22ce' }}>Why:</strong> {longTerm.why}
-                                  </div>
-                                )}
-                                {longTerm.impact && (
-                                  <div style={{ fontSize: 13, color: '#374151', marginBottom: 6, lineHeight: 1.5 }}>
-                                    <strong style={{ color: '#7e22ce' }}>Impact:</strong> {longTerm.impact}
-                                  </div>
-                                )}
-                                <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-                                  {longTerm.difficulty && (
-                                    <div style={{ padding: '4px 10px', background: '#e9d5ff', borderRadius: 4, fontSize: 12, fontWeight: 600, color: '#6b21a8' }}>
-                                      {longTerm.difficulty}
+                              <div key={i} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', borderTop: `3px solid ${accent}`, overflow: 'hidden' }}>
+                                <div style={{ padding: '16px 20px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: longTerm.why || longTerm.impact ? 12 : 0 }}>
+                                    <div style={{ width: 28, height: 28, borderRadius: 8, background: `${accent}15`, border: `1px solid ${accent}40`, color: accent, fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{i + 1}</div>
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontSize: 14, fontWeight: 700, color: '#111827', lineHeight: 1.5 }}>{longTerm.text}</div>
                                     </div>
-                                  )}
-                                  {longTerm.timeframe && (
-                                    <div style={{ padding: '4px 10px', background: '#e9d5ff', borderRadius: 4, fontSize: 12, fontWeight: 600, color: '#6b21a8' }}>
-                                      ⏱️ {longTerm.timeframe}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', flexShrink: 0 }}>
+                                      {longTerm.timeframe && (
+                                        <span style={{ padding: '3px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 20, fontSize: 11, fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>{longTerm.timeframe}</span>
+                                      )}
+                                      {longTerm.difficulty && (
+                                        <span style={{ padding: '3px 10px', background: difficultyColor.bg, border: `1px solid ${difficultyColor.border}`, borderRadius: 20, fontSize: 11, fontWeight: 600, color: difficultyColor.text, whiteSpace: 'nowrap' }}>{longTerm.difficulty}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {(longTerm.why || longTerm.impact) && (
+                                    <div style={{ marginLeft: 42, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                      {longTerm.why && (
+                                        <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6 }}>
+                                          <span style={{ fontWeight: 600, color: '#374151' }}>Why: </span>{longTerm.why}
+                                        </div>
+                                      )}
+                                      {longTerm.impact && (
+                                        <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6, paddingTop: longTerm.why ? 4 : 0, borderTop: longTerm.why ? '1px solid #f3f4f6' : 'none' }}>
+                                          <span style={{ fontWeight: 600, color: accent }}>Impact: </span>{longTerm.impact}
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                 </div>
@@ -2907,34 +2940,42 @@ export default function App() {
                     )}
 
                     {modal.audit.recommendations?.priority && (
-                      <div style={{ marginTop: 24, padding: 20, background: '#fff7ed', borderRadius: 12, borderLeft: '4px solid #f39c12', boxShadow: '0 2px 8px rgba(243, 156, 18, 0.1)' }}>
-                        <h4 style={{ marginTop: 0, marginBottom: 12, color: '#f39c12', fontSize: 18 }}>🔥 Priority Recommendation</h4>
+                      <div style={{ marginTop: 28 }}>
                         {(() => {
-                          const priority = typeof modal.audit.recommendations.priority === 'string' 
-                            ? { text: modal.audit.recommendations.priority } 
+                          const priority = typeof modal.audit.recommendations.priority === 'string'
+                            ? { text: modal.audit.recommendations.priority }
                             : modal.audit.recommendations.priority;
                           return (
-                            <>
-                              <p style={{ margin: '0 0 12px 0', fontSize: 15, fontWeight: 600, color: '#374151', lineHeight: 1.6 }}>{priority.text}</p>
-                              {priority.why && (
-                                <div style={{ marginTop: 12, padding: 12, background: '#fff', borderRadius: 6 }}>
-                                  <div style={{ fontSize: 12, fontWeight: 600, color: '#ea580c', marginBottom: 4, textTransform: 'uppercase' }}>Why This Is Priority</div>
-                                  <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5 }}>{priority.why}</p>
+                            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #fed7aa', borderTop: '3px solid #f97316', overflow: 'hidden' }}>
+                              <div style={{ padding: '14px 20px', background: '#fff7ed', borderBottom: '1px solid #fed7aa', display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <div style={{ width: 28, height: 28, borderRadius: 8, background: '#ffedd5', border: '1px solid #fed7aa', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ea580c" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                                 </div>
-                              )}
-                              {priority.impact && (
-                                <div style={{ marginTop: 8, padding: 12, background: '#fff', borderRadius: 6 }}>
-                                  <div style={{ fontSize: 12, fontWeight: 600, color: '#ea580c', marginBottom: 4, textTransform: 'uppercase' }}>Expected Impact</div>
-                                  <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5 }}>{priority.impact}</p>
-                                </div>
-                              )}
-                              {priority.next_steps && (
-                                <div style={{ marginTop: 8, padding: 12, background: '#fff', borderRadius: 6 }}>
-                                  <div style={{ fontSize: 12, fontWeight: 600, color: '#ea580c', marginBottom: 4, textTransform: 'uppercase' }}>Next Steps</div>
-                                  <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5, whiteSpace: 'pre-line' }}>{priority.next_steps}</p>
-                                </div>
-                              )}
-                            </>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: '#ea580c', letterSpacing: '0.02em' }}>PRIORITY RECOMMENDATION</span>
+                              </div>
+                              <div style={{ padding: '16px 20px' }}>
+                                <p style={{ margin: '0 0 0 0', fontSize: 14, fontWeight: 600, color: '#111827', lineHeight: 1.6 }}>{priority.text}</p>
+                                {(priority.why || priority.impact || priority.next_steps) && (
+                                  <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    {priority.why && (
+                                      <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6, paddingTop: 8, borderTop: '1px solid #f3f4f6' }}>
+                                        <span style={{ fontWeight: 600, color: '#374151' }}>Why this is priority: </span>{priority.why}
+                                      </div>
+                                    )}
+                                    {priority.impact && (
+                                      <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6, paddingTop: 8, borderTop: '1px solid #f3f4f6' }}>
+                                        <span style={{ fontWeight: 600, color: '#ea580c' }}>Impact: </span>{priority.impact}
+                                      </div>
+                                    )}
+                                    {priority.next_steps && (
+                                      <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6, paddingTop: 8, borderTop: '1px solid #f3f4f6', whiteSpace: 'pre-line' }}>
+                                        <span style={{ fontWeight: 600, color: '#374151' }}>Next steps: </span>{priority.next_steps}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           );
                         })()}
                       </div>
@@ -2944,126 +2985,60 @@ export default function App() {
 
                 {modal.tab === 'functionality' && (
                   <div>
-                    <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: '#fff', padding: 20, borderRadius: 12, marginBottom: 24 }}>
-                      <h4 style={{ margin: '0 0 8px 0', fontSize: 18 }}>💡 Boost Your Conversions</h4>
-                      <p style={{ margin: 0, fontSize: 14, opacity: 0.95 }}>
-                        Based on your audit results and business goals, these features could significantly improve your conversion rates and user experience.
-                      </p>
+                    <div style={{ marginBottom: 24 }}>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 4 }}>Additional Features & Functionality</div>
+                      <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.5 }}>Based on your audit results, these additions could meaningfully improve your conversion rate and user experience.</div>
                     </div>
 
                     {modal.audit.functionality_suggestions && modal.audit.functionality_suggestions.length > 0 ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        {modal.audit.functionality_suggestions.map((feature: any, i: number) => (
-                          <div 
-                            key={i} 
-                            style={{ 
-                              border: '1px solid #e5e7eb', 
-                              borderRadius: 12, 
-                              overflow: 'hidden',
-                              transition: 'all 0.2s',
-                              background: '#fff'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.borderColor = '#7c3aed';
-                              e.currentTarget.style.boxShadow = '0 4px 12px rgba(124, 58, 237, 0.15)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.borderColor = '#e5e7eb';
-                              e.currentTarget.style.boxShadow = 'none';
-                            }}
-                          >
-                            <div style={{ padding: 20 }}>
-                              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 12 }}>
-                                <div style={{ fontSize: 32 }}>{feature.icon || '⚡'}</div>
-                                <div style={{ flex: 1 }}>
-                                  <h5 style={{ margin: '0 0 8px 0', fontSize: 18, fontWeight: 700, color: '#111827' }}>
-                                    {feature.title}
-                                  </h5>
-                                  <p style={{ margin: '0 0 12px 0', color: '#6b7280', fontSize: 14, lineHeight: 1.6 }}>
-                                    {feature.description}
-                                  </p>
-                                  <div style={{ padding: 12, background: '#f0f6ff', borderRadius: 8, borderLeft: '3px solid #7c3aed', marginBottom: 16 }}>
-                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#7c3aed', marginBottom: 4 }}>
-                                      WHY YOU NEED THIS
-                                    </div>
-                                    <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.5 }}>
-                                      {feature.why}
-                                    </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {modal.audit.functionality_suggestions.map((feature: any, i: number) => {
+                          const accentColors = ['#2563eb', '#4f46e5', '#7c3aed', '#9333ea'];
+                          const accent = accentColors[i % accentColors.length];
+                          const initial = (feature.title || '?').charAt(0).toUpperCase();
+                          return (
+                            <div
+                              key={i}
+                              style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', borderTop: `3px solid ${accent}`, overflow: 'hidden', transition: 'box-shadow 0.2s' }}
+                              onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+                            >
+                              <div style={{ padding: '16px 20px' }}>
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                                  <div style={{ width: 36, height: 36, borderRadius: 9, background: `${accent}15`, border: `1px solid ${accent}30`, color: accent, fontSize: 15, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, letterSpacing: '-0.5px' }}>{initial}</div>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: 14, fontWeight: 700, color: '#111827', marginBottom: 4, lineHeight: 1.4 }}>{feature.title}</div>
+                                    <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6, marginBottom: feature.why ? 10 : 0 }}>{feature.description}</div>
+                                    {feature.why && (
+                                      <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6, paddingTop: 8, borderTop: '1px solid #f3f4f6' }}>
+                                        <span style={{ fontWeight: 600, color: accent }}>Why: </span>{feature.why}
+                                      </div>
+                                    )}
                                   </div>
-                                  <a
-                                    href={`mailto:${B.supportEmail}?subject=Interested in ${encodeURIComponent(feature.title)}&body=Hi! I'm interested in learning more about adding ${encodeURIComponent(feature.title)} to my website. Based on my ${B.product} audit, this feature was recommended to improve my conversion rates.%0D%0A%0D%0ACould you provide more details about implementation and pricing?`}
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: 8,
-                                      padding: '10px 20px',
-                                      background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)',
-                                      color: '#fff',
-                                      textDecoration: 'none',
-                                      borderRadius: 8,
-                                      fontSize: 14,
-                                      fontWeight: 600,
-                                      transition: 'all 0.2s',
-                                      boxShadow: '0 2px 8px rgba(124, 58, 237, 0.25)'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.transform = 'translateY(-2px)';
-                                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(124, 58, 237, 0.35)';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.transform = 'translateY(0)';
-                                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(124, 58, 237, 0.25)';
-                                    }}
-                                  >
-                                    <span>📧 Contact {B.company}</span>
-                                    <span>→</span>
-                                  </a>
                                 </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ) : (
-                      <div style={{ textAlign: 'center', padding: 40, background: '#f9fafb', borderRadius: 12, color: '#6b7280' }}>
-                        <div style={{ fontSize: 48, marginBottom: 16 }}>🤖</div>
-                        <p style={{ margin: 0, fontSize: 15 }}>No functionality suggestions available for this audit.</p>
+                      <div style={{ textAlign: 'center', padding: 40, background: '#f9fafb', borderRadius: 12, color: '#6b7280', border: '1px solid #e5e7eb' }}>
+                        <p style={{ margin: 0, fontSize: 14 }}>No feature suggestions available for this audit.</p>
                       </div>
                     )}
 
-                    <div style={{ marginTop: 24, padding: 20, background: '#fef3c7', borderRadius: 12, borderLeft: '4px solid #f59e0b' }}>
-                      <h5 style={{ margin: '0 0 8px 0', color: '#92400e', fontSize: 16 }}>
-                        🎯 Custom Solutions Available
-                      </h5>
-                      <p style={{ margin: '0 0 12px 0', color: '#78350f', fontSize: 14, lineHeight: 1.6 }}>
-                        Don't see what you need? {B.company} specializes in custom WordPress solutions tailored to your specific business goals. 
-                        From API integrations to complex workflows, we can build it.
-                      </p>
+                    <div style={{ marginTop: 16, padding: '16px 20px', background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', marginBottom: 2 }}>Interested in any of these?</div>
+                        <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.5 }}>{B.company} can implement these for you or build a custom solution for your specific goals.</div>
+                      </div>
                       <a
-                        href={`mailto:${B.supportEmail}?subject=Custom Development Inquiry&body=Hi! I have a custom development need that I'd like to discuss. Here's what I'm looking for:%0D%0A%0D%0A[Describe your needs here]`}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          padding: '10px 20px',
-                          background: '#f59e0b',
-                          color: '#fff',
-                          textDecoration: 'none',
-                          borderRadius: 8,
-                          fontSize: 14,
-                          fontWeight: 600,
-                          transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#d97706';
-                          e.currentTarget.style.transform = 'translateY(-2px)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = '#f59e0b';
-                          e.currentTarget.style.transform = 'translateY(0)';
-                        }}
+                        href={`mailto:${B.supportEmail}?subject=Feature Implementation Inquiry&body=Hi! I reviewed my ${B.product} audit and I'm interested in discussing some of the recommended features for my website.%0D%0A%0D%0ACould you provide more details about implementation and pricing?`}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', background: '#111827', color: '#fff', textDecoration: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.2s' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2937'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = '#111827'; }}
                       >
-                        Discuss Custom Solutions →
+                        Get in Touch <span style={{ fontSize: 14 }}>→</span>
                       </a>
                     </div>
                   </div>

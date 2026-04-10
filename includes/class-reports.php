@@ -777,21 +777,28 @@ class ConversionIQ_Reports
             $toc_items[] = array("title" => "Next Steps", "desc" => "How to get started with implementation");
 
             $html .= '
-        <div class="page content-page">
-            <div class="content-header">
-                <h2>Table of Contents</h2>
-                <span style="font-size: 14px; color: #6b7280;">' . $report_date . '</span>
+        <div class="page content-page" style="background: #f8fafc;">
+            <div style="padding: 48px 56px 0;">
+                <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px;">
+                    <h2 style="font-size: 28px; font-weight: 800; color: ' . $webtec_navy . '; letter-spacing: -0.5px;">Table of Contents</h2>
+                    <span style="font-size: 13px; color: #94a3b8; font-weight: 500;">' . $report_date . '</span>
+                </div>
+                <div style="width: 48px; height: 4px; background: linear-gradient(90deg, ' . $webtec_blue . ', ' . $webtec_navy . '); border-radius: 2px; margin-bottom: 40px;"></div>
             </div>
-            <div style="max-width: 600px; margin: 30px auto 0;">';
+
+            <div style="padding: 0 56px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">';
 
             $toc_num = 1;
-            foreach ($toc_items as $toc_item) {
+            foreach ($toc_items as $idx => $toc_item) {
+                $is_last_odd = (count($toc_items) % 2 !== 0) && ($toc_num === count($toc_items));
+                $col_span = $is_last_odd ? ' style="grid-column: 1 / -1;"' : '';
                 $html .= '
-                <div style="display: flex; align-items: flex-start; gap: 16px; padding: 18px 0; border-bottom: 1px solid #f0f4f8;">
-                    <div style="width: 36px; height: 36px; border-radius: 50%; background: ' . $webtec_blue . '; color: #fff; font-weight: 700; font-size: 16px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">' . $toc_num . '</div>
-                    <div>
-                        <div style="font-size: 17px; font-weight: 700; color: #0f1f3d; margin-bottom: 4px;">' . esc_html($toc_item["title"]) . '</div>
-                        <div style="font-size: 13px; color: #6b7280; line-height: 1.5;">' . esc_html($toc_item["desc"]) . '</div>
+                <div' . $col_span . '>
+                    <div style="background: #fff; border-radius: 14px; padding: 24px; border: 1px solid #e8edf2; box-shadow: 0 1px 4px rgba(15,31,61,0.05); height: 100%;">
+                        <div style="width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, ' . $webtec_blue . ', ' . $webtec_navy . '); color: #fff; font-size: 16px; font-weight: 800; display: flex; align-items: center; justify-content: center; margin-bottom: 14px;">' . $toc_num . '</div>
+                        <div style="font-size: 15px; font-weight: 700; color: ' . $webtec_navy . '; margin-bottom: 6px; line-height: 1.3;">' . esc_html($toc_item["title"]) . '</div>
+                        <div style="font-size: 12px; color: #64748b; line-height: 1.6;">' . esc_html($toc_item["desc"]) . '</div>
+                        <div style="margin-top: 14px; width: 100%; height: 2px; background: linear-gradient(90deg, ' . $webtec_blue . '44, transparent); border-radius: 1px;"></div>
                     </div>
                 </div>';
                 $toc_num++;

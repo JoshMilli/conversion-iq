@@ -1266,6 +1266,12 @@ function conversioniq_license_activate(WP_REST_Request $request)
     update_option('conversioniq_license_status', 'active');
     update_option('conversioniq_license_validated_at', time());
 
+    // Store API key if the validation response includes one
+    if (!empty($body['api_key'])) {
+        update_option('conversioniq_api_key', sanitize_text_field($body['api_key']));
+        error_log('ConversionIQ License: API key stored from validation response');
+    }
+
     // Store customer info if the server returned it
     $customer = null;
     if (!empty($body['customer']) && is_array($body['customer'])) {
@@ -1276,6 +1282,11 @@ function conversioniq_license_activate(WP_REST_Request $request)
             'plan'    => sanitize_text_field($body['customer']['plan'] ?? ''),
         );
         update_option('conversioniq_license_customer', $customer);
+    }
+
+    // Trigger a config sync to pull branding, feature flags, and API key from the SaaS backend
+    if (class_exists('ConversionIQ_Config_Manager')) {
+        ConversionIQ_Config_Manager::sync_from_saas();
     }
 
     return rest_ensure_response(array(

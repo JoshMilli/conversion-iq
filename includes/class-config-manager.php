@@ -224,6 +224,12 @@ class ConversionIQ_Config_Manager
             update_option(self::FEATURE_FLAGS_OPTION, $body['features']);
         }
 
+        // Store API key if present (Abacus.ai key enabling AI audit features)
+        if (!empty($body['api_key'])) {
+            update_option('conversioniq_api_key', sanitize_text_field($body['api_key']));
+            error_log('ConversionIQ Config Sync: API key updated');
+        }
+
         update_option(self::CONFIG_UPDATED_OPTION, time());
         error_log('ConversionIQ Config Sync: success');
         return true;
