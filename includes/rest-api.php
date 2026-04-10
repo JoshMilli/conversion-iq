@@ -316,6 +316,27 @@ add_action('rest_api_init', function () {
             return current_user_can('manage_options'); }
         ));
 
+    register_rest_route('conversioniq/v1', '/license/deactivate', array(
+        'methods' => 'POST',
+        'callback' => 'conversioniq_license_deactivate',
+        'permission_callback' => function () {
+            return current_user_can('manage_options'); }
+        ));
+
+    register_rest_route('conversioniq/v1', '/license/sites', array(
+        'methods' => 'GET',
+        'callback' => 'conversioniq_license_sites',
+        'permission_callback' => function () {
+            return current_user_can('manage_options'); }
+        ));
+
+    register_rest_route('conversioniq/v1', '/license/remove-site', array(
+        'methods' => 'POST',
+        'callback' => 'conversioniq_license_remove_site',
+        'permission_callback' => function () {
+            return current_user_can('manage_options'); }
+        ));
+
         register_rest_route('conversioniq/v1', '/settings', array(
                 array(
                 'methods' => 'POST',
@@ -1105,6 +1126,128 @@ IMPORTANT: Return ONLY valid JSON, no code blocks, no explanations.";
     return rest_ensure_response(array(
         'success' => true,
         'fields' => $fields
+    ));
+}
+
+/**
+ * Deactivate the license on this site (releases the site slot on the licensing server)
+ */
+function conversioniq_license_deactivate(WP_REST_Request $request)
+{
+    $license_key = get_option('conversioniq_license_key', '');
+
+    if (empty($license_key)) {
+        return new WP_REST_Response(array('success' => false, 'message' => 'No active license found.'), 400);
+    }
+
+    // Notify the licensing server to release this site's slot
+    $response = wp_remote_post('https://conversioniq-app.com/api/deactivate-license', array(
+        'timeout' => 15,
+        'headers' => array('Content-Type' => 'application/json'),
+        'body'    => wp_json_encode(array(
+            'license_key' => $license_key,
+            'site_url'    => get_site_url(),
+        )),
+    ));
+
+    // Clear local license data regardless of server response (allow offline deactivation)
+    delete_option('conversioniq_license_key');
+    delete_option('conversioniq_license_status');
+    delete_option('conversioniq_license_validated_at');
+    delete_option('conversioniq_license_customer');
+    delete_option('conversioniq_api_key');
+
+    if (is_wp_error($response)) {
+        error_log('ConversionIQ: License server unreachable during deactivation — local data cleared anyway.');
+        return rest_ensure_response(array(
+            'success' => true,
+            'message' => 'License deactivated locally. Note: could not reach license server to release the slot — contact support if needed.',
+        ));
+    }
+
+    $body = json_decode(wp_remote_retrieve_body($response), true);
+    error_log('ConversionIQ: License deactivated for site ' . get_site_url());
+
+    return rest_ensure_response(array(
+        'success' => true,
+        'message' => $body['message'] ?? 'License deactivated successfully. This site slot has been released.',
+    ));
+}
+
+/**
+ * Fetch all active site activations for this license key from the licensing server
+ */
+function conversioniq_license_sites(WP_REST_Request $request)
+{
+    $license_key = get_option('conversioniq_license_key', '');
+
+    if (empty($license_key)) {
+        return new WP_REST_Response(array('success' => false, 'message' => 'No active license found.'), 400);
+    }
+
+    $response = wp_remote_post('https://conversioniq-app.com/api/license-sites', array(
+        'timeout' => 15,
+        'headers' => array('Content-Type' => 'application/json'),
+        'body'    => wp_json_encode(array('license_key' => $license_key)),
+    ));
+
+    if (is_wp_error($response)) {
+        return new WP_REST_Response(array('success' => false, 'message' => 'Could not reach the license server.'), 503);
+    }
+
+    $body = json_decode(wp_remote_retrieve_body($response), true);
+    $code = wp_remote_retrieve_response_code($response);
+
+    if ($code !== 200 || !isset($body['sites'])) {
+        return new WP_REST_Response(array('success' => false, 'message' => $body['message'] ?? 'Failed to retrieve site list.'), $code);
+    }
+
+    return rest_ensure_response(array(
+        'success'    => true,
+        'sites'      => $body['sites'],      // array of { site_url, activated_at }
+        'max_sites'  => $body['max_sites'] ?? null,
+        'plan'       => $body['plan'] ?? null,
+    ));
+}
+
+/**
+ * Remove a specific site activation from this license (admin removing another site's slot)
+ */
+function conversioniq_license_remove_site(WP_REST_Request $request)
+{
+    $params      = $request->get_json_params();
+    $site_url    = esc_url_raw($params['site_url'] ?? '');
+    $license_key = get_option('conversioniq_license_key', '');
+
+    if (empty($license_key) || empty($site_url)) {
+        return new WP_REST_Response(array('success' => false, 'message' => 'Missing license key or site URL.'), 400);
+    }
+
+    $response = wp_remote_post('https://conversioniq-app.com/api/deactivate-license', array(
+        'timeout' => 15,
+        'headers' => array('Content-Type' => 'application/json'),
+        'body'    => wp_json_encode(array(
+            'license_key' => $license_key,
+            'site_url'    => $site_url,
+        )),
+    ));
+
+    if (is_wp_error($response)) {
+        return new WP_REST_Response(array('success' => false, 'message' => 'Could not reach the license server.'), 503);
+    }
+
+    $body = json_decode(wp_remote_retrieve_body($response), true);
+    $code = wp_remote_retrieve_response_code($response);
+
+    if ($code !== 200 || empty($body['success'])) {
+        return new WP_REST_Response(array('success' => false, 'message' => $body['message'] ?? 'Failed to remove site.'), $code);
+    }
+
+    error_log('ConversionIQ: Removed site slot ' . $site_url . ' from license ' . $license_key);
+
+    return rest_ensure_response(array(
+        'success' => true,
+        'message' => $body['message'] ?? 'Site removed successfully.',
     ));
 }
 

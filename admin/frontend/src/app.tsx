@@ -41,6 +41,10 @@ export default function App() {
   const [licenseLoading, setLicenseLoading] = useState(false);
   const [licenseCustomer, setLicenseCustomer] = useState<{ name: string; email: string; company: string; plan?: string } | null>(null);
   const [licenseValidatedAt, setLicenseValidatedAt] = useState<number>(0);
+  const [licenseSites, setLicenseSites] = useState<{ site_url: string; activated_at: string }[] | null>(null);
+  const [licenseSitesLoading, setLicenseSitesLoading] = useState(false);
+  const [licenseMaxSites, setLicenseMaxSites] = useState<number | null>(null);
+  const [deactivatingUrl, setDeactivatingUrl] = useState<string | null>(null);
   const [noticeType, setNoticeType] = useState<'success' | 'error' | null>(null);
   const TOAST_MS = 4000; // Consistent auto-dismiss duration
   const showError = (msg: string) => { setNotice(msg); setNoticeType('error'); };
@@ -258,11 +262,58 @@ export default function App() {
     }
   };
 
-  const handleLicenseDeactivate = () => {
-    setLicenseStatus('inactive');
-    setLicenseCustomer(null);
-    setLicenseKey('');
-    showSuccess('License deactivated.');
+  const handleLicenseDeactivate = async () => {
+    if (!confirm('Deactivate this license on the current site? This will release your site slot so you can use it elsewhere.')) return;
+    setLicenseLoading(true);
+    try {
+      await axios.post(api('license/deactivate'), {}, { headers: { 'X-WP-Nonce': nonce } });
+      setLicenseStatus('inactive');
+      setLicenseCustomer(null);
+      setLicenseKey('');
+      setFullLicenseKey('');
+      setLicenseSites(null);
+      setLicenseMaxSites(null);
+      showSuccess('License deactivated. This site slot has been released.');
+    } catch (err: any) {
+      showError(err.response?.data?.message || 'Failed to deactivate license.');
+    } finally {
+      setLicenseLoading(false);
+    }
+  };
+
+  const handleFetchSites = async () => {
+    setLicenseSitesLoading(true);
+    try {
+      const r = await axios.get(api('license/sites'), { headers: { 'X-WP-Nonce': nonce } });
+      if (r.data.success) {
+        setLicenseSites(r.data.sites || []);
+        setLicenseMaxSites(r.data.max_sites ?? null);
+      } else {
+        showError(r.data.message || 'Failed to load sites.');
+      }
+    } catch (err: any) {
+      showError(err.response?.data?.message || 'Could not reach the license server.');
+    } finally {
+      setLicenseSitesLoading(false);
+    }
+  };
+
+  const handleRemoveSite = async (siteUrl: string) => {
+    if (!confirm(`Remove ${siteUrl} from this license? That site will lose access until re-activated.`)) return;
+    setDeactivatingUrl(siteUrl);
+    try {
+      const r = await axios.post(api('license/remove-site'), { site_url: siteUrl }, { headers: { 'X-WP-Nonce': nonce } });
+      if (r.data.success) {
+        setLicenseSites(prev => (prev ?? []).filter(s => s.site_url !== siteUrl));
+        showSuccess(`${siteUrl} removed from license.`);
+      } else {
+        showError(r.data.message || 'Failed to remove site.');
+      }
+    } catch (err: any) {
+      showError(err.response?.data?.message || 'Could not reach the license server.');
+    } finally {
+      setDeactivatingUrl(null);
+    }
   };
 
   const handleSettingsChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -2464,6 +2515,77 @@ export default function App() {
             {/* License key section */}
             {licenseStatus === 'active' ? (
               <div style={{ marginBottom: 24 }}>
+                {/* Site Management */}
+                <div style={{ background: '#f9fafb', borderRadius: 12, padding: 24, marginBottom: 24, border: '1px solid #e5e7eb' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: licenseSites !== null ? 16 : 0 }}>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>Active Sites</div>
+                      <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+                        Sites currently using this license key
+                        {licenseMaxSites !== null && (
+                          <span style={{ marginLeft: 8, padding: '2px 8px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 20, fontSize: 11, fontWeight: 600, color: '#374151' }}>
+                            {licenseSites?.length ?? '?'} / {licenseMaxSites} sites used
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleFetchSites}
+                      disabled={licenseSitesLoading}
+                      style={{ padding: '8px 16px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#374151', cursor: licenseSitesLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}
+                      onMouseEnter={(e) => { if (!licenseSitesLoading) { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.color = '#7c3aed'; }}}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#374151'; }}
+                    >
+                      {licenseSitesLoading ? (
+                        <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Loading...</>
+                      ) : (
+                        <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.56"/></svg> {licenseSites !== null ? 'Refresh' : 'View Sites'}</>
+                      )}
+                    </button>
+                  </div>
+
+                  {licenseSites !== null && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {licenseSites.length === 0 ? (
+                        <div style={{ fontSize: 13, color: '#6b7280', textAlign: 'center', padding: '12px 0' }}>No active site activations found.</div>
+                      ) : licenseSites.map((site, i) => {
+                        const isCurrentSite = site.site_url.replace(/\/$/, '') === (window as any).location?.origin?.replace(/\/$/, '');
+                        const isRemoving = deactivatingUrl === site.site_url;
+                        return (
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#fff', borderRadius: 8, border: `1px solid ${isCurrentSite ? '#a5b4fc' : '#e5e7eb'}` }}>
+                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', flexShrink: 0 }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: '#111827', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{site.site_url}</span>
+                                {isCurrentSite && <span style={{ flexShrink: 0, padding: '2px 8px', background: '#ede9fe', border: '1px solid #c4b5fd', borderRadius: 20, fontSize: 11, fontWeight: 600, color: '#6d28d9' }}>This site</span>}
+                              </div>
+                              {site.activated_at && (
+                                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                                  Activated {new Date(site.activated_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => isCurrentSite ? handleLicenseDeactivate() : handleRemoveSite(site.site_url)}
+                              disabled={isRemoving || licenseLoading}
+                              style={{ flexShrink: 0, padding: '6px 14px', background: '#fff', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#dc2626', cursor: (isRemoving || licenseLoading) ? 'not-allowed' : 'pointer', opacity: (isRemoving || licenseLoading) ? 0.5 : 1, transition: 'all 0.2s' }}
+                              onMouseEnter={(e) => { if (!isRemoving && !licenseLoading) { e.currentTarget.style.background = '#fef2f2'; }}}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
+                            >
+                              {isRemoving ? 'Removing...' : 'Remove'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                      {licenseMaxSites !== null && licenseSites.length < licenseMaxSites && (
+                        <div style={{ fontSize: 12, color: '#6b7280', textAlign: 'center', padding: '8px 0', borderTop: '1px solid #f3f4f6', marginTop: 4 }}>
+                          {licenseMaxSites - licenseSites.length} site slot{licenseMaxSites - licenseSites.length !== 1 ? 's' : ''} available — install the plugin on another site and enter this key to activate it.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>
                   License Key
                 </label>

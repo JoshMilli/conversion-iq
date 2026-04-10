@@ -4,7 +4,7 @@ Tags: conversion optimization, AI audit, copy analysis, website scoring, lead in
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.0.36
+Stable tag: 2.0.38
 License: GPLv2 or later
 
 AI-powered conversion auditing for WordPress. Scores your pages, generates actionable reports, and rewrites copy to convert more visitors.
@@ -57,6 +57,16 @@ Yes. On the Professional and Agency plans you can customize the company name, lo
 Yes. Conversion IQ extracts rendered content from any published page regardless of how it was built (Elementor, Divi, Gutenberg, etc.).
 
 == Changelog ==
+
+= 2.0.38 =
+* License tab: Active Sites management panel — view all sites using the license, remove individual site slots
+* License tab: Deactivate this site button releases the slot on the licensing server
+* New REST endpoints: /license/sites, /license/deactivate, /license/remove-site
+* Fix: Guess Fields button now uses provisioned API key instead of hardcoded key
+* Fix: Guess Fields button disabled with lock notice when license is not active
+
+= 2.0.37 =
+* Fix Guess Fields — use provisioned API key, gate on license status
 
 = 2.0.36 =
 * Redesigned Quick Wins, Strategic Improvements, and Priority Recommendation cards in audit modal
