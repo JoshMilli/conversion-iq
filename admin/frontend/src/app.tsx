@@ -286,16 +286,15 @@ export default function App() {
       }
     } catch (err) {
       console.error('❌ Auto-fill failed:', err);
-      console.error('Response details:', (err as any)?.response?.data);
-      console.error('Status code:', (err as any)?.response?.status);
-      
-      let errorMsg = 'Failed to extract business info';
-      if ((err as any)?.response?.data?.message) {
-        errorMsg = (err as any).response.data.message;
-        console.error('Server message:', errorMsg);
+      const serverMsg = (err as any)?.response?.data?.message;
+      const status = (err as any)?.response?.status;
+      let errorMsg = 'Failed to extract business info — please try again.';
+      if (status === 403 || (serverMsg && serverMsg.toLowerCase().includes('license'))) {
+        errorMsg = 'License not activated. Please activate your license to use this feature.';
+      } else if (serverMsg) {
+        errorMsg = serverMsg;
       }
-      
-      setNotice('❌ ' + errorMsg + ' - check console for details');
+      setNotice('❌ ' + errorMsg);
     } finally {
       setLoading(false);
     }
@@ -1033,26 +1032,35 @@ export default function App() {
           <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#111827' }}>Business Information</h2>
-              <button 
-                onClick={handleGuessFields} 
-                disabled={loading}
-                style={{ 
-                  padding: '10px 20px', 
-                  background: loading ? '#d1d5db' : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', 
-                  color: '#fff', 
-                  border: 'none', 
-                  borderRadius: 8, 
-                  fontSize: 14, 
-                  fontWeight: 600, 
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)',
-                  transition: 'all 0.2s' 
-                }}
-                onMouseEnter={(e) => !loading && (e.currentTarget.style.transform = 'translateY(-2px)')}
-                onMouseLeave={(e) => !loading && (e.currentTarget.style.transform = 'translateY(0)')}
-              >
-                🪄 Guess these fields for me
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                <button
+                  onClick={handleGuessFields}
+                  disabled={loading || licenseStatus !== 'active'}
+                  title={licenseStatus !== 'active' ? 'Activate your license to use this feature' : ''}
+                  style={{
+                    padding: '10px 20px',
+                    background: (loading || licenseStatus !== 'active') ? '#d1d5db' : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: (loading || licenseStatus !== 'active') ? 'not-allowed' : 'pointer',
+                    boxShadow: licenseStatus === 'active' ? '0 2px 8px rgba(245, 158, 11, 0.3)' : 'none',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => { if (!loading && licenseStatus === 'active') e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
+                >
+                  🪄 {loading ? 'Analyzing...' : 'Guess these fields for me'}
+                </button>
+                {licenseStatus !== 'active' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#b45309' }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    <span>Requires an active license — <button onClick={() => setActiveTab('license')} style={{ background: 'none', border: 'none', padding: 0, color: '#b45309', fontWeight: 600, cursor: 'pointer', fontSize: 12, textDecoration: 'underline' }}>activate here</button></span>
+                  </div>
+                )}
+              </div>
             </div>
             <p style={{ color: '#6b7280', marginBottom: 24, fontSize: 15 }}>
               Provide details about your business to help our AI deliver personalized audit recommendations.

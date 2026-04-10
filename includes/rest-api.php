@@ -1013,6 +1013,15 @@ function conversioniq_guess_business_info(WP_REST_Request $request)
 IMPORTANT: Return ONLY valid JSON, no code blocks, no explanations.";
 
     // Call AI
+    $api_key = get_option('conversioniq_api_key', '');
+    if (empty($api_key)) {
+        error_log('❌ Guess fields: No API key found — license must be activated first.');
+        return new WP_REST_Response(array(
+            'success' => false,
+            'message' => 'License not activated. Please activate your license to use this feature.',
+        ), 403);
+    }
+
     $ai_body = array(
         'model' => 'gpt-4o-mini',
         'messages' => array(
@@ -1028,7 +1037,7 @@ IMPORTANT: Return ONLY valid JSON, no code blocks, no explanations.";
 
     $ai_args = array(
         'headers' => array(
-            'Authorization' => 'Bearer s2_7b1143d048014d04b7d489a17671b1a7',
+            'Authorization' => 'Bearer ' . $api_key,
             'Content-Type' => 'application/json',
         ),
         'body' => wp_json_encode($ai_body),
