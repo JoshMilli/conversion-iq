@@ -107,6 +107,8 @@ class ConversionIQ_Automated_Reports
                 $ai = ConversionIQ_AI::analyze($payload);
 
                 if (is_array($ai)) {
+                    // Generate report token so the email can link to the public report
+                    $ai['report_token'] = bin2hex(random_bytes(16));
                     // Save the fresh audit to database
                     $insert_id = ConversionIQ_DB::insert_audit($post->ID, $post->post_title, $ai);
                     $ai['insert_id'] = $insert_id;
@@ -117,6 +119,10 @@ class ConversionIQ_Automated_Reports
                     $results[] = $ai;
 
                     error_log('✅ Fresh audit completed for: ' . $post->post_title . ' (Audit ID: ' . $insert_id . ')');
+
+                    // Sync to Supabase so the public report link is live
+                    $sync = new ConversionIQ_Supabase_Sync();
+                    $sync->send_audit( $ai );
 
                     // Send to webhook if configured
                     if (function_exists('conversioniq_send_webhook')) {
@@ -172,7 +178,6 @@ class ConversionIQ_Automated_Reports
         // Calculate average scores and collect page summaries
         $total_score = 0;
         $page_summaries = array();
-        $attachments = array();
 
         foreach ($results as $result) {
             $clarity = intval($result['clarity_score'] ?? 0);
@@ -186,66 +191,19 @@ class ConversionIQ_Automated_Reports
             $total_score += $page_score;
 
             $page_summaries[] = array(
-                'title' => esc_html($result['page_title'] ?? 'Unknown Page'),
-                'url' => esc_url($result['page_url'] ?? ''),
-                'score' => $page_score,
-                'scores' => array(
-                    'clarity' => $clarity,
-                    'emotional' => $emotional,
-                    'cta' => $cta,
+                'title'      => esc_html($result['page_title'] ?? 'Unknown Page'),
+                'url'        => esc_url($result['page_url'] ?? ''),
+                'score'      => $page_score,
+                'report_url' => !empty($result['report_token']) ? 'https://conversioniq-app.com/reports/' . $result['report_token'] : '',
+                'scores'     => array(
+                    'clarity'     => $clarity,
+                    'emotional'   => $emotional,
+                    'cta'         => $cta,
                     'readability' => $readability,
-                    'engagement' => $engagement,
-                    'trust' => $trust
-                )
+                    'engagement'  => $engagement,
+                    'trust'       => $trust,
+                ),
             );
-
-            // Generate PDF report for this audit if it exists
-            if (isset($result['insert_id'])) {
-                global $wpdb;
-                $table = $wpdb->prefix . 'conversioniq_audits';
-                $audit = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $result['insert_id']), ARRAY_A);
-
-                if ($audit) {
-                    $audit['data'] = json_decode($audit['data'], true);
-                    $msg = '📄 Generating PDF for audit ID: ' . $result['insert_id'] . ' (' . $result['page_name'] . ')';
-                    error_log($msg);
-                    $messages[] = $msg;
-                    
-                    $pdf_result = ConversionIQ_Reports::generate_pdf_for_audit($audit);
-
-                    if ($pdf_result['success'] && isset($pdf_result['path']) && file_exists($pdf_result['path'])) {
-                        // Verify file is readable and has content
-                        $file_size = filesize($pdf_result['path']);
-                        if ($file_size > 0) {
-                            $attachments[] = $pdf_result['path'];
-                            $msg = '✅ PDF generated: ' . basename($pdf_result['path']) . ' (Size: ' . round($file_size / 1024, 2) . ' KB)';
-                            error_log($msg);
-                            $messages[] = $msg;
-                        }
-                        else {
-                            $msg = '⚠️ PDF file is empty (0 bytes): ' . basename($pdf_result['path']);
-                            error_log($msg);
-                            $messages[] = $msg;
-                        }
-                    }
-                    else {
-                        $msg = '⚠️ PDF generation failed or file not found for audit ID: ' . $result['insert_id'];
-                        error_log($msg);
-                        $messages[] = $msg;
-                        
-                        if (isset($pdf_result['error'])) {
-                            $msg = '   Error: ' . $pdf_result['error'];
-                            error_log($msg);
-                            $messages[] = $msg;
-                        }
-                    }
-                }
-                else {
-                    $msg = '⚠️ Audit record not found for ID: ' . $result['insert_id'];
-                    error_log($msg);
-                    $messages[] = $msg;
-                }
-            }
         }
 
         $overall_score = $total_pages > 0 ? round($total_score / $total_pages) : 0;
@@ -309,6 +267,9 @@ class ConversionIQ_Automated_Reports
         $page_list_html = '';
         foreach ($page_summaries as $summary) {
             $score_color = $summary['score'] >= 75 ? '#10b981' : ($summary['score'] >= 60 ? '#f59e0b' : '#ef4444');
+            $report_cell = !empty($summary['report_url'])
+                ? '<a href="' . esc_url($summary['report_url']) . '" style="display:inline-block;padding:6px 14px;background:#4f46e5;color:#ffffff;text-decoration:none;border-radius:5px;font-size:12px;font-weight:600;">View Report &rarr;</a>'
+                : '&mdash;';
             $page_list_html .= sprintf(
                 '<tr>
                     <td style="padding: 12px 16px; border-bottom: 1px solid #e5e7eb;">
@@ -317,11 +278,13 @@ class ConversionIQ_Automated_Reports
                     <td style="padding: 12px 16px; border-bottom: 1px solid #e5e7eb; text-align: center;">
                         <span style="color: %s; font-weight: 700; font-size: 16px;">%d</span><span style="color: #6b7280; font-size: 14px;">/100</span>
                     </td>
+                    <td style="padding: 12px 16px; border-bottom: 1px solid #e5e7eb; text-align: center;">%s</td>
                 </tr>',
                 esc_url($summary['url']),
                 esc_html($summary['title']),
                 $score_color,
-                $summary['score']
+                $summary['score'],
+                $report_cell
             );
         }
 
@@ -412,6 +375,9 @@ class ConversionIQ_Automated_Reports
                                         <th style="padding: 12px 16px; text-align: center; font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px;">
                                             Score
                                         </th>
+                                        <th style="padding: 12px 16px; text-align: center; font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px;">
+                                            Full Report
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -442,7 +408,7 @@ class ConversionIQ_Automated_Reports
                                 </tr>
                             </table>
                             <p style="margin: 16px 0 0 0; color: #4b5563; font-size: 14px; padding: 12px 16px; background-color: #eff6ff; border-radius: 4px; border-left: 3px solid #2563eb;">
-                                Each attached PDF report contains specific, actionable recommendations tailored to your business
+                                Click <strong>View Report</strong> next to each page above to open the full interactive report with recommendations, copy rewrites, CRO checklist, and more.
                             </p>
                             
                             <!-- Next Steps -->
@@ -458,7 +424,7 @@ class ConversionIQ_Automated_Reports
                                                     <div style="width: 24px; height: 24px; background-color: #2563eb; color: #ffffff; border-radius: 50%%; text-align: center; line-height: 24px; font-weight: 700; font-size: 12px;">1</div>
                                                 </td>
                                                 <td style="padding-left: 12px; color: #4b5563; font-size: 14px;">
-                                                    Review the attached PDF reports for detailed analysis and recommendations
+                                                    Click the <strong>View Report</strong> link next to each page above to access your full interactive report
                                                 </td>
                                             </tr>
                                         </table>
@@ -490,20 +456,6 @@ class ConversionIQ_Automated_Reports
                                                 </td>
                                             </tr>
                                         </table>
-                                    </td>
-                                </tr>
-                            </table>
-                            
-                            <!-- Attached Files -->
-                            <table width="100%%" cellpadding="0" cellspacing="0" border="0" style="margin: 24px 0; background-color: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb;">
-                                <tr>
-                                    <td style="padding: 16px;">
-                                        <p style="margin: 0 0 4px; color: #1f2937; font-size: 14px; font-weight: 600;">
-                                            Attached Files
-                                        </p>
-                                        <p style="margin: 0; color: #6b7280; font-size: 13px;">
-                                            %d detailed PDF report%s with page-specific recommendations, suggested content rewrites, and visual analysis
-                                        </p>
                                     </td>
                                 </tr>
                             </table>
@@ -548,9 +500,7 @@ class ConversionIQ_Automated_Reports
             ucfirst($weakest_areas[0]),
             $avg_scores[$weakest_areas[0]],
             ucfirst($weakest_areas[1]),
-            $avg_scores[$weakest_areas[1]],
-            count($attachments),
-            count($attachments) !== 1 ? 's' : ''
+            $avg_scores[$weakest_areas[1]]
         );
 
         $headers = array(
@@ -581,6 +531,9 @@ class ConversionIQ_Automated_Reports
                 $message .= "* " . $summary['title'] . "\n";
                 $message .= "  Score: " . $summary['score'] . "/100\n";
                 $message .= "  URL: " . $summary['url'] . "\n";
+                if (!empty($summary['report_url'])) {
+                    $message .= "  Full Report: " . $summary['report_url'] . "\n";
+                }
                 $message .= "  - Clarity: " . $summary['scores']['clarity'] . "/100\n";
                 $message .= "  - Emotional: " . $summary['scores']['emotional'] . "/100\n";
                 $message .= "  - CTA: " . $summary['scores']['cta'] . "/100\n";
@@ -598,12 +551,9 @@ class ConversionIQ_Automated_Reports
 
             $message .= "NEXT STEPS:\n";
             $message .= "---------------------------------\n";
-            $message .= "1. Review the attached PDF reports for detailed analysis and recommendations\n";
+            $message .= "1. Open each Full Report link above for detailed analysis, recommendations, and copy rewrites\n";
             $message .= "2. Prioritize changes based on the scores and suggestions provided\n";
             $message .= "3. Schedule implementation - Reach out to " . $brand_company . " for a call to discuss and implement recommendations\n\n";
-
-            $message .= "ATTACHED FILES:\n";
-            $message .= "- " . count($attachments) . " detailed PDF report" . (count($attachments) !== 1 ? 's' : '') . " with page-specific recommendations\n\n";
 
             $message .= "---\n";
             $message .= $brand_product . " - Powered by " . $brand_company . "\n";
@@ -620,40 +570,8 @@ class ConversionIQ_Automated_Reports
         error_log($msg);
         $messages[] = $msg;
         
-        $msg = '📎 Total attachments: ' . count($attachments) . ' PDF file(s)';
-        error_log($msg);
-        $messages[] = $msg;
-        
-        if (count($attachments) > 0) {
-            $messages[] = '📎 Attachment details:';
-            error_log('📎 Attachment details:');
-            $total_size = 0;
-            foreach ($attachments as $idx => $file) {
-                $size = file_exists($file) ? filesize($file) : 0;
-                $total_size += $size;
-                $msg = '   ' . ($idx + 1) . '. ' . basename($file) . ' (' . round($size / 1024, 2) . ' KB)';
-                error_log($msg);
-                $messages[] = $msg;
-            }
-            $msg = '📎 Total attachment size: ' . round($total_size / 1024, 2) . ' KB';
-            error_log($msg);
-            $messages[] = $msg;
-            
-            // Warn if total size is large
-            if ($total_size > 10 * 1024 * 1024) { // 10 MB
-                $msg = '⚠️ Warning: Total attachment size exceeds 10MB - may be rejected by some email servers';
-                error_log($msg);
-                $messages[] = $msg;
-            }
-        }
-        else {
-            $msg = '⚠️ No PDF attachments generated - email will be sent without reports';
-            error_log($msg);
-            $messages[] = $msg;
-        }
-
-        // Send email with PDF attachments to all recipients
-        $sent = wp_mail($valid_emails, $subject, $message, $headers, $attachments);
+        // Send email to all recipients
+        $sent = wp_mail($valid_emails, $subject, $message, $headers);
 
         if ($sent) {
             $msg = '✅ Email queued successfully for ' . count($valid_emails) . ' recipient(s): ' . implode(', ', $valid_emails);
