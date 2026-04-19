@@ -4,7 +4,7 @@ Tags: conversion optimization, AI audit, copy analysis, website scoring, lead in
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.0.38
+Stable tag: 2.0.45
 License: GPLv2 or later
 
 AI-powered conversion auditing for WordPress. Scores your pages, generates actionable reports, and rewrites copy to convert more visitors.

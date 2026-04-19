@@ -15,11 +15,8 @@ const nonce = (window as any).ConversionIQData?.nonce;
 
 // Branding config (injected from PHP via ConversionIQData)
 const branding = (window as any).ConversionIQData?.branding || {};
-const features = (window as any).ConversionIQData?.features || {};
-const currentPlan: string = (window as any).ConversionIQData?.plan || 'starter';
-
-// Feature flag helper — checks if a feature is enabled for the current plan
-const canUse = (feature: string): boolean => !!features[feature];
+const windowFeatures: Record<string, any> = (window as any).ConversionIQData?.features || {};
+const windowPlan: string = (window as any).ConversionIQData?.plan || 'free';
 
 const B = {
   company: branding.company_name || 'Webtec',
@@ -37,10 +34,17 @@ const B = {
 export default function App() {
   // License
   const [licenseStatus, setLicenseStatus] = useState<'active' | 'inactive' | 'checking'>('checking');
+  const [profileRefreshing, setProfileRefreshing] = useState(false);
   const [licenseKey, setLicenseKey] = useState('');
   const [licenseLoading, setLicenseLoading] = useState(false);
   const [licenseCustomer, setLicenseCustomer] = useState<{ name: string; email: string; company: string; plan?: string } | null>(null);
   const [licenseValidatedAt, setLicenseValidatedAt] = useState<number>(0);
+  // Derived: prefer live licenseCustomer.plan (updated on refresh) over the window constant
+  const currentPlan: string = (licenseCustomer?.plan || windowPlan).toLowerCase();
+  // Feature flags in state so they update reactively on plan refresh
+  const [liveFeatures, setLiveFeatures] = useState<Record<string, any>>(windowFeatures);
+  const canUse = (feature: string): boolean => !!liveFeatures[feature];
+  const maxPagesPerAudit: number = (liveFeatures.max_pages_per_audit as number) || 1;
   const [licenseSites, setLicenseSites] = useState<{ site_url: string; activated_at: string }[] | null>(null);
   const [licenseSitesLoading, setLicenseSitesLoading] = useState(false);
   const [licenseMaxSites, setLicenseMaxSites] = useState<number | null>(null);
@@ -61,7 +65,7 @@ export default function App() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingAutomated, setSavingAutomated] = useState(false);
   const [auditRunning, setAuditRunning] = useState(false);
-  const [modal, setModal] = useState<{ audit?: Audit; open: boolean; tab?: string; gaData?: any }>({ open: false, tab: 'overview' });
+  const [modal, setModal] = useState<{ audit?: Audit; open: boolean; tab?: string }>({ open: false, tab: 'overview' });
   const [expandedSuggestions, setExpandedSuggestions] = useState<Set<number>>(new Set([0])); // First suggestion expanded by default
   const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'automated' | 'audits' | 'knockknock' | 'license' | 'faq'>('overview');
   const [automatedReporting, setAutomatedReporting] = useState({
@@ -87,13 +91,6 @@ export default function App() {
   const [auditFilter, setAuditFilter] = useState<'all' | 'ai' | 'fallback'>('all');
   const [auditSearchQuery, setAuditSearchQuery] = useState('');
   
-  // Google Analytics state
-  const [gaStatus, setGaStatus] = useState<any>({ connected: false, has_credentials: false });
-  const [gaClientId, setGaClientId] = useState('');
-  const [gaClientSecret, setGaClientSecret] = useState('');
-  const [gaProperties, setGaProperties] = useState<any[]>([]);
-  const [gaLoading, setGaLoading] = useState(false);
-
   // License display state
   const [showLicenseKey, setShowLicenseKey] = useState(false);
   const [fullLicenseKey, setFullLicenseKey] = useState('');
@@ -130,6 +127,7 @@ export default function App() {
           setLicenseKey(r.data.license_key || '');
           setFullLicenseKey(r.data.license_key_full || '');
           setLicenseValidatedAt(r.data.validated_at || 0);
+          if (r.data.features) setLiveFeatures(r.data.features);
         } else {
           setLicenseStatus('inactive');
         }
@@ -139,6 +137,8 @@ export default function App() {
 
   // Load settings, pages, audits, automated settings
   useEffect(() => {
+    // Load settings first, then immediately fetch business profile on top so Supabase
+    // data always wins without a race condition against setSettings(r.data).
     axios.get(api('settings'), { headers: { 'X-WP-Nonce': nonce } })
       .then(r => {
         console.log('✓ Settings loaded');
@@ -147,6 +147,18 @@ export default function App() {
         setKnockKnockCompanyId(r.data.knockknock_company_id || '');
         setKnockKnockWebhookSecret(r.data.knockknock_webhook_secret || '');
         setKnockKnockWebhookUrl(r.data.knockknock_webhook_url || '');
+        // Chain business profile fetch so it always merges AFTER setSettings(r.data)
+        return axios.get(api('business-profile'), { headers: { 'X-WP-Nonce': nonce } });
+      })
+      .then(r => {
+        if (r?.data && typeof r.data === 'object') {
+          const nonEmpty = Object.fromEntries(
+            Object.entries(r.data).filter(([, v]) => v != null && v !== '')
+          );
+          if (Object.keys(nonEmpty).length > 0) {
+            setSettings(prev => ({ ...prev, ...nonEmpty }));
+          }
+        }
       })
       .catch(err => console.error('✗ Failed to load settings:', err));
     
@@ -185,55 +197,24 @@ export default function App() {
         setAutomatedReporting(settings);
       })
       .catch(err => console.error('✗ Failed to load automated settings:', err));
-    
-    axios.get(api('ga/status'), { headers: { 'X-WP-Nonce': nonce } })
+  }, []);
+
+  // Re-fetch business profile when license becomes active (e.g. after activating on this page)
+  useEffect(() => {
+    if (licenseStatus !== 'active') return;
+    axios.get(api('business-profile'), { headers: { 'X-WP-Nonce': nonce } })
       .then(r => {
-        console.log('✓ GA status loaded');
-        setGaStatus(r.data);
+        if (r.data && typeof r.data === 'object') {
+          const nonEmpty = Object.fromEntries(
+            Object.entries(r.data).filter(([, v]) => v != null && v !== '')
+          );
+          if (Object.keys(nonEmpty).length > 0) {
+            setSettings(prev => ({ ...prev, ...nonEmpty }));
+          }
+        }
       })
-      .catch(err => console.error('✗ Failed to load GA status:', err));
-  }, []);
-
-  // Check for GA OAuth callback
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('ga_connected') === '1') {
-      setNotice('✅ Google Analytics authenticated! Now select a property.');
-      // Load properties after successful auth
-      setGaLoading(true);
-      axios.get(api('ga/properties'), { headers: { 'X-WP-Nonce': nonce } })
-        .then(r => {
-          if (r.data.success) {
-            setGaProperties(r.data.properties);
-          } else {
-            setNotice('❌ ' + r.data.error);
-          }
-        })
-        .catch(err => setNotice('❌ Failed to load properties: ' + (err.response?.data?.error || err.message)))
-        .finally(() => setGaLoading(false));
-      // Clean up URL
-      window.history.replaceState({}, document.title, window.location.pathname + '?page=conversioniq');
-    } else if (params.get('ga_error')) {
-      setNotice('❌ Google Analytics auth failed: ' + params.get('ga_error'));
-      window.history.replaceState({}, document.title, window.location.pathname + '?page=conversioniq');
-    }
-  }, []);
-
-  // Load GA data when modal opens
-  useEffect(() => {
-    if (modal.open && modal.audit && modal.audit.page_url && gaStatus.connected) {
-      axios.post(api('ga/page-data'), {
-        url: modal.audit.page_url,
-        days: 30
-      }, { headers: { 'X-WP-Nonce': nonce } })
-        .then(r => {
-          if (r.data.success) {
-            setModal(m => ({ ...m, gaData: r.data.data }));
-          }
-        })
-        .catch(err => console.error('Failed to load GA data:', err));
-    }
-  }, [modal.open, modal.audit?.page_url, gaStatus.connected]);
+      .catch(() => {});
+  }, [licenseStatus]);
 
   // Handlers
   const handleLicenseActivate = async () => {
@@ -251,12 +232,31 @@ export default function App() {
       if (response.data.success) {
         setLicenseStatus('active');
         setLicenseCustomer(response.data.customer || null);
+        if (response.data.features) setLiveFeatures(response.data.features);
         showSuccess('License activated successfully!');
       } else {
         showError(response.data.message || 'Activation failed');
       }
     } catch (err: any) {
       showError(err.response?.data?.message || 'Could not activate license. Please try again.');
+    } finally {
+      setLicenseLoading(false);
+    }
+  };
+
+  const handleLicenseRefresh = async () => {
+    setLicenseLoading(true);
+    try {
+      const r = await axios.post(api('license/refresh'), {}, { headers: { 'X-WP-Nonce': nonce } });
+      if (r.data.success) {
+        if (r.data.customer) setLicenseCustomer(r.data.customer);
+        if (r.data.features) setLiveFeatures(r.data.features);
+        showSuccess('Plan refreshed — now showing: ' + (r.data.customer?.plan ?? 'unknown'));
+      } else {
+        showError(r.data.message || 'Failed to refresh plan.');
+      }
+    } catch (err: any) {
+      showError(err.response?.data?.message || 'Could not reach the license server.');
     } finally {
       setLicenseLoading(false);
     }
@@ -352,9 +352,23 @@ export default function App() {
   };
   const handleSaveSettings = () => {
     setSavingSettings(true);
-    axios.post(api('settings'), settings, { headers: { 'X-WP-Nonce': nonce } })
-      .then(() => showSuccess('Settings saved!'))
-      .catch(() => showError('Failed to save settings'))
+    const profileFields = {
+      business_name: settings.business_name,
+      industry: settings.industry,
+      product: settings.product,
+      audience: settings.audience,
+      pain_points: settings.pain_points,
+      competitors: settings.competitors,
+      goal: settings.goal,
+      additional_info: settings.additional_info,
+      unique_selling_points: settings.unique_selling_points,
+      target_geography: settings.target_geography,
+      price_point: settings.price_point,
+      primary_traffic_source: settings.primary_traffic_source,
+    };
+    axios.post(api('business-profile'), profileFields, { headers: { 'X-WP-Nonce': nonce } })
+      .then(() => showSuccess('Business profile saved!'))
+      .catch(() => showError('Failed to save business profile'))
       .finally(() => setSavingSettings(false));
   };
   const handleSaveAutomatedSettings = async () => {
@@ -443,95 +457,6 @@ export default function App() {
     }
   };
 
-  // Google Analytics handlers
-  const handleGaSaveCredentials = async () => {
-    if (!gaClientId || !gaClientSecret) {
-      setNotice('❌ Please enter both Client ID and Client Secret');
-      return;
-    }
-    
-    setGaLoading(true);
-    try {
-      const response = await axios.post(api('ga/save-credentials'), {
-        client_id: gaClientId,
-        client_secret: gaClientSecret
-      }, { headers: { 'X-WP-Nonce': nonce } });
-      
-      if (response.data.success) {
-        setNotice('✅ Credentials saved! Now click "Connect to Google Analytics"');
-        setGaStatus({ ...gaStatus, has_credentials: true });
-      }
-    } catch (err: any) {
-      setNotice('❌ Failed to save credentials: ' + (err.response?.data?.error || err.message));
-    } finally {
-      setGaLoading(false);
-    }
-  };
-
-  const handleGaConnect = async () => {
-    try {
-      const response = await axios.get(api('ga/auth-url'), { headers: { 'X-WP-Nonce': nonce } });
-      if (response.data.success && response.data.url) {
-        window.location.href = response.data.url;
-      }
-    } catch (err: any) {
-      setNotice('❌ ' + (err.response?.data?.error || 'Failed to get auth URL'));
-    }
-  };
-
-  const handleGaLoadProperties = async () => {
-    setGaLoading(true);
-    try {
-      const response = await axios.get(api('ga/properties'), { headers: { 'X-WP-Nonce': nonce } });
-      if (response.data.success) {
-        setGaProperties(response.data.properties);
-      } else {
-        setNotice('❌ ' + response.data.error);
-      }
-    } catch (err: any) {
-      setNotice('❌ Failed to load properties: ' + (err.response?.data?.error || err.message));
-    } finally {
-      setGaLoading(false);
-    }
-  };
-
-  const handleGaSelectProperty = async (propertyId: string, propertyName: string) => {
-    setGaLoading(true);
-    try {
-      const response = await axios.post(api('ga/save-property'), {
-        property_id: propertyId,
-        property_name: propertyName
-      }, { headers: { 'X-WP-Nonce': nonce } });
-      
-      if (response.data.success) {
-        setNotice('✅ Google Analytics connected successfully!');
-        setGaStatus({ connected: true, has_credentials: true, property_id: propertyId, property_name: propertyName });
-        setGaProperties([]);
-      }
-    } catch (err: any) {
-      setNotice('❌ ' + (err.response?.data?.error || 'Failed to save property'));
-    } finally {
-      setGaLoading(false);
-    }
-  };
-
-  const handleGaDisconnect = async () => {
-    if (!confirm('Are you sure you want to disconnect Google Analytics?')) return;
-    
-    setGaLoading(true);
-    try {
-      await axios.post(api('ga/disconnect'), {}, { headers: { 'X-WP-Nonce': nonce } });
-      setNotice('✅ Google Analytics disconnected');
-      setGaStatus({ connected: false, has_credentials: false });
-      setGaClientId('');
-      setGaClientSecret('');
-    } catch (err: any) {
-      setNotice('❌ Failed to disconnect');
-    } finally {
-      setGaLoading(false);
-    }
-  };
-
   // KnockKnock webhook functions
   const handleSaveKnockKnockSettings = async () => {
     // Require at least one authentication method
@@ -614,7 +539,14 @@ export default function App() {
   }, [activeTab, knockKnockCompanyId, knockKnockWebhookSecret]);
 
   const handlePageSelect = (id: number) => {
-    setSelectedPages(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
+    setSelectedPages(p => {
+      if (p.includes(id)) return p.filter(x => x !== id);
+      if (p.length >= maxPagesPerAudit) {
+        setNotice(`⚠️ Your ${currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1)} plan allows up to ${maxPagesPerAudit} page${maxPagesPerAudit !== 1 ? 's' : ''} per audit. Upgrade for more.`);
+        return p;
+      }
+      return [...p, id];
+    });
   };
   const handleRunAudit = async () => {
     if (!selectedPages.length) { setNotice('Select at least one page'); return; }
@@ -655,6 +587,11 @@ export default function App() {
         { pages: selectedPages }, 
         { headers: { 'X-WP-Nonce': nonce } }
       );
+
+      if (response.status === 429 || (response.data && response.data.error_code === 'weekly_limit_reached')) {
+        setNotice(`⚠️ Weekly audit limit reached. Your plan allows 3 audits per week. Upgrade your plan for more, or wait for your limit to reset.`);
+        return;
+      }
       
       if (response.data.success && response.data.results) {
         console.log('✅ Audit completed successfully');
@@ -1023,10 +960,28 @@ export default function App() {
                 cursor: 'pointer',
                 fontSize: 16,
                 fontWeight: 600,
-                transition: 'all 0.2s'
+                transition: 'all 0.2s',
+                position: 'relative'
               }}
             >
-              KnockKnock
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                KnockKnock
+                {!canUse('knockknock') && (
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 16,
+                    height: 16,
+                    background: activeTab === 'knockknock' ? 'rgba(255,255,255,0.25)' : '#f3e8ff',
+                    borderRadius: 4,
+                    fontSize: 10,
+                    lineHeight: 1,
+                    color: activeTab === 'knockknock' ? '#fff' : '#7c3aed',
+                    flexShrink: 0
+                  }}>🔒</span>
+                )}
+              </span>
             </button>
             <button
               onClick={() => setActiveTab('license')}
@@ -1078,82 +1033,124 @@ export default function App() {
           />
         )}
 
-        {/* Settings Tab */}
-        {activeTab === 'settings' && (
-          <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#111827' }}>Business Information</h2>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                <button
-                  onClick={handleGuessFields}
-                  disabled={loading || licenseStatus !== 'active'}
-                  title={licenseStatus !== 'active' ? 'Activate your license to use this feature' : ''}
-                  style={{
-                    padding: '10px 20px',
-                    background: (loading || licenseStatus !== 'active') ? '#d1d5db' : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 8,
-                    fontSize: 14,
-                    fontWeight: 600,
-                    cursor: (loading || licenseStatus !== 'active') ? 'not-allowed' : 'pointer',
-                    boxShadow: licenseStatus === 'active' ? '0 2px 8px rgba(245, 158, 11, 0.3)' : 'none',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => { if (!loading && licenseStatus === 'active') e.currentTarget.style.transform = 'translateY(-2px)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
-                >
-                  🪄 {loading ? 'Analyzing...' : 'Guess these fields for me'}
-                </button>
-                {licenseStatus !== 'active' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#b45309' }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    <span>Requires an active license — <button onClick={() => setActiveTab('license')} style={{ background: 'none', border: 'none', padding: 0, color: '#b45309', fontWeight: 600, cursor: 'pointer', fontSize: 12, textDecoration: 'underline' }}>activate here</button></span>
-                  </div>
-                )}
-              </div>
+        {/* Business Information Tab — read-only view, editable at conversioniq-app.com */}
+        {activeTab === 'settings' && (() => {
+          const profileField = (label: string, value: string | undefined) => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#9ca3af' }}>{label}</span>
+              <span style={{ fontSize: 14, color: value ? '#111827' : '#d1d5db', fontWeight: value ? 500 : 400 }}>
+                {value || '—'}
+              </span>
             </div>
-            <p style={{ color: '#6b7280', marginBottom: 24, fontSize: 15 }}>
-              Provide details about your business to help our AI deliver personalized audit recommendations.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 16 }}>
-              <input name="industry" placeholder="Industry/Niche" value={settings.industry || ''} onChange={handleSettingsChange} style={{ padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }} onFocus={(e) => e.target.style.borderColor = '#7c3aed'} onBlur={(e) => e.target.style.borderColor = '#d1d5db'} />
-              <input name="product" placeholder="What do you sell?" value={settings.product || ''} onChange={handleSettingsChange} style={{ padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }} onFocus={(e) => e.target.style.borderColor = '#7c3aed'} onBlur={(e) => e.target.style.borderColor = '#d1d5db'} />
-              <input name="audience" placeholder="Who do you sell to?" value={settings.audience || ''} onChange={handleSettingsChange} style={{ padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }} onFocus={(e) => e.target.style.borderColor = '#7c3aed'} onBlur={(e) => e.target.style.borderColor = '#d1d5db'} />
-              <input name="pain_points" placeholder="Main customer pain points (comma separated)" value={settings.pain_points || ''} onChange={handleSettingsChange} style={{ padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }} onFocus={(e) => e.target.style.borderColor = '#7c3aed'} onBlur={(e) => e.target.style.borderColor = '#d1d5db'} />
-              <input name="competitors" placeholder="Key competitors (comma separated)" value={settings.competitors || ''} onChange={handleSettingsChange} style={{ padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }} onFocus={(e) => e.target.style.borderColor = '#7c3aed'} onBlur={(e) => e.target.style.borderColor = '#d1d5db'} />
-              <input name="goal" placeholder="Primary conversion goal" value={settings.goal || ''} onChange={handleSettingsChange} style={{ padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none', transition: 'border 0.2s', background: '#fff', color: '#111827' }} onFocus={(e) => e.target.style.borderColor = '#7c3aed'} onBlur={(e) => e.target.style.borderColor = '#d1d5db'} />
-            </div>            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>Additional Information (Optional)</label>
-              <textarea 
-                name="additional_info" 
-                placeholder="Any other context about your business, unique selling points, or specific areas you'd like the AI to focus on..." 
-                value={settings.additional_info || ''} 
-                onChange={handleSettingsChange}
-                rows={4}
-                style={{ 
-                  width: '100%', 
-                  padding: '12px 16px', 
-                  border: '1px solid #d1d5db', 
-                  borderRadius: 8, 
-                  fontSize: 14, 
-                  outline: 'none', 
-                  transition: 'border 0.2s', 
-                  background: '#fff', 
-                  color: '#111827',
-                  fontFamily: 'Inter,Arial,Helvetica,sans-serif',
-                  resize: 'vertical'
-                }} 
-                onFocus={(e) => e.target.style.borderColor = '#7c3aed'} 
-                onBlur={(e) => e.target.style.borderColor = '#d1d5db'} 
-              />
-            </div>
+          );
 
-            <button className="ciq-btn primary" onClick={handleSaveSettings} disabled={savingSettings} style={{ marginTop: 20, padding: '12px 24px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: savingSettings ? 'not-allowed' : 'pointer', opacity: savingSettings ? 0.6 : 1, transition: 'all 0.2s' }} onMouseEnter={(e) => !savingSettings && (e.currentTarget.style.background = '#6d28d9')} onMouseLeave={(e) => !savingSettings && (e.currentTarget.style.background = '#7c3aed')}>
-              {savingSettings ? 'Saving...' : 'Save Settings'}
-            </button>
-          </section>
-        )}
+          const hasAnyProfile = !!(settings.business_name || settings.industry || settings.product || settings.audience || settings.goal);
+
+          return (
+            <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#111827' }}>Business Information</h2>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => {
+                      setProfileRefreshing(true);
+                      axios.get(api('business-profile'), { headers: { 'X-WP-Nonce': nonce } })
+                        .then(r => {
+                          const nonEmpty = Object.fromEntries(
+                            Object.entries(r.data).filter(([, v]) => v != null && v !== '')
+                          );
+                          if (Object.keys(nonEmpty).length > 0) setSettings(prev => ({ ...prev, ...nonEmpty }));
+                        })
+                        .catch(() => {})
+                        .finally(() => setProfileRefreshing(false));
+                    }}
+                    disabled={profileRefreshing}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 14px', background: profileRefreshing ? '#e5e7eb' : '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: profileRefreshing ? 'wait' : 'pointer', transition: 'all 0.2s' }}
+                  >
+                    {profileRefreshing ? '⏳' : '↻'} {profileRefreshing ? 'Syncing…' : 'Refresh'}
+                  </button>
+                  <a
+                    href="https://conversioniq-app.com/onboarding"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', color: '#fff', textDecoration: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, boxShadow: '0 2px 8px rgba(124,58,237,0.3)', whiteSpace: 'nowrap', transition: 'opacity 0.2s' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
+                    onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                  >
+                    ✏️ Edit profile
+                  </a>
+                </div>
+              </div>
+              <p style={{ color: '#6b7280', marginBottom: 24, fontSize: 15 }}>
+                This profile is used by the AI to deliver personalized audit recommendations. To update it, visit your account at conversioniq-app.com.
+              </p>
+
+              {!hasAnyProfile && (
+                <div style={{ marginBottom: 24, padding: '16px 20px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontSize: 20 }}>⚠️</span>
+                  <div>
+                    <div style={{ fontWeight: 600, color: '#92400e', marginBottom: 2 }}>Business profile is empty</div>
+                    <div style={{ fontSize: 13, color: '#78350f' }}>
+                      Complete your profile at{' '}
+                      <a href="https://conversioniq-app.com/onboarding" target="_blank" rel="noopener noreferrer" style={{ color: '#92400e', fontWeight: 600 }}>conversioniq-app.com/onboarding</a>
+                      {' '}to improve AI audit quality.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Group: Your Business */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#7c3aed', marginBottom: 12 }}>Your Business</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px 24px', padding: '20px 24px', background: '#f9fafb', borderRadius: 10, border: '1px solid #f3f4f6' }}>
+                  {profileField('Business Name', settings.business_name)}
+                  {profileField('Industry / Niche', settings.industry)}
+                  {profileField('What You Sell', settings.product)}
+                </div>
+              </div>
+
+              {/* Group: Your Customers */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#7c3aed', marginBottom: 12 }}>Your Customers</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px 24px', padding: '20px 24px', background: '#f9fafb', borderRadius: 10, border: '1px solid #f3f4f6' }}>
+                  {profileField('Target Audience', settings.audience)}
+                  {profileField('Customer Pain Points', settings.pain_points)}
+                  {profileField('Key Competitors', settings.competitors)}
+                </div>
+              </div>
+
+              {/* Group: Goals & Market */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#7c3aed', marginBottom: 12 }}>Goals & Market</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px 24px', padding: '20px 24px', background: '#f9fafb', borderRadius: 10, border: '1px solid #f3f4f6' }}>
+                  {profileField('Primary Conversion Goal', settings.goal)}
+                  {profileField('Unique Selling Points', settings.unique_selling_points)}
+                  {profileField('Target Geography', settings.target_geography)}
+                </div>
+              </div>
+
+              {/* Group: Positioning */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#7c3aed', marginBottom: 12 }}>Positioning</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px 24px', padding: '20px 24px', background: '#f9fafb', borderRadius: 10, border: '1px solid #f3f4f6' }}>
+                  {profileField('Price Point', settings.price_point)}
+                  {profileField('Primary Traffic Source', settings.primary_traffic_source)}
+                  {settings.additional_info && (
+                    <div style={{ gridColumn: '1 / -1', ...{ display: 'flex', flexDirection: 'column', gap: 4 } as any }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#9ca3af' }}>Additional Notes</span>
+                      <span style={{ fontSize: 14, color: '#111827', fontWeight: 500, lineHeight: 1.6 }}>{settings.additional_info}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ marginTop: 8, fontSize: 13, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Profile syncs automatically when you activate your license. Use the Refresh button to pull the latest changes manually.
+              </div>
+            </section>
+          );
+        })()}
 
         {/* Automated Reports Tab */}
         {activeTab === 'automated' && (
@@ -1451,15 +1448,43 @@ export default function App() {
           <>
             {/* Pages to Analyze Section */}
             <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32, marginBottom: 24 }}>
-              <h2 style={{ margin: '0 0 8px 0', fontSize: 24, fontWeight: 700, color: '#111827' }}>Select Pages to Analyze</h2>
-              <p style={{ color: '#6b7280', marginBottom: 20, fontSize: 15 }}>Choose which pages you want to audit now.</p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 8 }}>
+                <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#111827' }}>Select Pages to Analyze</h2>
+                <span style={{ padding: '4px 12px', background: selectedPages.length >= maxPagesPerAudit ? '#fef3c7' : '#f3e8ff', color: selectedPages.length >= maxPagesPerAudit ? '#92400e' : '#5b21b6', borderRadius: 20, fontSize: 13, fontWeight: 600, border: `1px solid ${selectedPages.length >= maxPagesPerAudit ? '#fcd34d' : '#c4b5fd'}` }}>
+                  {selectedPages.length} / {maxPagesPerAudit} pages selected
+                </span>
+              </div>
+              {/* Plan limits info strip — always visible */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 16, padding: '10px 16px', background: '#f5f3ff', border: '1px solid #ede9fe', borderRadius: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', fontSize: 13, color: '#5b21b6' }}>
+                  <span>
+                    <strong style={{ textTransform: 'capitalize' }}>{currentPlan}</strong> plan
+                  </span>
+                  <span style={{ width: 1, height: 14, background: '#c4b5fd', display: 'inline-block' }} />
+                  <span>Up to <strong>{maxPagesPerAudit} page{maxPagesPerAudit !== 1 ? 's' : ''}</strong> per audit</span>
+                  <span style={{ width: 1, height: 14, background: '#c4b5fd', display: 'inline-block' }} />
+                  <span><strong>{(liveFeatures.audits_per_week as number) || 3} audits</strong> per week</span>
+                </div>
+                {currentPlan !== 'agency' && (
+                  <button onClick={() => setActiveTab('license')} style={{ background: 'none', color: '#7c3aed', border: '1px solid #c4b5fd', borderRadius: 6, padding: '4px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                    Upgrade plan →
+                  </button>
+                )}
+              </div>
+              <p style={{ color: '#6b7280', marginBottom: selectedPages.length >= maxPagesPerAudit ? 12 : 20, fontSize: 15 }}>Choose which pages you want to audit now.</p>
+              {selectedPages.length >= maxPagesPerAudit && (
+                <div style={{ marginBottom: 16, padding: '10px 16px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 13, color: '#92400e', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                  <span>🔒 Page limit reached for your <strong>{currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1)}</strong> plan.</span>
+                  <button onClick={() => setActiveTab('license')} style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Upgrade Plan →</button>
+                </div>
+              )}
               <div style={{ maxHeight: 240, overflow: 'auto', border: '1px solid #d1d5db', borderRadius: 8, padding: 16, background: '#f9fafb' }}>
                 {pages.length === 0 ? (
                   <div style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>No pages found. Please publish some pages first.</div>
                 ) : (
                   pages.map(p => (
                     <label key={p.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', marginBottom: 8, background: selectedPages.includes(p.id) ? '#f3e8ff' : '#fff', borderRadius: 6, cursor: 'pointer', transition: 'all 0.2s', border: '1px solid transparent' }} onMouseEnter={(e) => e.currentTarget.style.borderColor = '#a78bfa'} onMouseLeave={(e) => !selectedPages.includes(p.id) && (e.currentTarget.style.borderColor = 'transparent')}>
-                      <input type="checkbox" checked={selectedPages.includes(p.id)} onChange={() => handlePageSelect(p.id)} style={{ marginRight: 12, width: 18, height: 18, cursor: 'pointer', accentColor: '#7c3aed' }} />
+                      <input type="checkbox" checked={selectedPages.includes(p.id)} onChange={() => handlePageSelect(p.id)} disabled={!selectedPages.includes(p.id) && selectedPages.length >= maxPagesPerAudit} style={{ marginRight: 12, width: 18, height: 18, cursor: !selectedPages.includes(p.id) && selectedPages.length >= maxPagesPerAudit ? 'not-allowed' : 'pointer', accentColor: '#7c3aed' }} />
                       <span style={{ flex: 1, fontWeight: 500, color: '#111827' }}>{p.title}</span>
                       <span style={{ color: '#9ca3af', fontSize: 13 }}>ID: {p.id}</span>
                     </label>
@@ -1745,6 +1770,18 @@ export default function App() {
                       <button className="ciq-btn" onClick={() => handleExportReport(a.insert_id)} style={{ padding: '12px 20px', background: '#fff', color: '#7c3aed', border: '1px solid #7c3aed', borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={(e) => { e.currentTarget.style.background = '#7c3aed'; e.currentTarget.style.color = '#fff'; }} onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#7c3aed'; }}>
                         Export PDF
                       </button>
+                      {a.report_token && (
+                        <a
+                          href={`https://conversioniq-app.com/reports/${a.report_token}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '12px 20px', background: '#fff', color: '#0891b2', border: '1px solid #0891b2', borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: 'pointer', textDecoration: 'none', transition: 'all 0.2s', whiteSpace: 'nowrap' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = '#0891b2'; e.currentTarget.style.color = '#fff'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#0891b2'; }}
+                        >
+                          🔗 Share Report
+                        </a>
+                      )}
                     </>
                   )}
                 </div>
@@ -1800,6 +1837,35 @@ export default function App() {
               </p>
             </div>
 
+            {!canUse('knockknock') && (
+              <div style={{ textAlign: 'center', padding: '60px 40px', background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)', borderRadius: 16, border: '2px dashed #a78bfa' }}>
+                <div style={{ fontSize: 48, marginBottom: 16 }}>�</div>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: 22, fontWeight: 700, color: '#4c1d95' }}>Know who's actually on your site</h3>
+                <p style={{ color: '#6d28d9', fontSize: 15, maxWidth: 520, margin: '0 auto 8px' }}>
+                  Right now you can see <strong>what's wrong</strong> with your pages. KnockKnock tells you <strong>who's reading them</strong> — real company names, job titles, and contact details for anonymous visitors.
+                </p>
+                <p style={{ color: '#7c3aed', fontSize: 14, maxWidth: 480, margin: '0 auto 24px', lineHeight: 1.6 }}>
+                  Instead of guessing who your traffic is, you'll know exactly which companies are considering you — and reach out before they go to a competitor.
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 32, marginBottom: 28, flexWrap: 'wrap' }}>
+                  {[
+                    { icon: '🏢', label: 'Company intelligence' },
+                    { icon: '👤', label: 'Visitor identification' },
+                    { icon: '⚡', label: 'Real-time alerts' },
+                  ].map(({ icon, label }) => (
+                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#5b21b6', fontSize: 14, fontWeight: 600 }}>
+                      <span style={{ fontSize: 20 }}>{icon}</span> {label}
+                    </div>
+                  ))}
+                </div>
+                <button onClick={() => setActiveTab('license')} style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '14px 32px', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>
+                  Unlock on Business or Agency →
+                </button>
+                <div style={{ marginTop: 12, fontSize: 12, color: '#8b5cf6' }}>Available on Business ($249/mo) and Agency ($449/mo)</div>
+              </div>
+            )}
+
+            {canUse('knockknock') && (<>
             {/* Statistics Cards */}
             {(knockKnockCompanyId || knockKnockWebhookSecret) && knockKnockLeads.length > 0 && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20, marginBottom: 32 }}>
@@ -2348,6 +2414,7 @@ export default function App() {
                 </div>
               </div>
             )}
+            </>)}
           </section>
         )}
 
@@ -2424,6 +2491,17 @@ export default function App() {
                           color: '#fff',
                           textTransform: 'capitalize',
                         }}>{licenseCustomer.plan}</span>
+                        <button
+                          onClick={handleLicenseRefresh}
+                          disabled={licenseLoading}
+                          title="Re-validate your license to pull the latest plan from the server"
+                          style={{ padding: '4px 10px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#374151', cursor: licenseLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 5, opacity: licenseLoading ? 0.5 : 1, transition: 'all 0.2s' }}
+                          onMouseEnter={(e) => { if (!licenseLoading) { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.color = '#7c3aed'; }}}
+                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#374151'; }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.56"/></svg>
+                          {licenseLoading ? 'Refreshing...' : 'Refresh Plan'}
+                        </button>
                       </div>
                     </div>
                   )}
@@ -2450,13 +2528,15 @@ export default function App() {
                 {/* Plan comparison */}
                 {(() => {
                   const plans: Record<string, { label: string; price: string; color: string; features: string[] }> = {
-                    starter: { label: 'Starter', price: '$99/mo', color: '#6b7280', features: ['Up to 3 sites', '6 conversion scores per page', 'AI-generated copy rewrites', 'Prioritized quick wins', 'Weekly PDF reports', 'Visitor intelligence'] },
-                    professional: { label: 'Professional', price: '$199/mo', color: '#2563eb', features: ['Up to 10 sites', 'Everything in Starter', 'Custom branding on reports', 'White-label email delivery', 'Priority support', 'Competitor analysis'] },
-                    agency: { label: 'Agency', price: '$499/mo', color: '#7c3aed', features: ['Up to 100 sites', 'Everything in Professional', 'Client license management', 'Full white-label dashboard', 'Custom FAQ & branding', 'Sub-license distribution'] },
+                    free: { label: 'Free', price: '$0', color: '#9ca3af', features: ['1 site', '1 page per audit', 'AI conversion audit', '6 conversion scores'] },
+                    starter: { label: 'Starter', price: '$89/mo', color: '#6b7280', features: ['1 site', '2 pages per audit', 'AI conversion audit', '6 conversion scores', 'AI copy suggestions', 'Priority quick wins', 'Automated PDF reports'] },
+                    professional: { label: 'Professional', price: '$179/mo', color: '#2563eb', features: ['1 site', '4 pages per audit', 'Everything in Starter', 'Priority support'] },
+                    business: { label: 'Business', price: '$249/mo', color: '#7c3aed', features: ['1 site', '6 pages per audit', 'Everything in Professional', 'KnockKnock visitor intelligence'] },
+                    agency: { label: 'Agency', price: '$449/mo', color: '#f59e0b', features: ['100 sites', '15 pages per audit', 'Everything in Business', 'Full white-label branding'] },
                   };
-                  const order = ['starter', 'professional', 'agency'];
+                  const order = ['free', 'starter', 'professional', 'business', 'agency'];
                   const currentIdx = order.indexOf(currentPlan);
-                  const current = plans[currentPlan] || plans.starter;
+                  const current = plans[currentPlan] || plans.free;
                   const nextKey = currentIdx < order.length - 1 ? order[currentIdx + 1] : null;
                   const next = nextKey ? plans[nextKey] : null;
 
@@ -2777,47 +2857,7 @@ export default function App() {
                       ) : null)}
                     </div>
                     
-                    {/* Google Analytics Metrics */}
-                    {modal.gaData && (
-                      <div style={{ marginBottom: 24, padding: 20, background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)', borderRadius: 12, border: '2px solid #0284c7' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-                          <span style={{ fontSize: 24, marginRight: 10 }}>📊</span>
-                          <div>
-                            <h4 style={{ margin: 0, color: '#0c4a6e', fontSize: 18 }}>Google Analytics Data (Last 30 Days)</h4>
-                            <p style={{ margin: 0, fontSize: 13, color: '#075985' }}>Real conversion metrics from your site</p>
-                          </div>
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
-                          <div style={{ padding: 14, background: '#fff', borderRadius: 8, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Page Views</div>
-                            <div style={{ fontSize: 26, fontWeight: 700, color: '#0284c7' }}>{modal.gaData.pageViews.toLocaleString()}</div>
-                          </div>
-                          <div style={{ padding: 14, background: '#fff', borderRadius: 8, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Conversions</div>
-                            <div style={{ fontSize: 26, fontWeight: 700, color: '#10b981' }}>{modal.gaData.conversions.toLocaleString()}</div>
-                          </div>
-                          <div style={{ padding: 14, background: '#fff', borderRadius: 8, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Conversion Rate</div>
-                            <div style={{ fontSize: 26, fontWeight: 700, color: '#7c3aed' }}>{modal.gaData.conversionRate}%</div>
-                          </div>
-                          <div style={{ padding: 14, background: '#fff', borderRadius: 8, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Bounce Rate</div>
-                            <div style={{ fontSize: 26, fontWeight: 700, color: '#dc2626' }}>{modal.gaData.bounceRate}%</div>
-                          </div>
-                          <div style={{ padding: 14, background: '#fff', borderRadius: 8, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Engagement Rate</div>
-                            <div style={{ fontSize: 26, fontWeight: 700, color: '#f59e0b' }}>{modal.gaData.engagementRate}%</div>
-                          </div>
-                          <div style={{ padding: 14, background: '#fff', borderRadius: 8, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Avg. Session (sec)</div>
-                            <div style={{ fontSize: 26, fontWeight: 700, color: '#6366f1' }}>{modal.gaData.avgSessionDuration}</div>
-                          </div>
-                        </div>
-                        <div style={{ marginTop: 12, fontSize: 12, color: '#075985', textAlign: 'center', fontStyle: 'italic' }}>
-                          This data helps identify opportunities to improve your conversion rate
-                        </div>
-                      </div>
-                    )}
+
                   </div>
                 )}
 
@@ -2891,8 +2931,15 @@ export default function App() {
                 {modal.tab === 'suggestions' && (
                   <div>
                     <h4 style={{ marginTop: 0, marginBottom: 16 }}>Improvement Suggestions</h4>
+                    {(() => {
+                      const allSuggestions = modal.audit.suggestions || [];
+                      const splitAt = Math.ceil(allSuggestions.length / 2);
+                      const unlockedSuggestions = canUse('suggestions_unlocked') ? allSuggestions : allSuggestions.slice(0, splitAt);
+                      const lockedCount = canUse('suggestions_unlocked') ? 0 : allSuggestions.length - splitAt;
+                      return (
+                        <>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {(modal.audit.suggestions || []).map((s, i) => {
+                      {unlockedSuggestions.map((s, i) => {
                         const suggestion = typeof s === 'string' ? { text: s } : s;
                         const isExpanded = expandedSuggestions.has(i);
                         const hasSection = suggestion.section && suggestion.section.trim() !== '';
@@ -2967,6 +3014,52 @@ export default function App() {
                         );
                       })}
                     </div>
+
+                    {/* Locked suggestions overlay for free plan */}
+                    {lockedCount > 0 && (
+                      <div style={{ position: 'relative', marginTop: 8 }}>
+                        {/* Blurred preview of locked suggestions */}
+                        <div style={{ filter: 'blur(4px)', pointerEvents: 'none', userSelect: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {[...Array(Math.min(lockedCount, 3))].map((_, i) => (
+                            <div key={i} style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
+                              <div style={{ padding: '14px 16px', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div>
+                                  <div style={{ fontSize: 15, fontWeight: 600, color: '#111827', marginBottom: 4 }}>Suggestion #{splitAt + i + 1}</div>
+                                  <div style={{ fontSize: 12, color: '#7c3aed', fontWeight: 500 }}>Unlock to view</div>
+                                </div>
+                                <div style={{ fontSize: 18, color: '#9ca3af' }}>▼</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Upgrade overlay */}
+                        <div style={{
+                          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                          background: 'linear-gradient(to bottom, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.95) 40%)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          borderRadius: 8
+                        }}>
+                          <div style={{ textAlign: 'center', padding: '24px 32px', background: '#fff', borderRadius: 12, boxShadow: '0 4px 20px rgba(0,0,0,0.12)', border: '1px solid #e5e7eb', maxWidth: 380 }}>
+                            <div style={{ fontSize: 32, marginBottom: 8 }}>🔒</div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 6 }}>
+                              {lockedCount} more suggestion{lockedCount !== 1 ? 's' : ''} locked
+                            </div>
+                            <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 16px 0', lineHeight: 1.5 }}>
+                              Free plan shows 50% of recommendations. Upgrade to unlock all suggestions, quick wins, and strategic improvements.
+                            </p>
+                            <button
+                              onClick={() => { setModal({ open: false }); setActiveTab('license'); }}
+                              style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+                            >
+                              Upgrade to unlock all →
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                        </>
+                      );
+                    })()}
 
                     {modal.audit.recommendations?.quick_wins && modal.audit.recommendations.quick_wins.length > 0 && (
                       <div style={{ marginTop: 24 }}>
@@ -3176,7 +3269,19 @@ export default function App() {
               </div>
 
               {/* Footer */}
-              <div style={{ padding: '16px 24px', borderTop: '1px solid #eee', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <div style={{ padding: '16px 24px', borderTop: '1px solid #eee', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
+                {modal.audit?.report_token && (
+                  <a
+                    href={`https://conversioniq-app.com/reports/${modal.audit.report_token}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: '#fff', color: '#0891b2', border: '1px solid #0891b2', borderRadius: 8, fontSize: 14, fontWeight: 600, textDecoration: 'none', transition: 'all 0.2s', marginRight: 'auto' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = '#0891b2'; e.currentTarget.style.color = '#fff'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#0891b2'; }}
+                  >
+                    🔗 Share Public Report
+                  </a>
+                )}
                 <button className="ciq-btn" onClick={() => handleExportReport(modal.audit?.insert_id)}>Export PDF</button>
                 <button className="ciq-btn primary" onClick={() => setModal({ open: false })}>Close</button>
               </div>

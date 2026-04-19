@@ -323,6 +323,13 @@ add_action('rest_api_init', function () {
             return current_user_can('manage_options'); }
         ));
 
+    register_rest_route('conversioniq/v1', '/license/refresh', array(
+        'methods' => 'POST',
+        'callback' => 'conversioniq_license_refresh',
+        'permission_callback' => function () {
+            return current_user_can('manage_options'); }
+        ));
+
     register_rest_route('conversioniq/v1', '/license/sites', array(
         'methods' => 'GET',
         'callback' => 'conversioniq_license_sites',
@@ -412,6 +419,20 @@ add_action('rest_api_init', function () {
             return current_user_can('manage_options'); }
         ));
 
+        // Business profile — stored in Supabase organizations table
+        register_rest_route('conversioniq/v1', '/business-profile', array(
+            array(
+                'methods'             => 'GET',
+                'callback'            => 'conversioniq_get_business_profile',
+                'permission_callback' => function () { return current_user_can('manage_options'); },
+            ),
+            array(
+                'methods'             => 'POST',
+                'callback'            => 'conversioniq_save_business_profile_endpoint',
+                'permission_callback' => function () { return current_user_can('manage_options'); },
+            ),
+        ));
+
         // Test email endpoint
         register_rest_route('conversioniq/v1', '/test-email', array(
             'methods' => 'POST',
@@ -424,63 +445,6 @@ add_action('rest_api_init', function () {
         register_rest_route('conversioniq/v1', '/send-manual-report', array(
             'methods' => 'POST',
             'callback' => 'conversioniq_send_manual_report',
-            'permission_callback' => function () {
-            return current_user_can('manage_options'); }
-        ));
-
-        // Google Analytics endpoints
-        register_rest_route('conversioniq/v1', '/ga/status', array(
-            'methods' => 'GET',
-            'callback' => 'conversioniq_ga_status',
-            'permission_callback' => function () {
-            return current_user_can('manage_options'); }
-        ));
-
-        register_rest_route('conversioniq/v1', '/ga/save-credentials', array(
-            'methods' => 'POST',
-            'callback' => 'conversioniq_ga_save_credentials',
-            'permission_callback' => function () {
-            return current_user_can('manage_options'); }
-        ));
-
-        register_rest_route('conversioniq/v1', '/ga/auth-url', array(
-            'methods' => 'GET',
-            'callback' => 'conversioniq_ga_auth_url',
-            'permission_callback' => function () {
-            return current_user_can('manage_options'); }
-        ));
-
-        register_rest_route('conversioniq/v1', '/ga/properties', array(
-            'methods' => 'GET',
-            'callback' => 'conversioniq_ga_properties',
-            'permission_callback' => function () {
-            return current_user_can('manage_options'); }
-        ));
-
-        register_rest_route('conversioniq/v1', '/ga/save-property', array(
-            'methods' => 'POST',
-            'callback' => 'conversioniq_ga_save_property',
-            'permission_callback' => function () {
-            return current_user_can('manage_options'); }
-        ));
-
-        register_rest_route('conversioniq/v1', '/ga/disconnect', array(
-            'methods' => 'POST',
-            'callback' => 'conversioniq_ga_disconnect',
-            'permission_callback' => function () {
-            return current_user_can('manage_options'); }
-        ));
-
-        register_rest_route('conversioniq/v1', '/ga/page-data', array(
-            'methods' => 'POST',
-            'callback' => 'conversioniq_ga_page_data',
-            'permission_callback' => function () {
-            return current_user_can('manage_options'); }
-        ));
-
-        register_rest_route('conversioniq/v1', '/ga/top-pages', array(
-            'methods' => 'GET',
-            'callback' => 'conversioniq_ga_top_pages',
             'permission_callback' => function () {
             return current_user_can('manage_options'); }
         ));
@@ -615,14 +579,36 @@ function conversioniq_run_audit(WP_REST_Request $request)
     }
     set_transient($transient_key, 1, 30);
 
+    // Weekly audit limit: check how many audits the user has run in the last 7 days
+    $flags = ConversionIQ_Config_Manager::get_feature_flags();
+    $audits_per_week = isset($flags['audits_per_week']) ? intval($flags['audits_per_week']) : 3;
+    if ($audits_per_week > 0) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'conversioniq_audits';
+        $seven_days_ago = date('Y-m-d H:i:s', strtotime('-7 days'));
+        $recent_count = (int) $wpdb->get_var(
+            $wpdb->prepare("SELECT COUNT(*) FROM {$table} WHERE created_at >= %s", $seven_days_ago)
+        );
+        if ($recent_count >= $audits_per_week) {
+            return new WP_REST_Response(array(
+                'success'       => false,
+                'message'       => __('Weekly audit limit reached. Your plan allows 3 audits per week. Limit resets 7 days after your first audit this period.', 'conversion-iq'),
+                'error_code'    => 'weekly_limit_reached',
+                'audits_used'   => $recent_count,
+                'audits_allowed' => $audits_per_week,
+            ), 429);
+        }
+    }
+
     $body = $request->get_json_params();
     $pages = isset($body['pages']) ? $body['pages'] : array();
     if (empty($pages)) {
         return new WP_REST_Response(array('success' => false, 'message' => __('No pages specified', 'conversion-iq')), 400);
     }
 
-    // Cap at 10 pages per request
-    $pages = array_slice($pages, 0, 10);
+    // Cap pages per plan
+    $max_pages = isset($flags['max_pages_per_audit']) ? intval($flags['max_pages_per_audit']) : 1;
+    $pages = array_slice($pages, 0, $max_pages);
 
     // Validate page IDs: must be integers referencing published pages/posts
     $allowed_types = array('page', 'post');
@@ -721,6 +707,9 @@ function conversioniq_run_audit(WP_REST_Request $request)
             // Add benchmark research to audit results
             $ai['benchmark_research'] = $benchmark_research;
 
+            // Generate a unique token for the public report URL
+            $ai['report_token'] = bin2hex(random_bytes(16));
+
             // Check for required fields and log diagnostic info
             $has_clarity = isset($ai['clarity_score']);
             $has_suggestions = isset($ai['suggestions']);
@@ -759,6 +748,7 @@ function conversioniq_run_audit(WP_REST_Request $request)
                 'status' => 'success'
             );
             $results[] = $ai;
+            $last_result_idx = count($results) - 1;
 
             // Sync audit to Supabase cloud database
             try {
@@ -779,11 +769,32 @@ function conversioniq_run_audit(WP_REST_Request $request)
                     'functionality_suggestions' => isset($ai['functionality_suggestions']) ? $ai['functionality_suggestions'] : array(),
                     'rewrites' => isset($ai['rewrites']) ? $ai['rewrites'] : array(),
                     'analysis_method' => isset($ai['analysis_method']) ? $ai['analysis_method'] : 'single',
-                    'sections_analyzed' => isset($ai['sections_analyzed']) ? $ai['sections_analyzed'] : 1
+                    'sections_analyzed' => isset($ai['sections_analyzed']) ? $ai['sections_analyzed'] : 1,
+                    // Public report fields
+                    'report_token'       => $ai['report_token'],
+                    'insights'           => isset($ai['insights']) ? $ai['insights'] : null,
+                    'recommendations'    => isset($ai['recommendations']) ? $ai['recommendations'] : null,
+                    'benchmark_research' => isset($ai['benchmark_research']) ? $ai['benchmark_research'] : null,
+                    'business_context'   => array(
+                        'industry'    => $business_data['industry'] ?? null,
+                        'product'     => $business_data['product'] ?? null,
+                        'audience'    => $business_data['audience'] ?? null,
+                        'goal'        => $business_data['goal'] ?? null,
+                        'pain_points' => $business_data['pain_points'] ?? null,
+                    ),
+                    'lead_intelligence'  => isset($ai['lead_intelligence_summary']) ? $ai['lead_intelligence_summary'] : null,
+                    'cro_checklist'      => isset($ai['cro_checklist']) ? $ai['cro_checklist'] : null,
+                    'plan'               => ConversionIQ_Config_Manager::get_plan(),
                 ));
 
                 // Track usage for analytics
                 $supabase_sync->track_usage('analyze_page');
+
+                // Expose sync result in debug output so it's visible in browser console
+                $results[$last_result_idx]['_debug']['supabase_sync'] = $sync_success ? 'success' : 'FAILED - check wp-content/debug.log';
+                $results[$last_result_idx]['_debug']['report_url'] = $sync_success
+                    ? 'https://conversioniq-app.com/reports/' . ($ai['report_token'] ?? '')
+                    : null;
 
                 if (!$sync_success) {
                     ciq_log('Failed to sync audit to Supabase cloud');
@@ -791,6 +802,7 @@ function conversioniq_run_audit(WP_REST_Request $request)
             }
             catch (Exception $e) {
                 ciq_log('Supabase sync exception - ' . $e->getMessage());
+                $results[$last_result_idx]['_debug']['supabase_sync'] = 'EXCEPTION: ' . $e->getMessage();
             }
 
             // Send to webhook if configured
@@ -982,29 +994,124 @@ function conversioniq_get_page_content(WP_REST_Request $request)
 
 
 
-function conversioniq_guess_business_info(WP_REST_Request $request)
+/**
+ * GET /business-profile — fetch business profile from Supabase, with WP option fallback.
+ */
+function conversioniq_get_business_profile(WP_REST_Request $request)
 {
-    error_log('ðŸ” Auto-fill: Fetching homepage content');
+    $fields = [ 'business_name', 'industry', 'product', 'audience', 'pain_points', 'competitors', 'goal', 'additional_info', 'unique_selling_points', 'target_geography', 'price_point', 'primary_traffic_source' ];
 
-    // Get homepage URL
-    $home_url = get_home_url();
-    $response = wp_remote_get($home_url, array(
-        'timeout' => 15,
-        'sslverify' => false,
-    ));
+    // Always start from local WP cache so we never lose data
+    $local = json_decode( get_option( 'conversion_iq_settings', '{}' ), true );
+    if ( ! is_array( $local ) ) $local = [];
 
-    if (is_wp_error($response)) {
-        error_log('âŒ Failed to fetch homepage: ' . $response->get_error_message());
-        return new WP_REST_Response(array('success' => false, 'message' => 'Failed to fetch homepage'), 500);
+    // Try Supabase — overwrite local only where Supabase has a non-empty value
+    $sync    = new ConversionIQ_Supabase_Sync();
+    $profile = $sync->fetch_business_profile();
+
+    if ( is_array( $profile ) ) {
+        foreach ( $fields as $f ) {
+            if ( isset( $profile[ $f ] ) && $profile[ $f ] !== null && $profile[ $f ] !== '' ) {
+                $local[ $f ] = $profile[ $f ];
+            }
+        }
     }
 
-    $html = wp_remote_retrieve_body($response);
-    $content = wp_strip_all_tags($html);
+    // Build response from merged data
+    $result = [];
+    foreach ( $fields as $f ) {
+        $result[ $f ] = $local[ $f ] ?? null;
+    }
+    return rest_ensure_response( $result );
+}
+
+/**
+ * POST /business-profile — save business profile to Supabase + local WP cache.
+ */
+function conversioniq_save_business_profile_endpoint(WP_REST_Request $request)
+{
+    $params = $request->get_json_params();
+    if ( empty( $params ) ) {
+        return new WP_REST_Response( [ 'success' => false, 'message' => 'No data provided' ], 400 );
+    }
+
+    $allowed = [ 'business_name', 'industry', 'product', 'audience', 'pain_points', 'competitors', 'goal', 'additional_info', 'unique_selling_points', 'target_geography', 'price_point', 'primary_traffic_source' ];
+    $clean   = [];
+    foreach ( $allowed as $field ) {
+        if ( array_key_exists( $field, $params ) ) {
+            $clean[ $field ] = ( $field === 'additional_info' )
+                ? sanitize_textarea_field( $params[ $field ] )
+                : sanitize_text_field( $params[ $field ] );
+        }
+    }
+
+    // Always persist to local WP option — fast read path for AI audits
+    $local = json_decode( get_option( 'conversion_iq_settings', '{}' ), true );
+    if ( ! is_array( $local ) ) $local = [];
+    $local = array_merge( $local, $clean );
+    update_option( 'conversion_iq_settings', wp_json_encode( $local ) );
+
+    // Best-effort sync to Supabase
+    $sync = new ConversionIQ_Supabase_Sync();
+    $sync->save_business_profile( $clean );
+
+    return rest_ensure_response( [ 'success' => true ] );
+}
+
+function conversioniq_guess_business_info(WP_REST_Request $request)
+{
+    error_log('Auto-fill: Reading homepage content');
+
+    $content = '';
+
+    // --- Strategy 1: Read front page directly from DB (avoids loopback HTTP deadlock) ---
+    $front_page_id = (int) get_option('page_on_front');
+    if ($front_page_id > 0) {
+        $page = get_post($front_page_id);
+        if ($page && !empty($page->post_content)) {
+            $rendered = apply_filters('the_content', $page->post_content);
+            $content  = wp_strip_all_tags($rendered);
+            error_log('Auto-fill: Front page read from DB (ID ' . $front_page_id . ', ' . strlen($content) . ' chars)');
+        }
+    }
+
+    // Also append site name + tagline as context for the AI
+    $site_meta = trim(get_bloginfo('name') . ' - ' . get_bloginfo('description'));
+    if (!empty($site_meta)) {
+        $content = $site_meta . ' ' . $content;
+    }
+
+    // --- Strategy 2: HTTP fallback for page builder sites (Elementor etc.) ---
+    // Only used when DB content is thin (page builders store content outside post_content)
+    if (strlen(trim($content)) < 200) {
+        error_log('Auto-fill: DB content thin, trying HTTP fallback');
+        $home_url      = get_home_url();
+        $http_response = wp_remote_get($home_url, array(
+            'timeout'    => 25,
+            'sslverify'  => false,
+            'user-agent' => 'ConversionIQ-AutoFill/1.0',
+        ));
+
+        if (!is_wp_error($http_response)) {
+            $html    = wp_remote_retrieve_body($http_response);
+            $content = wp_strip_all_tags($html);
+            error_log('Auto-fill: HTTP fetch succeeded (' . strlen($content) . ' chars)');
+        } else {
+            error_log('Auto-fill: HTTP fallback failed: ' . $http_response->get_error_message());
+        }
+    }
+
+    if (strlen(trim($content)) < 10) {
+        return new WP_REST_Response(array(
+            'success' => false,
+            'message' => 'Could not read homepage content. Please fill in your business information manually.',
+        ), 500);
+    }
+
     $content = preg_replace('/\s+/', ' ', $content); // Normalize whitespace
-    $content = substr($content, 0, 3000); // Limit to first 3000 chars
+    $content = substr($content, 0, 3000);            // Limit to first 3000 chars
 
-    error_log('âœ… Homepage content fetched (' . strlen($content) . ' chars)');
-
+    error_log('Auto-fill: Final content length sent to AI: ' . strlen($content) . ' chars');
     // Build AI prompt for business info extraction
     $prompt = "You are analyzing a homepage to extract business information. Extract the following details from the page content below:
 
@@ -1345,6 +1452,10 @@ function conversioniq_license_status()
 
     $customer = get_option('conversioniq_license_customer', null);
 
+    $features = class_exists('ConversionIQ_Config_Manager')
+        ? ConversionIQ_Config_Manager::get_feature_flags()
+        : array();
+
     return rest_ensure_response(array(
         'activated'    => ($license_status === 'active'),
         'license_key'  => $license_key ? substr($license_key, 0, 7) . '...' : '',
@@ -1352,6 +1463,87 @@ function conversioniq_license_status()
         'status'       => $license_status,
         'validated_at' => $validated_at,
         'customer'     => $customer,
+        'features'     => $features,
+    ));
+}
+
+/**
+ * Refresh the cached plan/customer data by re-validating the stored license key.
+ * Allows plan upgrades made in the dashboard to take effect without re-entering the key.
+ */
+function conversioniq_license_refresh()
+{
+    $license_key = get_option('conversioniq_license_key', '');
+    if (empty($license_key)) {
+        return new WP_REST_Response(array(
+            'success' => false,
+            'message' => 'No license key found. Please activate a license first.',
+        ), 400);
+    }
+
+    $response = wp_remote_post('https://conversioniq-app.com/api/validate-license', array(
+        'timeout' => 15,
+        'headers' => array('Content-Type' => 'application/json'),
+        'body'    => wp_json_encode(array(
+            'license_key' => $license_key,
+            'site_url'    => get_site_url(),
+        )),
+    ));
+
+    if (is_wp_error($response)) {
+        return new WP_REST_Response(array(
+            'success' => false,
+            'message' => 'Could not reach the license server: ' . $response->get_error_message(),
+        ), 503);
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+    $body = json_decode(wp_remote_retrieve_body($response), true);
+
+    if ($code !== 200 || empty($body['valid'])) {
+        return new WP_REST_Response(array(
+            'success' => false,
+            'message' => $body['message'] ?? 'License validation failed.',
+        ), 400);
+    }
+
+    // Update stored data
+    update_option('conversioniq_license_status', 'active');
+    update_option('conversioniq_license_validated_at', time());
+
+    if (!empty($body['api_key'])) {
+        update_option('conversioniq_api_key', sanitize_text_field($body['api_key']));
+    }
+
+    $customer = null;
+    if (!empty($body['customer']) && is_array($body['customer'])) {
+        $customer = array(
+            'name'    => sanitize_text_field($body['customer']['name'] ?? ''),
+            'email'   => sanitize_email($body['customer']['email'] ?? ''),
+            'company' => sanitize_text_field($body['customer']['company'] ?? ''),
+            'plan'    => sanitize_text_field($body['customer']['plan'] ?? ''),
+        );
+        update_option('conversioniq_license_customer', $customer);
+    }
+
+    // Clear stale feature flag cache so plan defaults take effect immediately
+    delete_option(ConversionIQ_Config_Manager::FEATURE_FLAGS_OPTION);
+
+    // Also re-sync branding / feature flags
+    if (class_exists('ConversionIQ_Config_Manager')) {
+        ConversionIQ_Config_Manager::sync_from_saas();
+    }
+
+    // Return fresh feature flags so the frontend can update without a page reload
+    $features = class_exists('ConversionIQ_Config_Manager')
+        ? ConversionIQ_Config_Manager::get_feature_flags()
+        : array();
+
+    return rest_ensure_response(array(
+        'success'  => true,
+        'message'  => 'Plan refreshed successfully.',
+        'customer' => $customer,
+        'features' => $features,
     ));
 }
 
@@ -1441,11 +1633,16 @@ function conversioniq_license_activate(WP_REST_Request $request)
         ConversionIQ_Config_Manager::sync_from_saas();
     }
 
+    $features = class_exists('ConversionIQ_Config_Manager')
+        ? ConversionIQ_Config_Manager::get_feature_flags()
+        : array();
+
     return rest_ensure_response(array(
         'success'  => true,
         'message'  => 'License activated successfully!',
         'status'   => 'active',
         'customer' => $customer,
+        'features' => $features,
     ));
 }
 
@@ -1712,6 +1909,9 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
                 $ai_result = ConversionIQ_AI::analyze($payload);
 
                 if (is_array($ai_result)) {
+                    // Generate a unique token for the public report URL
+                    $ai_result['report_token'] = bin2hex(random_bytes(16));
+
                     // Save audit to database
                     $inserted = $wpdb->insert(
                         $table,
@@ -1747,7 +1947,22 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
                                 'functionality_suggestions' => isset($ai_result['functionality_suggestions']) ? $ai_result['functionality_suggestions'] : array(),
                                 'rewrites' => isset($ai_result['rewrites']) ? $ai_result['rewrites'] : array(),
                                 'analysis_method' => isset($ai_result['analysis_method']) ? $ai_result['analysis_method'] : 'single',
-                                'sections_analyzed' => isset($ai_result['sections_analyzed']) ? $ai_result['sections_analyzed'] : 1
+                                'sections_analyzed' => isset($ai_result['sections_analyzed']) ? $ai_result['sections_analyzed'] : 1,
+                                // Public report fields
+                                'report_token'       => $ai_result['report_token'],
+                                'insights'           => isset($ai_result['insights']) ? $ai_result['insights'] : null,
+                                'recommendations'    => isset($ai_result['recommendations']) ? $ai_result['recommendations'] : null,
+                                'benchmark_research' => isset($ai_result['benchmark_research']) ? $ai_result['benchmark_research'] : null,
+                                'business_context'   => array(
+                                    'industry'    => $business['industry'] ?? null,
+                                    'product'     => $business['product'] ?? null,
+                                    'audience'    => $business['audience'] ?? null,
+                                    'goal'        => $business['goal'] ?? null,
+                                    'pain_points' => $business['pain_points'] ?? null,
+                                ),
+                                'lead_intelligence'  => isset($ai_result['lead_intelligence_summary']) ? $ai_result['lead_intelligence_summary'] : null,
+                                'cro_checklist'      => isset($ai_result['cro_checklist']) ? $ai_result['cro_checklist'] : null,
+                                'plan'               => ConversionIQ_Config_Manager::get_plan(),
                             ));
 
                             $supabase_sync->track_usage('analyze_page');

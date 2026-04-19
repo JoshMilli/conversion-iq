@@ -67,7 +67,7 @@ class ConversionIQ_Config_Manager
         if ($customer && is_array($customer) && !empty($customer['plan'])) {
             return strtolower($customer['plan']);
         }
-        return 'starter'; // default to lowest tier
+        return 'free'; // default to free tier
     }
 
     /**
@@ -78,14 +78,38 @@ class ConversionIQ_Config_Manager
     private static function get_plan_defaults()
     {
         $plans = array(
-            'starter' => array(
-                'max_sites'              => 3,
+            'free' => array(
+                'max_sites'              => 1,
+                'max_pages_per_audit'    => 1,
+                'audits_per_week'        => 3,
                 'conversion_scores'      => 6,
+                'ai_copy_suggestions'    => false,
+                'priority_quick_wins'    => false,
                 'automated_reports'      => true,
-                'knockknock'             => true,
+                'pdf_export'             => false,
+                'knockknock'             => false,
+                'suggestions_unlocked'   => false,
                 'custom_branding'        => false,
                 'white_label_emails'     => false,
-                'competitor_analysis'    => false,
+                'priority_support'       => false,
+                'custom_faq'             => false,
+                'hide_powered_by'        => false,
+                'client_management'      => false,
+                'sub_license_distribution' => false,
+            ),
+            'starter' => array(
+                'max_sites'              => 1,
+                'max_pages_per_audit'    => 2,
+                'audits_per_week'        => 3,
+                'conversion_scores'      => 6,
+                'ai_copy_suggestions'    => true,
+                'priority_quick_wins'    => true,
+                'automated_reports'      => true,
+                'pdf_export'             => true,
+                'knockknock'             => false,
+                'suggestions_unlocked'   => true,
+                'custom_branding'        => false,
+                'white_label_emails'     => false,
                 'priority_support'       => false,
                 'custom_faq'             => false,
                 'hide_powered_by'        => false,
@@ -93,13 +117,37 @@ class ConversionIQ_Config_Manager
                 'sub_license_distribution' => false,
             ),
             'professional' => array(
-                'max_sites'              => 10,
+                'max_sites'              => 1,
+                'max_pages_per_audit'    => 4,
+                'audits_per_week'        => 3,
                 'conversion_scores'      => 6,
+                'ai_copy_suggestions'    => true,
+                'priority_quick_wins'    => true,
                 'automated_reports'      => true,
+                'pdf_export'             => true,
+                'knockknock'             => false,
+                'suggestions_unlocked'   => true,
+                'custom_branding'        => false,
+                'white_label_emails'     => false,
+                'priority_support'       => true,
+                'custom_faq'             => false,
+                'hide_powered_by'        => false,
+                'client_management'      => false,
+                'sub_license_distribution' => false,
+            ),
+            'business' => array(
+                'max_sites'              => 1,
+                'max_pages_per_audit'    => 6,
+                'audits_per_week'        => 3,
+                'conversion_scores'      => 6,
+                'ai_copy_suggestions'    => true,
+                'priority_quick_wins'    => true,
+                'automated_reports'      => true,
+                'pdf_export'             => true,
                 'knockknock'             => true,
-                'custom_branding'        => true,
-                'white_label_emails'     => true,
-                'competitor_analysis'    => true,
+                'suggestions_unlocked'   => true,
+                'custom_branding'        => false,
+                'white_label_emails'     => false,
                 'priority_support'       => true,
                 'custom_faq'             => false,
                 'hide_powered_by'        => false,
@@ -108,12 +156,17 @@ class ConversionIQ_Config_Manager
             ),
             'agency' => array(
                 'max_sites'              => 100,
+                'max_pages_per_audit'    => 15,
+                'audits_per_week'        => 3,
                 'conversion_scores'      => 6,
+                'ai_copy_suggestions'    => true,
+                'priority_quick_wins'    => true,
                 'automated_reports'      => true,
+                'pdf_export'             => true,
                 'knockknock'             => true,
+                'suggestions_unlocked'   => true,
                 'custom_branding'        => true,
                 'white_label_emails'     => true,
-                'competitor_analysis'    => true,
                 'priority_support'       => true,
                 'custom_faq'             => true,
                 'hide_powered_by'        => true,
@@ -123,7 +176,7 @@ class ConversionIQ_Config_Manager
         );
 
         $plan = self::get_plan();
-        return isset($plans[$plan]) ? $plans[$plan] : $plans['starter'];
+        return isset($plans[$plan]) ? $plans[$plan] : $plans['free'];
     }
 
     /**
@@ -139,7 +192,16 @@ class ConversionIQ_Config_Manager
             return $defaults;
         }
 
-        return array_merge($defaults, $cached);
+        // Remote cache can ADD features (e.g. beta flags, manual overrides)
+        // but cannot REMOVE features the current plan grants.
+        // Plan defaults are the authoritative floor.
+        $merged = array_merge($defaults, $cached);
+        foreach ($defaults as $key => $val) {
+            if ($val === true) {
+                $merged[$key] = true; // plan-granted feature, cannot be revoked by stale cache
+            }
+        }
+        return $merged;
     }
 
     /**

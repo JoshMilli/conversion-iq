@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 2.0.38
+ * Version: 2.0.47
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define('CONVERSION_IQ_VERSION', '2.0.38');
+define( 'CONVERSION_IQ_VERSION', '2.0.47' );
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
@@ -85,11 +85,12 @@ require_once CONVERSION_IQ_DIR . 'includes/class-config-manager.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-database.php';
 require_once CONVERSION_IQ_DIR . 'includes/rest-api.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-ai-engine.php';
-require_once CONVERSION_IQ_DIR . 'includes/class-google-analytics.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-reports.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-automated-reports.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-supabase-sync.php';
-require_once CONVERSION_IQ_DIR . 'includes/class-knockknock-webhook.php';
+if ( ConversionIQ_Config_Manager::can('knockknock') ) {
+    require_once CONVERSION_IQ_DIR . 'includes/class-knockknock-webhook.php';
+}
 
 // Initialize automated reports after WordPress loads
 add_action( 'init', function() {

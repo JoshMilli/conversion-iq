@@ -145,6 +145,114 @@ class ConversionIQ_Supabase_Sync {
     }
     
     /**
+     * Ensure this site is registered as an organization in Supabase.
+     * Creates a new org if none exists; falls back to domain lookup on conflict.
+     *
+     * @return bool
+     */
+    private function ensure_organization() {
+        $domain  = parse_url(get_site_url(), PHP_URL_HOST);
+        $account = get_option('conversioniq_account', null);
+
+        $org_data = [
+            'name'                 => get_bloginfo('name') ?: 'WordPress Site',
+            'domain'               => $domain,
+            'api_key'              => $this->generate_api_key(),
+            'plan'                 => 'free',
+            'max_audits_per_month' => 10,
+        ];
+        if ($account && is_array($account)) {
+            $org_data['user_full_name'] = $account['full_name'] ?? null;
+            $org_data['user_email']     = $account['email']     ?? null;
+            $org_data['company_name']   = $account['company']   ?? null;
+            $org_data['username']       = $account['username']  ?? null;
+        }
+
+        $response = wp_remote_post($this->supabase_url . '/rest/v1/organizations', [
+            'headers' => [
+                'apikey'        => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                'Content-Type'  => 'application/json',
+                'Prefer'        => 'return=representation',
+            ],
+            'body'    => json_encode($org_data),
+            'timeout' => 30,
+        ]);
+
+        if (!is_wp_error($response)) {
+            $status = wp_remote_retrieve_response_code($response);
+            $body   = json_decode(wp_remote_retrieve_body($response), true);
+
+            if ($status === 201 && isset($body[0]['id'])) {
+                update_option('conversioniq_organization_id', $body[0]['id']);
+                $this->organization_id = $body[0]['id'];
+                error_log('ConversionIQ: Auto-registered as org ' . $this->organization_id);
+                return true;
+            }
+
+            // 409 = unique conflict (domain already exists) — look it up instead
+            if ($status === 409 || $status === 422 || $status === 400) {
+                error_log('ConversionIQ: Org INSERT conflict (HTTP ' . $status . ') — looking up existing org by domain');
+                return $this->lookup_organization_by_domain($domain);
+            }
+
+            error_log('ConversionIQ: Org registration returned HTTP ' . $status . ' — ' . wp_remote_retrieve_body($response));
+        } else {
+            error_log('ConversionIQ: Org registration request failed — ' . $response->get_error_message());
+        }
+
+        // Last-resort fallback: try to find the org anyway
+        return $this->lookup_organization_by_domain($domain);
+    }
+
+    /**
+     * Look up an existing organization by domain and cache its ID.
+     *
+     * @param string $domain
+     * @return bool
+     */
+    private function lookup_organization_by_domain($domain) {
+        // Try multiple formats: the passed domain, the full site URL with/without trailing slash
+        $site_url   = get_site_url();
+        $candidates = array_unique( [
+            $domain,
+            rtrim( $site_url, '/' ) . '/',
+            rtrim( $site_url, '/' ),
+            parse_url( $site_url, PHP_URL_HOST ),
+        ] );
+
+        foreach ( $candidates as $candidate ) {
+            $url = $this->supabase_url . '/rest/v1/organizations?domain=eq.' . rawurlencode( $candidate ) . '&select=id&limit=1';
+
+            $response = wp_remote_get( $url, [
+                'headers' => [
+                    'apikey'        => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                ],
+                'timeout' => 15,
+            ] );
+
+            if ( is_wp_error( $response ) ) {
+                error_log( 'ConversionIQ: Org lookup failed — ' . $response->get_error_message() );
+                continue;
+            }
+
+            $status = wp_remote_retrieve_response_code( $response );
+            $body   = json_decode( wp_remote_retrieve_body( $response ), true );
+
+            if ( $status === 200 && is_array( $body ) && isset( $body[0]['id'] ) ) {
+                update_option( 'conversioniq_organization_id', $body[0]['id'] );
+                $this->organization_id = $body[0]['id'];
+                error_log( 'ConversionIQ: Found existing org ' . $this->organization_id . ' for domain ' . $candidate );
+                return true;
+            }
+        }
+
+        error_log( 'ConversionIQ: Could not find org for any domain candidate derived from ' . $site_url );
+        return false;
+    }
+
+    /**
      * Generate a unique API key for this organization
      * 
      * @return string Generated API key
@@ -327,65 +435,253 @@ class ConversionIQ_Supabase_Sync {
     }
 
     /**
-     * Send audit data to Supabase
+     * Fetch business profile fields from the Supabase organizations row.
      *
-     * @param array $audit_data The complete audit data
-     * @return bool Success status
+     * @return array|null Associative array of profile fields, or null on failure.
      */
-    public function send_audit($audit_data) {
-        // Check if we're configured
-        if (!$this->organization_id || !$this->api_key || !$this->supabase_anon_key) {
-            error_log('ConversionIQ: Cannot sync audit - not properly configured');
+    public function fetch_business_profile() {
+        if ( ! $this->supabase_anon_key ) {
+            error_log( 'ConversionIQ: fetch_business_profile — no anon key configured' );
+            return null;
+        }
+
+        // If we don't have a cached org ID, resolve it from Supabase by domain.
+        // The domain stored in Supabase may be a full URL or bare hostname, so try all formats.
+        if ( ! $this->organization_id ) {
+            $site_url   = get_site_url();
+            $candidates = [
+                rtrim( $site_url, '/' ) . '/',          // https://example.com/
+                rtrim( $site_url, '/' ),                 // https://example.com
+                parse_url( $site_url, PHP_URL_HOST ),    // example.com
+            ];
+
+            foreach ( $candidates as $candidate ) {
+                $lookup_url = $this->supabase_url . '/rest/v1/organizations?domain=eq.'
+                    . rawurlencode( $candidate ) . '&select=id&limit=1';
+
+                $lookup = wp_remote_get( $lookup_url, [
+                    'headers' => [
+                        'apikey'        => $this->supabase_anon_key,
+                        'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                    ],
+                    'timeout' => 10,
+                ] );
+
+                if ( ! is_wp_error( $lookup ) ) {
+                    $lookup_body = json_decode( wp_remote_retrieve_body( $lookup ), true );
+                    if ( wp_remote_retrieve_response_code( $lookup ) === 200
+                         && is_array( $lookup_body ) && ! empty( $lookup_body[0]['id'] ) ) {
+                        $this->organization_id = $lookup_body[0]['id'];
+                        update_option( 'conversioniq_organization_id', $this->organization_id );
+                        error_log( 'ConversionIQ: fetch_business_profile resolved org ID via domain lookup (' . $candidate . ')' );
+                        break;
+                    }
+                }
+            }
+
+            if ( ! $this->organization_id ) {
+                error_log( 'ConversionIQ: fetch_business_profile — could not resolve organization ID for ' . get_site_url() );
+                return null;
+            }
+        }
+
+        $fields = 'business_name,industry,product,audience,pain_points,competitors,goal,additional_info,unique_selling_points,target_geography,price_point,primary_traffic_source';
+        $url    = $this->supabase_url . '/rest/v1/organizations?id=eq.' . rawurlencode( $this->organization_id ) . '&select=' . $fields . '&limit=1';
+
+        $response = wp_remote_get( $url, [
+            'headers' => [
+                'apikey'        => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+            ],
+            'timeout' => 15,
+        ] );
+
+        if ( is_wp_error( $response ) ) {
+            error_log( 'ConversionIQ: fetch_business_profile request failed — ' . $response->get_error_message() );
+            return null;
+        }
+
+        $status = wp_remote_retrieve_response_code( $response );
+        $body   = json_decode( wp_remote_retrieve_body( $response ), true );
+
+        if ( $status === 200 && is_array( $body ) && ! empty( $body ) ) {
+            return $body[0];
+        }
+
+        error_log( 'ConversionIQ: fetch_business_profile returned HTTP ' . $status . ' — ' . wp_remote_retrieve_body( $response ) );
+        return null;
+    }
+
+    /**
+     * Save business profile fields to the Supabase organizations row via PATCH.
+     *
+     * @param array $profile Associative array of profile fields to update.
+     * @return bool True on success, false on failure.
+     */
+    public function save_business_profile( array $profile ) {
+        if ( ! $this->supabase_anon_key || ! $this->organization_id ) {
+            error_log( 'ConversionIQ: save_business_profile skipped — no org ID' );
             return false;
         }
-        
-        // Prepare audit data for Supabase
-        $supabase_data = [
-            'organization_id' => $this->organization_id,
-            'page_url' => $audit_data['page_url'] ?? '',
-            'page_title' => $audit_data['page_title'] ?? null,
-            'industry' => $audit_data['industry'] ?? null,
-            'clarity_score' => $this->normalize_score($audit_data['clarity_score'] ?? null),
-            'emotional_score' => $this->normalize_score($audit_data['emotional_score'] ?? null),
-            'cta_strength' => $this->normalize_score($audit_data['cta_strength'] ?? null),
-            'readability_score' => $this->normalize_score($audit_data['readability_score'] ?? null),
-            'engagement_score' => $this->normalize_score($audit_data['engagement_score'] ?? null),
-            'trust_score' => $this->normalize_score($audit_data['trust_score'] ?? null),
-            'overall_score' => $this->normalize_score($audit_data['overall_score'] ?? null),
-            'suggestions' => $audit_data['suggestions'] ?? [],
+
+        $allowed = [ 'business_name', 'industry', 'product', 'audience', 'pain_points', 'competitors', 'goal', 'additional_info', 'unique_selling_points', 'target_geography', 'price_point', 'primary_traffic_source' ];
+        $patch   = [];
+        foreach ( $allowed as $field ) {
+            if ( array_key_exists( $field, $profile ) ) {
+                $patch[ $field ] = $profile[ $field ];
+            }
+        }
+
+        if ( empty( $patch ) ) {
+            return true;
+        }
+
+        $response = wp_remote_request(
+            $this->supabase_url . '/rest/v1/organizations?id=eq.' . urlencode( $this->organization_id ),
+            [
+                'method'  => 'PATCH',
+                'headers' => [
+                    'apikey'        => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                    'Content-Type'  => 'application/json',
+                    'Prefer'        => 'return=minimal',
+                ],
+                'body'    => json_encode( $patch ),
+                'timeout' => 15,
+            ]
+        );
+
+        if ( is_wp_error( $response ) ) {
+            error_log( 'ConversionIQ: save_business_profile PATCH failed — ' . $response->get_error_message() );
+            return false;
+        }
+
+        $status = wp_remote_retrieve_response_code( $response );
+        if ( $status !== 200 && $status !== 204 ) {
+            error_log( 'ConversionIQ: save_business_profile PATCH returned HTTP ' . $status );
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Send audit data to Supabase.
+     *
+     * Two-phase approach:
+     *   Phase 1 — INSERT core scalar fields + report_token (proven reliable path).
+     *   Phase 2 — PATCH the JSONB report fields onto the same row (best-effort;
+     *             failure here keeps the token alive so the report URL still resolves).
+     *
+     * @param array $audit_data The complete audit data
+     * @return string|false report_token string on success, false on failure
+     */
+    public function send_audit($audit_data) {
+        // Anon key is baked into the plugin — if it's missing something is very wrong
+        if (!$this->supabase_anon_key) {
+            error_log('ConversionIQ: Cannot sync audit - Supabase credentials not configured');
+            return false;
+        }
+
+        // Auto-register this site if we don't have an organization_id yet
+        if (!$this->organization_id && !$this->ensure_organization()) {
+            error_log('ConversionIQ: Cannot sync audit - failed to obtain organization_id');
+            return false;
+        }
+
+        $token = $audit_data['report_token'] ?? null;
+
+        // ── Phase 1: Core INSERT (same fields that worked before + token + plan) ──
+        $core_data = [
+            'organization_id'           => $this->organization_id,
+            'page_url'                  => $audit_data['page_url'] ?? '',
+            'page_title'                => $audit_data['page_title'] ?? null,
+            'industry'                  => $audit_data['industry'] ?? null,
+            'clarity_score'             => $this->normalize_score($audit_data['clarity_score'] ?? null),
+            'emotional_score'           => $this->normalize_score($audit_data['emotional_score'] ?? null),
+            'cta_strength'              => $this->normalize_score($audit_data['cta_strength'] ?? null),
+            'readability_score'         => $this->normalize_score($audit_data['readability_score'] ?? null),
+            'engagement_score'          => $this->normalize_score($audit_data['engagement_score'] ?? null),
+            'trust_score'               => $this->normalize_score($audit_data['trust_score'] ?? null),
+            'overall_score'             => $this->normalize_score($audit_data['overall_score'] ?? null),
+            'suggestions'               => $audit_data['suggestions'] ?? [],
             'functionality_suggestions' => $audit_data['functionality_suggestions'] ?? [],
-            'rewrites' => $audit_data['rewrites'] ?? [],
-            'analysis_method' => $audit_data['analysis_method'] ?? 'single',
-            'sections_analyzed' => intval($audit_data['sections_analyzed'] ?? 1),
-            'ai_used' => true
+            'rewrites'                  => $audit_data['rewrites'] ?? [],
+            'analysis_method'           => $audit_data['analysis_method'] ?? 'single',
+            'sections_analyzed'         => intval($audit_data['sections_analyzed'] ?? 1),
+            'ai_used'                   => true,
+            'report_token'              => $token,
+            'plan'                      => $audit_data['plan'] ?? 'free',
         ];
-        
-        // Send to Supabase
+
         $response = wp_remote_post($this->supabase_url . '/rest/v1/audits', [
             'headers' => [
-                'apikey' => $this->supabase_anon_key,
+                'apikey'        => $this->supabase_anon_key,
                 'Authorization' => 'Bearer ' . $this->supabase_anon_key,
-                'Content-Type' => 'application/json',
-                'X-API-Key' => $this->api_key,
-                'Prefer' => 'return=minimal'
+                'Content-Type'  => 'application/json',
+                'X-API-Key'     => $this->api_key,
+                'Prefer'        => 'return=minimal',
             ],
-            'body' => json_encode($supabase_data),
-            'timeout' => 30
+            'body'    => json_encode($core_data),
+            'timeout' => 30,
         ]);
-        
+
         if (is_wp_error($response)) {
             error_log('ConversionIQ Sync Error: ' . $response->get_error_message());
             return false;
         }
-        
+
         $status_code = wp_remote_retrieve_response_code($response);
         if ($status_code !== 201) {
-            error_log('ConversionIQ Sync Failed: Status ' . $status_code);
-            error_log('Response: ' . wp_remote_retrieve_body($response));
+            error_log('ConversionIQ Sync Failed (Phase 1): Status ' . $status_code);
+            error_log('ConversionIQ Sync Response: ' . wp_remote_retrieve_body($response));
             return false;
         }
-        
-        return true;
+
+        // ── Phase 2: PATCH JSONB report fields (best-effort, non-blocking on failure) ──
+        if ($token) {
+            $jsonb_data = [
+                'insights'           => $audit_data['insights'] ?? null,
+                'recommendations'    => $audit_data['recommendations'] ?? null,
+                'benchmark_research' => $audit_data['benchmark_research'] ?? null,
+                'business_context'   => $audit_data['business_context'] ?? null,
+                'lead_intelligence'  => $audit_data['lead_intelligence'] ?? null,
+                'cro_checklist'      => $audit_data['cro_checklist'] ?? null,
+            ];
+
+            $patch_body = json_encode($jsonb_data);
+            if ($patch_body !== false) {
+                $patch_response = wp_remote_request(
+                    $this->supabase_url . '/rest/v1/audits?report_token=eq.' . urlencode($token),
+                    [
+                        'method'  => 'PATCH',
+                        'headers' => [
+                            'apikey'        => $this->supabase_anon_key,
+                            'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                            'Content-Type'  => 'application/json',
+                            'X-API-Key'     => $this->api_key,
+                            'Prefer'        => 'return=minimal',
+                        ],
+                        'body'    => $patch_body,
+                        'timeout' => 15,
+                    ]
+                );
+
+                if (is_wp_error($patch_response)) {
+                    error_log('ConversionIQ Sync Warning (Phase 2 PATCH): ' . $patch_response->get_error_message());
+                } else {
+                    $patch_status = wp_remote_retrieve_response_code($patch_response);
+                    if ($patch_status !== 200 && $patch_status !== 204) {
+                        error_log('ConversionIQ Sync Warning (Phase 2 PATCH): Status ' . $patch_status);
+                        error_log('ConversionIQ PATCH Response: ' . wp_remote_retrieve_body($patch_response));
+                    }
+                }
+            } else {
+                error_log('ConversionIQ Sync Warning: Could not JSON-encode JSONB fields for PATCH');
+            }
+        }
+
+        return $token ?? true;
     }
     
     /**

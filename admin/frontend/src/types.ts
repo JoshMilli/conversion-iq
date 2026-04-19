@@ -43,6 +43,7 @@ export type Audit = {
     long_term?: Array<string | { text: string; why?: string; impact?: string; difficulty?: string; timeframe?: string }>;
     priority?: string | { text: string; why?: string; impact?: string; next_steps?: string };
   };
+  report_token?: string;
 };
 
 export type Page = { id: number; title: string; permalink: string };

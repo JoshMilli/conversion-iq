@@ -346,6 +346,7 @@ class ConversionIQ_AI
             'rewrites' => isset($first_section['rewrites']) ? $first_section['rewrites'] : array(),
             'insights' => isset($first_section['insights']) ? $first_section['insights'] : array(),
             'recommendations' => isset($first_section['recommendations']) ? $first_section['recommendations'] : array(),
+            'cro_checklist' => isset($first_section['cro_checklist']) ? $first_section['cro_checklist'] : null,
             'ai_used' => true,
             'analysis_method' => 'chunked',
             'sections_analyzed' => count($all_scores),
@@ -891,6 +892,43 @@ Select 3-5 from this catalog based on score gaps (do NOT suggest features the pa
 
 Rules: trust<60 → include Trust feature. engagement<50 → include Engagement feature. cta<50 → include Conversion feature.
 
+─── CRO & UX CHECKLIST ───
+
+For each of the 13 elements below, evaluate whether it is present on the page based on the content provided. Set \"present\" to true only if clear evidence exists in the page copy or structure. Set it to false if absent or unclear. Write one specific sentence in \"explanation\" referencing this page — do NOT write generic definitions.
+
+Elements to evaluate:
+1. CTA Above the Fold — Is there a call-to-action visible without scrolling?
+2. Trust Signals (Certs, Awards) — Are there visible certifications, awards, or credentials?
+3. Inline Social Proof — Are there testimonials, reviews, or social proof within the body content?
+4. Urgency / Scarcity Elements — Is there any urgency or scarcity language (limited time, limited spots, etc.)?
+5. Sticky CTA in Nav — Does the navigation contain a persistent CTA button?
+6. Reassurance Micro-copy — Are there trust-reducing friction phrases near CTAs (\"No credit card required\", \"Cancel anytime\", etc.)?
+7. Clear Visual Hierarchy — Is content structured with clear headings, subheadings, and visual priority?
+8. Mobile-First UX — Does the page layout and copy suggest mobile-optimised design?
+9. Speed / Ease Cues — Are there phrases emphasising ease, speed, or simplicity?
+10. Risk Reversal (Guarantee) — Is there a money-back guarantee, free trial, or similar risk-removal offer?
+11. Anchor Pricing — Is there a higher-priced option shown to make the target offer look comparative value?
+12. Exit Intent Suggestion — Is there an exit intent offer, popup trigger, or retention element mentioned?
+13. Progress Indicators — Are there step indicators, progress bars, or multi-step flow cues on the page?
+
+Priority rules:
+- Mark priority \"high\" when: present=false AND the missing element directly relates to a score below 60
+- Mark priority \"medium\" when: present=false AND element would strengthen an already-weak metric
+- Mark priority \"low\" when: present=true OR element is a nice-to-have for this page type
+
+You MUST produce the following exact counts. Fewer items will be treated as an incomplete response:
+- suggestions: minimum 6 items, each referencing a specific page element
+- functionality_suggestions: 3–5 items (apply catalog rules above)
+- cro_checklist: EXACTLY 13 items — one per element listed above, in order
+- recommendations.quick_wins: EXACTLY 5 items, ordered easiest/highest-impact first
+- recommendations.long_term: EXACTLY 5 items, ordered by strategic priority
+- insights.strengths: EXACTLY 3 items, each citing a specific score or page element
+- insights.weaknesses: EXACTLY 3 items, each citing the specific score it relates to
+- insights.opportunities: EXACTLY 3 items with expected outcomes
+- rewrites: ALL 16 keys populated (headline, subheadline, primary_cta, secondary_cta, value_proposition, social_proof_intro, feature_1 through feature_5, faq_answer_1 through faq_answer_3, closing_statement)
+
+Do NOT truncate or omit items to save tokens. Every field above is required.
+
 ─── OUTPUT FORMAT ───
 
 Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact structure:
@@ -909,6 +947,21 @@ Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact struc
   \"functionality_suggestions\": [
     {\"title\": \"Feature name\", \"category\": \"Category\", \"description\": \"2-3 sentences\", \"why\": \"Reference the specific score gap\", \"impact\": \"Expected improvement\", \"implementation\": \"Specific tools/plugins\", \"icon\": \"emoji\"}
   ],
+  \"cro_checklist\": [
+    {\"element\": \"CTA Above the Fold\", \"present\": true, \"explanation\": \"Page-specific one-sentence finding\", \"priority\": \"low\"},
+    {\"element\": \"Trust Signals (Certs, Awards)\", \"present\": false, \"explanation\": \"Page-specific one-sentence finding\", \"priority\": \"high\"},
+    {\"element\": \"Inline Social Proof\", \"present\": false, \"explanation\": \"Page-specific one-sentence finding\", \"priority\": \"high\"},
+    {\"element\": \"Urgency / Scarcity Elements\", \"present\": false, \"explanation\": \"Page-specific one-sentence finding\", \"priority\": \"medium\"},
+    {\"element\": \"Sticky CTA in Nav\", \"present\": false, \"explanation\": \"Page-specific one-sentence finding\", \"priority\": \"medium\"},
+    {\"element\": \"Reassurance Micro-copy\", \"present\": false, \"explanation\": \"Page-specific one-sentence finding\", \"priority\": \"medium\"},
+    {\"element\": \"Clear Visual Hierarchy\", \"present\": true, \"explanation\": \"Page-specific one-sentence finding\", \"priority\": \"low\"},
+    {\"element\": \"Mobile-First UX\", \"present\": false, \"explanation\": \"Page-specific one-sentence finding\", \"priority\": \"medium\"},
+    {\"element\": \"Speed / Ease Cues\", \"present\": false, \"explanation\": \"Page-specific one-sentence finding\", \"priority\": \"medium\"},
+    {\"element\": \"Risk Reversal (Guarantee)\", \"present\": false, \"explanation\": \"Page-specific one-sentence finding\", \"priority\": \"high\"},
+    {\"element\": \"Anchor Pricing\", \"present\": false, \"explanation\": \"Page-specific one-sentence finding\", \"priority\": \"medium\"},
+    {\"element\": \"Exit Intent Suggestion\", \"present\": false, \"explanation\": \"Page-specific one-sentence finding\", \"priority\": \"low\"},
+    {\"element\": \"Progress Indicators\", \"present\": false, \"explanation\": \"Page-specific one-sentence finding\", \"priority\": \"low\"}
+  ],
   \"rewrites\": {
     \"headline\": \"Improved headline\",
     \"subheadline\": \"Improved subheadline\",
@@ -919,23 +972,35 @@ Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact struc
     \"feature_1\": \"Feature description 1\",
     \"feature_2\": \"Feature description 2\",
     \"feature_3\": \"Feature description 3\",
+    \"feature_4\": \"Feature description 4\",
+    \"feature_5\": \"Feature description 5\",
     \"faq_answer_1\": \"Top FAQ answer\",
+    \"faq_answer_2\": \"Second FAQ answer\",
+    \"faq_answer_3\": \"Third FAQ answer\",
     \"closing_statement\": \"Closing conversion statement\"
   },
   \"insights\": {
     \"executive_summary\": \"2-3 sentences: conversion health, #1 priority, positive tone. Reference scores.\",
-    \"strengths\": [\"Strength with specific score reference\", \"Strength 2\"],
-    \"weaknesses\": [\"Weakness with score and what's missing\", \"Weakness 2\"],
-    \"opportunities\": [\"Opportunity with expected outcome\", \"Opportunity 2\"],
+    \"strengths\": [\"Strength 1 — cite specific score\", \"Strength 2 — cite page element\", \"Strength 3 — cite evidence\"],
+    \"weaknesses\": [\"Weakness 1 — cite score and what's missing\", \"Weakness 2 — cite score\", \"Weakness 3 — cite score\"],
+    \"opportunities\": [\"Opportunity 1 with expected outcome\", \"Opportunity 2 with expected outcome\", \"Opportunity 3 with expected outcome\"],
     \"top_priority_insight\": \"#1 focus area: why (lowest score), impact (expected improvement), timeframe\",
     \"audience_alignment\": \"How well page speaks to target audience — cite specific language from the page\"
   },
   \"recommendations\": {
     \"quick_wins\": [
-      {\"text\": \"Page-specific quick win\", \"why\": \"Reference actual weakness\", \"impact\": \"Expected improvement\", \"difficulty\": \"Easy\"}
+      {\"text\": \"Quick win 1\", \"why\": \"Reference actual weakness\", \"impact\": \"Expected improvement\", \"difficulty\": \"Easy\"},
+      {\"text\": \"Quick win 2\", \"why\": \"Reference actual weakness\", \"impact\": \"Expected improvement\", \"difficulty\": \"Easy\"},
+      {\"text\": \"Quick win 3\", \"why\": \"Reference actual weakness\", \"impact\": \"Expected improvement\", \"difficulty\": \"Medium\"},
+      {\"text\": \"Quick win 4\", \"why\": \"Reference actual weakness\", \"impact\": \"Expected improvement\", \"difficulty\": \"Medium\"},
+      {\"text\": \"Quick win 5\", \"why\": \"Reference actual weakness\", \"impact\": \"Expected improvement\", \"difficulty\": \"Medium\"}
     ],
     \"long_term\": [
-      {\"text\": \"Strategic improvement\", \"why\": \"Strategic value\", \"impact\": \"Long-term improvement\", \"difficulty\": \"Medium\", \"timeframe\": \"2-4 weeks\"}
+      {\"text\": \"Strategic improvement 1\", \"why\": \"Strategic value\", \"impact\": \"Long-term improvement\", \"difficulty\": \"Medium\", \"timeframe\": \"2-4 weeks\"},
+      {\"text\": \"Strategic improvement 2\", \"why\": \"Strategic value\", \"impact\": \"Long-term improvement\", \"difficulty\": \"Medium\", \"timeframe\": \"4-6 weeks\"},
+      {\"text\": \"Strategic improvement 3\", \"why\": \"Strategic value\", \"impact\": \"Long-term improvement\", \"difficulty\": \"Hard\", \"timeframe\": \"1-2 months\"},
+      {\"text\": \"Strategic improvement 4\", \"why\": \"Strategic value\", \"impact\": \"Long-term improvement\", \"difficulty\": \"Hard\", \"timeframe\": \"2-3 months\"},
+      {\"text\": \"Strategic improvement 5\", \"why\": \"Strategic value\", \"impact\": \"Long-term improvement\", \"difficulty\": \"Hard\", \"timeframe\": \"3+ months\"}
     ],
     \"priority\": {
       \"text\": \"Top priority recommendation\", \"why\": \"Why #1\", \"impact\": \"Expected lift\", \"next_steps\": \"1. First step, 2. Second step, 3. Third step\"

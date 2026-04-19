@@ -138,6 +138,53 @@ class ConversionIQ_Reports
             // Logo from config manager (handles remote URL, bundled file, or text fallback)
             $logo_html = ConversionIQ_Config_Manager::get_logo_html();
 
+            // Determine if this is a free plan — controls which report sections are gated.
+            // SECURITY: For free plans, real AI content is NEVER written to the HTML document.
+            // Gated sections only contain generic fake placeholder items (CSS-blurred), so
+            // viewing the page source reveals nothing about the actual audit results.
+            $is_free_plan = (ConversionIQ_Config_Manager::get_plan() === 'free');
+
+            // Helper closure: generate a locked section block with blurred fake placeholder items.
+            // $section_title string  — section heading
+            // $subtitle      string  — subheading shown above the gate
+            // $fake_items    array   — array of ['title'=>..., 'body'=>...] placeholder cards
+            // $accent_color  string  — top border colour for placeholder cards
+            $gated_block = function ($section_title, $subtitle, array $fake_items, $accent_color) use ($brand_contact_url) {
+                $out  = '<div class="section" style="page-break-inside:avoid;break-inside:avoid;">';
+                $out .= '<h3 class="section-title" style="display:flex;align-items:center;gap:10px;">'
+                    . esc_html($section_title)
+                    . ' <span style="font-size:11px;font-weight:600;color:#7c3aed;background:#f3e8ff;'
+                    . 'padding:3px 10px;border-radius:6px;">&#x1F512; Premium</span></h3>';
+                if ($subtitle) {
+                    $out .= '<p style="font-size:14px;color:#6b7280;margin-bottom:16px;line-height:1.6;">'
+                        . esc_html($subtitle) . '</p>';
+                }
+                $out .= '<div class="premium-gate-wrapper">';
+                $out .= '<div class="premium-gate-blurred">';
+                foreach ($fake_items as $item) {
+                    $out .= '<div style="background:white;padding:20px;border-radius:10px;margin-bottom:14px;'
+                        . 'border:1px solid #e2e8f0;border-top:3px solid ' . esc_attr($accent_color) . ';">';
+                    $out .= '<h4 style="margin:0 0 8px 0;color:#1e293b;font-size:15px;font-weight:700;">'
+                        . esc_html($item['title']) . '</h4>';
+                    $out .= '<p style="margin:0;font-size:13px;color:#475569;line-height:1.7;">'
+                        . esc_html($item['body']) . '</p>';
+                    $out .= '</div>';
+                }
+                $out .= '</div>'; // .premium-gate-blurred
+                $out .= '<div class="premium-gate-overlay">';
+                $out .= '<div style="text-align:center;max-width:360px;">';
+                $out .= '<div style="font-size:28px;margin-bottom:10px;">&#x1F512;</div>';
+                $out .= '<div style="font-size:17px;font-weight:700;color:#1e293b;margin-bottom:6px;">See the complete breakdown</div>';
+                $out .= '<div style="font-size:13px;color:#6b7280;margin-bottom:18px;line-height:1.6;">'
+                    . 'More tailored recommendations for this page are included with any paid plan.</div>';
+                $out .= '<a href="' . esc_url($brand_contact_url) . '" '
+                    . 'style="display:inline-block;background:#7c3aed;color:white;padding:12px 28px;'
+                    . 'border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;">'
+                    . 'View Upgrade Options &rarr;</a>';
+                $out .= '</div></div></div></div>';
+                return $out;
+            };
+
             // Modern multi-page report HTML with Webtec branding
             $html = '<!doctype html>
 <html>
@@ -623,6 +670,33 @@ class ConversionIQ_Reports
             color: #6b7280;
             margin: 5px 0;
         }
+        /* Premium section gate — free plan reports only.
+           IMPORTANT: real AI content is NEVER embedded in free-plan HTML.
+           Only generic fake placeholder items are rendered here, then blurred via CSS,
+           so inspecting the page source reveals nothing about the actual audit results. */
+        .premium-gate-wrapper {
+            position: relative;
+            border-radius: 10px;
+            overflow: hidden;
+            min-height: 220px;
+        }
+        .premium-gate-blurred {
+            filter: blur(6px);
+            -webkit-filter: blur(6px);
+            user-select: none;
+            pointer-events: none;
+        }
+        .premium-gate-overlay {
+            position: absolute;
+            left: 0; right: 0; top: 0; bottom: 0;
+            background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.88) 28%, rgba(255,255,255,0.99) 58%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 32px 24px;
+            z-index: 10;
+        }
     </style>
 </head>
 <body>';
@@ -935,19 +1009,54 @@ class ConversionIQ_Reports
             $has_ai_insights = !empty($exec_summary);
 
             if ($has_ai_insights) {
-                // Use AI-generated insights
-                $html .= '<div class="section">
+                if ($is_free_plan) {
+                    // Free plan: show first 2 sentences of the executive summary, then gate the rest
+                    // Split on sentence boundaries to get a natural cutoff
+                    $exec_sentences = preg_split('/(?<=[.!?])\s+/', trim($exec_summary), -1, PREG_SPLIT_NO_EMPTY);
+                    $exec_teaser = implode(' ', array_slice($exec_sentences, 0, 2));
+                    $html .= '<div class="section">
+                <h3 class="section-title" style="font-size: 20px; margin-bottom: 12px;">Key Insights</h3>';
+                    $html .= '<div style="background: #f8fbff; padding: 20px; border-radius: 10px; margin-bottom: 16px; border: 1px solid #bae6fd; border-top: 3px solid #0891b2; page-break-inside: avoid; break-inside: avoid;">
+                    <h4 style="color: #0891b2; font-size: 16px; margin-bottom: 12px; font-weight: 700;">&#128202; Executive Summary</h4>
+                    <p style="font-size: 14px; color: #1e293b; line-height: 1.7; margin: 0 0 6px 0;">' . nl2br(esc_html($exec_teaser)) . '</p>
+                    <span style="font-size: 13px; color: #7c3aed; font-weight: 600;">&#x1F512; Full analysis available with upgrade &hellip;</span>
+                </div>';
+                    // Gate the strengths / weaknesses / opportunities breakdown
+                    $html .= '<div class="premium-gate-wrapper">';
+                    $html .= '<div class="premium-gate-blurred">';
+                    $html .= '<div style="background:#f0fdf8;padding:16px;border-radius:10px;border:1px solid #d1fae5;border-top:3px solid #10b981;margin-bottom:12px;">'
+                        . '<h4 style="color:#10b981;font-size:14px;margin:0 0 8px 0;font-weight:700;">&#127919; Top Strengths</h4>'
+                        . '<p style="margin:0;font-size:13px;color:#1e293b;line-height:1.6;">Your page demonstrates notable strengths in several critical conversion areas that are working in your favour and should be preserved during any updates.</p>'
+                        . '</div>';
+                    $html .= '<div style="background:#fff7ed;padding:16px;border-radius:10px;border:1px solid #fed7aa;border-top:3px solid #f59e0b;margin-bottom:12px;">'
+                        . '<h4 style="color:#f59e0b;font-size:14px;margin:0 0 8px 0;font-weight:700;">&#128161; Weaknesses &amp; Opportunities</h4>'
+                        . '<p style="margin:0;font-size:13px;color:#1e293b;line-height:1.6;">Specific friction points were identified in your messaging and user journey that are reducing conversion rates. Addressing these represents your highest-leverage growth opportunity.</p>'
+                        . '</div>';
+                    $html .= '<div style="background:#f5f3ff;padding:16px;border-radius:10px;border:1px solid #ddd6fe;border-top:3px solid #8b5cf6;">'
+                        . '<h4 style="color:#8b5cf6;font-size:14px;margin:0 0 8px 0;font-weight:700;">&#128101; Audience Alignment</h4>'
+                        . '<p style="margin:0;font-size:13px;color:#1e293b;line-height:1.6;">A detailed assessment of how well your current messaging resonates with your target audience, including specific language and positioning recommendations.</p>'
+                        . '</div>';
+                    $html .= '</div>'; // .premium-gate-blurred
+                    $html .= '<div class="premium-gate-overlay">';
+                    $html .= '<div style="text-align:center;max-width:360px;">';
+                    $html .= '<div style="font-size:20px;margin-bottom:8px;">&#x1F512;</div>';
+                    $html .= '<div style="font-size:16px;font-weight:700;color:#1e293b;margin-bottom:6px;">See the complete breakdown</div>';
+                    $html .= '<div style="font-size:13px;color:#6b7280;margin-bottom:16px;line-height:1.6;">Strengths, weaknesses, and audience alignment — fully tailored to your page, included with any paid plan.</div>';
+                    $html .= '<a href="' . esc_url($brand_contact_url) . '" style="display:inline-block;background:#7c3aed;color:white;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;">View Upgrade Options &rarr;</a>';
+                    $html .= '</div></div></div>';
+                    $html .= '</div>';
+                } else {
+                    // Use AI-generated insights (paid plans)
+                    $html .= '<div class="section">
                 <h3 class="section-title" style="font-size: 20px; margin-bottom: 12px;">Key Insights</h3>';
 
-                if ($has_ai_insights) {
                     $html .= '<div style="background: #f8fbff; padding: 20px; border-radius: 10px; margin-bottom: 16px; border: 1px solid #bae6fd; border-top: 3px solid #0891b2; page-break-inside: avoid; break-inside: avoid;">
                     <h4 style="color: #0891b2; font-size: 16px; margin-bottom: 12px; font-weight: 700;">📊 Executive Summary</h4>
                     <p style="font-size: 14px; color: #1e293b; line-height: 1.7; margin: 0;">' . nl2br(esc_html($exec_summary)) . '</p>
                 </div>';
+
+                    $html .= '</div>';
                 }
-
-                $html .= '</div>';
-
             }
             else {
                 // Fallback to static template for older audits
@@ -1006,6 +1115,71 @@ class ConversionIQ_Reports
 
             // Benchmark Explanation Section - only show if we have AI-generated benchmark data
             if ($industry_avg !== null && $top_performers !== null) {
+                if ($is_free_plan) {
+                    // Free plan: show the real score comparison, then gate the competitive analysis text
+                    $html .= '<div class="section">
+                <h3 class="section-title" style="font-size: 20px; margin-bottom: 12px;">Understanding Your Benchmark Score</h3>
+                <div style="background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%); padding: 24px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); border: 1px solid #e5e7eb;">
+                    <h4 style="color: #1e3a5f; font-size: 16px; margin-bottom: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">' . (!empty($business['industry']) ? esc_html($business['industry']) . ' Industry' : 'Industry') . ' Benchmark</h4>
+                    <p style="font-size: 13px; color: #6b7280; line-height: 1.5; margin-bottom: 20px;">How your page scores against similar businesses in your market.</p>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 30px; margin-bottom: 0;">
+                        <div style="text-align: center; flex: 1; padding: 20px; background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); border-radius: 10px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);">
+                            <div style="font-size: 12px; color: rgba(255,255,255,0.8); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Your Score</div>
+                            <div style="font-size: 48px; font-weight: 800; color: #ffffff; line-height: 1;">' . $overall_score . '</div>
+                        </div>
+                        <div style="text-align: center; flex: 1; padding: 20px; background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%); border-radius: 10px; border: 2px solid #f59e0b;">
+                            <div style="font-size: 12px; color: #92400e; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">' . (!empty($business['industry']) ? esc_html($business['industry']) : 'Industry') . ' Average</div>
+                            <div style="font-size: 48px; font-weight: 800; color: #f59e0b; line-height: 1;">' . $industry_avg . '</div>
+                        </div>
+                        <div style="text-align: center; flex: 1; padding: 20px; background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%); border-radius: 10px; border: 2px solid #8b5cf6;">
+                            <div style="font-size: 12px; color: #6d28d9; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Top Performers</div>
+                            <div style="font-size: 48px; font-weight: 800; color: #7c3aed; line-height: 1;">' . $top_performers . '</div>
+                        </div>
+                    </div>
+                </div>';
+                    // Score improvement projection
+                    $score_weights_proj = array(
+                        'Clarity'              => 0.20,
+                        'Emotional Connection' => 0.15,
+                        'CTA Strength'        => 0.20,
+                        'Readability'         => 0.15,
+                        'Engagement'          => 0.15,
+                        'Trust Signals'       => 0.15,
+                    );
+                    $proj_score = 0;
+                    foreach ($score_values as $_pk => $_pv) {
+                        $_pw = $score_weights_proj[$_pk] ?? 0;
+                        $_pv_adj = ($_pk === $lowest_area || $_pk === $second_lowest_area) ? max((int)$_pv, $industry_avg) : (int)$_pv;
+                        $proj_score += $_pv_adj * $_pw;
+                    }
+                    $proj_score = round($proj_score);
+                    if ($proj_score > $overall_score) {
+                        $score_lift = $proj_score - $overall_score;
+                        $html .= '<div style="background: #f0fdf4; border-radius: 10px; padding: 16px 20px; border: 1px solid #d1fae5; border-left: 4px solid #10b981; margin-bottom: 12px; page-break-inside: avoid;">'
+                            . '<p style="margin: 0; font-size: 13px; color: #065f46; line-height: 1.7;"><strong>Score projection:</strong> Raising your two lowest-scoring areas to the industry average would move your overall score from <strong>' . $overall_score . '</strong> to approximately <strong>' . $proj_score . '</strong> (+' . $score_lift . ' points) — a gap that typically correlates with a 15–25% improvement in conversion rate.</p>'
+                            . '</div>';
+                    }
+                    // Gate the competitive analysis text
+                    $html .= '<div class="premium-gate-wrapper">';
+                    $html .= '<div class="premium-gate-blurred">';
+                    $html .= '<div style="background:white;padding:18px;border-radius:10px;border:1px solid #bfdbfe;border-top:3px solid #2563eb;margin-bottom:12px;">'
+                        . '<h5 style="color:#1e3a5f;font-size:15px;margin:0 0 8px 0;font-weight:700;">Competitive Position</h5>'
+                        . '<p style="margin:0;font-size:13px;color:#374151;line-height:1.6;">A detailed analysis of where your page sits relative to competitors in your market — including the specific improvements that would close the gap to top-performer status.</p>'
+                        . '</div>';
+                    $html .= '<div style="background:#f0f9ff;padding:18px;border-radius:10px;border:1px solid #bae6fd;border-top:3px solid #0891b2;">'
+                        . '<h5 style="color:#0891b2;font-size:15px;margin:0 0 8px 0;font-weight:700;">Competitive Landscape</h5>'
+                        . '<p style="margin:0;font-size:13px;color:#374151;line-height:1.6;">An in-depth look at the patterns and tactics used by the top-converting sites in your sector, and exactly how your page compares across each dimension.</p>'
+                        . '</div>';
+                    $html .= '</div>'; // .premium-gate-blurred
+                    $html .= '<div class="premium-gate-overlay">';
+                    $html .= '<div style="text-align:center;max-width:360px;">';
+                    $html .= '<div style="font-size:20px;margin-bottom:8px;">&#x1F512;</div>';
+                    $html .= '<div style="font-size:16px;font-weight:700;color:#1e293b;margin-bottom:6px;">See where you stand vs. competitors</div>';
+                    $html .= '<div style="font-size:13px;color:#6b7280;margin-bottom:16px;line-height:1.6;">Your competitive position and landscape analysis are included with any paid plan.</div>';
+                    $html .= '<a href="' . esc_url($brand_contact_url) . '" style="display:inline-block;background:#7c3aed;color:white;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;">View Upgrade Options &rarr;</a>';
+                    $html .= '</div></div></div>';
+                    $html .= '</div>';
+                } else {
                 $html .= '<div class="section">
                 <h3 class="section-title" style="font-size: 20px; margin-bottom: 12px;">Understanding Your Benchmark Score</h3>
                 
@@ -1079,6 +1253,7 @@ class ConversionIQ_Reports
 
                 $html .= '</div>
                 </div>';
+                } // end else (paid plan benchmark)
             } // End of benchmark section conditional
 
             // Page number for Executive Summary page (always rendered)
@@ -1246,19 +1421,54 @@ class ConversionIQ_Reports
                 array('key' => 'trust_score', 'label' => 'Trust Signals',      'icon' => '🔒', 'color' => '#0891b2', 'value' => $trust_val),
             );
 
+            // Map $lowest_area label (from $score_values) to $score_interpretation_data key
+            $lowest_sid_map = array(
+                'Clarity'              => 'clarity_score',
+                'Emotional Connection' => 'emotional_score',
+                'CTA Strength'        => 'cta_strength',
+                'Readability'         => 'readability_score',
+                'Engagement'          => 'engagement_score',
+                'Trust Signals'       => 'trust_score',
+            );
+            $lowest_sid_key = $lowest_sid_map[$lowest_area] ?? '';
+
+            // Educational one-liners shown only on the lowest-scoring card
+            $metric_why = array(
+                'clarity_score'      => 'Clarity is the first filter every visitor applies — if they can\'t immediately grasp what you offer and who it\'s for, they leave.',
+                'emotional_score'    => 'Emotional impact determines whether your copy creates the feeling \'this is exactly what I need\' — the pull that motivates action.',
+                'cta_strength'       => 'CTA strength is the most direct lever on conversions — a weak ask loses visitors who are already convinced.',
+                'readability_score'  => 'Poor readability costs 30–40% of readers before they reach your CTA — busy visitors scan before they read.',
+                'engagement_score'   => 'Engagement determines how long visitors stay and explore — interactive elements hold attention and reduce bounce rate.',
+                'trust_score'        => 'Trust signals are the final barrier between interest and action — first-time visitors need to feel safe before they commit.',
+            );
+
             $html .= '<div class="section">
-                <h3 class="section-title">Understanding Your Scores</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">';
+                <h3 class="section-title">Understanding Your Scores</h3>';
+
+            // Industry benchmark context line — shown when benchmark data is available
+            if ($industry_avg !== null) {
+                $ind_label = !empty($business['industry']) ? esc_html($business['industry']) . ' industry' : 'your industry';
+                $html .= '<p style="font-size: 13px; color: #6b7280; line-height: 1.5; margin: 4px 0 16px 0;">Benchmark for ' . $ind_label . ': <strong style="color: #1e293b;">' . $industry_avg . '/100</strong> sector average &nbsp;&middot;&nbsp; <strong style="color: #1e293b;">' . $top_performers . '/100</strong> top performers</p>';
+            }
+
+            $html .= '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 4px;">';
 
             foreach ($score_interpretation_data as $sid) {
                 $band = $score_band($sid['value'], $sid['key']);
+                $is_lowest_card = ($sid['key'] === $lowest_sid_key);
+                $why_note = ($is_lowest_card && isset($metric_why[$sid['key']])) ? $metric_why[$sid['key']] : '';
                 $html .= '
-                    <div style="background: #ffffff; padding: 15px; border-radius: 10px; border: 1px solid #e8ecf0; border-top: 3px solid ' . esc_attr($sid['color']) . '; box-shadow: 0 1px 3px rgba(0,0,0,0.04); page-break-inside: avoid;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div style="background: #ffffff; padding: 15px; border-radius: 10px; border: 1px solid ' . ($is_lowest_card ? '#fca5a5' : '#e8ecf0') . '; border-top: 3px solid ' . esc_attr($sid['color']) . '; box-shadow: 0 1px 3px rgba(0,0,0,0.04); page-break-inside: avoid;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 4px;">
                             <h4 style="color: ' . esc_attr($sid['color']) . '; font-size: 14px; margin: 0;">' . $sid['icon'] . ' ' . esc_html($sid['label']) . '</h4>
-                            <span style="font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 12px; background: ' . esc_attr($band['color']) . '22; color: ' . esc_attr($band['color']) . ';">' . esc_html($band['label']) . ' (' . $sid['value'] . '/100)</span>
+                            <div style="display: flex; align-items: center; gap: 5px;">'
+                    . ($is_lowest_card ? '<span style="font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; background: #fef2f2; color: #ef4444;">Focus here first</span>' : '')
+                    . '<span style="font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 12px; background: ' . esc_attr($band['color']) . '22; color: ' . esc_attr($band['color']) . ';">' . esc_html($band['label']) . ' (' . $sid['value'] . '/100)</span>
+                            </div>
                         </div>
-                        <p style="font-size: 13px; color: #374151; line-height: 1.5; margin: 0;">' . esc_html($band['text']) . '</p>
+                        <p style="font-size: 13px; color: #374151; line-height: 1.5; margin: 0;">' . esc_html($band['text']) . '</p>'
+                    . ($why_note ? '<p style="font-size: 12px; color: #64748b; line-height: 1.5; margin: 8px 0 0 0; padding-top: 8px; border-top: 1px solid #f1f5f9; font-style: italic;">' . esc_html($why_note) . '</p>' : '')
+                    . '
                     </div>';
             }
 
@@ -1277,11 +1487,16 @@ class ConversionIQ_Reports
                 // Quick Wins section
                 if (!empty($quick_wins)) {
                     $html .= '<div class="section">
-                <h3 class="section-title" style="display: flex; align-items: center; gap: 10px;">⚡ Quick Wins <span style="font-size: 11px; font-weight: 600; color: #10b981; background: #ecfdf5; padding: 3px 10px; border-radius: 6px;">Easy to Implement</span></h3>
+                <h3 class="section-title" style="display: flex; align-items: center; gap: 10px;">Quick Wins <span style="font-size: 11px; font-weight: 600; color: #10b981; background: #ecfdf5; padding: 3px 10px; border-radius: 6px;">Easy to Implement</span></h3>
                 <p style="font-size: 14px; color: #6b7280; margin-bottom: 20px; line-height: 1.6;">High-impact changes you can make right away to see immediate improvement.</p>';
 
+                    $qw_free_limit = 1; // Free plan sees first 1 quick win; rest are gated
                     $qw_counter = 1;
                     foreach ($quick_wins as $qw) {
+                        // Cap visible quick wins for free plans
+                        if ($is_free_plan && $qw_counter > $qw_free_limit) {
+                            break;
+                        }
                         $qw_text = is_string($qw) ? $qw : (isset($qw['text']) ? $qw['text'] : '');
                         $qw_why = is_array($qw) && isset($qw['why']) ? $qw['why'] : '';
                         $qw_impact = is_array($qw) && isset($qw['impact']) ? $qw['impact'] : '';
@@ -1308,13 +1523,88 @@ class ConversionIQ_Reports
                             $qw_counter++;
                         }
                     }
+                    // For free plans: add a premium gate after the first 2 visible items
+                    if ($is_free_plan && count($quick_wins) > $qw_free_limit) {
+                        $remaining = count($quick_wins) - $qw_free_limit;
+                        $html .= '<div class="premium-gate-wrapper" style="margin-top:0;">';
+                        $html .= '<div class="premium-gate-blurred">';
+                        for ($i = 0; $i < min($remaining, 2); $i++) {
+                            $html .= '<div style="background:white;padding:20px;border-radius:10px;margin-bottom:14px;'
+                                . 'border:1px solid #d1fae5;border-top:3px solid #10b981;">';
+                            $html .= '<h4 style="margin:0 0 8px 0;color:#1e293b;font-size:15px;font-weight:700;">'
+                                . ($qw_free_limit + $i + 1) . '. Additional quick win recommendation</h4>';
+                            $html .= '<p style="margin:0;font-size:13px;color:#475569;line-height:1.7;">'
+                                . 'A high-impact, easy-to-implement change identified by the AI analysis. '
+                                . 'Includes specific implementation steps and expected conversion impact.</p>';
+                            $html .= '</div>';
+                        }
+                        $html .= '</div>'; // .premium-gate-blurred
+                        $html .= '<div class="premium-gate-overlay">';
+                        $html .= '<div style="text-align:center;max-width:360px;">';
+                        $html .= '<div style="font-size:20px;margin-bottom:8px;">&#x1F512;</div>';
+                        $html .= '<div style="font-size:16px;font-weight:700;color:#1e293b;margin-bottom:4px;">'
+                            . $remaining . ' more Quick Win' . ($remaining > 1 ? 's' : '') . ' available</div>';
+                        $html .= '<div style="font-size:13px;color:#6b7280;margin-bottom:16px;line-height:1.6;">'
+                            . 'See all ' . count($quick_wins) . ' tailored quick wins for this page — included with any paid plan.</div>';
+                        $html .= '<a href="' . esc_url($brand_contact_url) . '" '
+                            . 'style="display:inline-block;background:#7c3aed;color:white;padding:10px 24px;'
+                            . 'border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;">'
+                            . 'View Upgrade Options &rarr;</a>';
+                        $html .= '</div></div></div>';
+                    }
                     $html .= '</div>';
                 }
 
                 // Long-Term Strategic Improvements
                 if (!empty($long_term)) {
+                    $lt_free_limit = 1; // Free plan sees first 1 strategic improvement; rest are gated
+                    if ($is_free_plan) {
+                        // Free plan: show first real strategic item, then gate the rest
+                        $html .= '<div class="section">
+                <h3 class="section-title" style="display: flex; align-items: center; gap: 10px;">Strategic Improvements <span style="font-size: 11px; font-weight: 600; color: #6366f1; background: #eef2ff; padding: 3px 10px; border-radius: 6px;">Long-Term Growth</span></h3>
+                <p style="font-size: 14px; color: #6b7280; margin-bottom: 20px; line-height: 1.6;">Larger initiatives that will drive sustained conversion growth over time.</p>';
+                        // Render the first real item
+                        $lt0 = reset($long_term);
+                        $lt0_text = is_string($lt0) ? $lt0 : (isset($lt0['text']) ? $lt0['text'] : '');
+                        $lt0_why  = is_array($lt0) && isset($lt0['why'])  ? $lt0['why']  : '';
+                        $lt0_impact = is_array($lt0) && isset($lt0['impact']) ? $lt0['impact'] : '';
+                        $lt0_difficulty = is_array($lt0) && isset($lt0['difficulty']) ? $lt0['difficulty'] : 'Medium';
+                        $lt0_timeframe  = is_array($lt0) && isset($lt0['timeframe'])  ? $lt0['timeframe']  : '';
+                        if (!empty($lt0_text)) {
+                            $html .= '<div style="background: white; padding: 20px; border-radius: 10px; margin-bottom: 14px; border: 1px solid #e0e7ff; border-top: 3px solid #6366f1; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">';
+                            $html .= '<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px; gap: 12px;">';
+                            $html .= '<h4 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 700; line-height: 1.4; flex: 1;">1. ' . esc_html($lt0_text) . '</h4>';
+                            $html .= '<div style="flex-shrink: 0; text-align: right;">';
+                            if (!empty($lt0_timeframe)) $html .= '<div style="padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; background: #eef2ff; color: #6366f1; margin-bottom: 4px;">&#x23F1; ' . esc_html($lt0_timeframe) . '</div>';
+                            $html .= '<div style="padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; background: #fef3c7; color: #f59e0b;">' . esc_html($lt0_difficulty) . '</div></div></div>';
+                            // Free plan: title + tags only — no why/impact so it's not actionable without upgrading
+                            $html .= '<p style="margin: 8px 0 0 0; font-size: 13px; color: #7c3aed; font-weight: 600;">&#x1F512; Full implementation guide available with upgrade &hellip;</p>';
+                            $html .= '</div>';
+                        }
+                        // Gate remaining strategic items
+                        $lt_remaining = count($long_term) - $lt_free_limit;
+                        if ($lt_remaining > 0) {
+                            $html .= '<div class="premium-gate-wrapper">';
+                            $html .= '<div class="premium-gate-blurred">';
+                            for ($i = 0; $i < min($lt_remaining, 2); $i++) {
+                                $html .= '<div style="background:white;padding:20px;border-radius:10px;margin-bottom:14px;border:1px solid #e0e7ff;border-top:3px solid #6366f1;">'
+                                    . '<h4 style="margin:0 0 8px 0;color:#1e293b;font-size:15px;font-weight:700;">' . ($lt_free_limit + $i + 1) . '. Additional strategic improvement</h4>'
+                                    . '<p style="margin:0;font-size:13px;color:#475569;line-height:1.7;">A high-impact initiative identified for your page, with specific implementation steps, estimated timeframe, and expected revenue impact.</p>'
+                                    . '</div>';
+                            }
+                            $html .= '</div>'; // .premium-gate-blurred
+                            $html .= '<div class="premium-gate-overlay">';
+                            $html .= '<div style="text-align:center;max-width:360px;">';
+                            $html .= '<div style="font-size:20px;margin-bottom:8px;">&#x1F512;</div>';
+                            $html .= '<div style="font-size:16px;font-weight:700;color:#1e293b;margin-bottom:4px;">' . $lt_remaining . ' more strategic improvement' . ($lt_remaining > 1 ? 's' : '') . ' for this page</div>';
+                            $html .= '<div style="font-size:13px;color:#6b7280;margin-bottom:16px;line-height:1.6;">See the complete long-term roadmap for this page, included with any paid plan.</div>';
+                            $html .= '<a href="' . esc_url($brand_contact_url) . '" style="display:inline-block;background:#7c3aed;color:white;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;">View Upgrade Options &rarr;</a>';
+                            $html .= '</div></div></div>';
+                        }
+                        $html .= '</div>';
+                    } else {
                     $html .= '<div class="section">
-                <h3 class="section-title" style="display: flex; align-items: center; gap: 10px;">🚀 Strategic Improvements <span style="font-size: 11px; font-weight: 600; color: #6366f1; background: #eef2ff; padding: 3px 10px; border-radius: 6px;">Long-Term Growth</span></h3>
+                <h3 class="section-title" style="display: flex; align-items: center; gap: 10px;">Strategic Improvements <span style="font-size: 11px; font-weight: 600; color: #6366f1; background: #eef2ff; padding: 3px 10px; border-radius: 6px;">Long-Term Growth</span></h3>
                 <p style="font-size: 14px; color: #6b7280; margin-bottom: 20px; line-height: 1.6;">Larger initiatives that will drive sustained conversion growth over time.</p>';
 
                     $lt_counter = 1;
@@ -1349,6 +1639,7 @@ class ConversionIQ_Reports
                         }
                     }
                     $html .= '</div>';
+                    } // end else (paid plan long-term strategic)
                 }
             }
             elseif (!empty($data['suggestions']) && is_array($data['suggestions'])) {
@@ -1420,6 +1711,32 @@ class ConversionIQ_Reports
                 $html .= '</div>';
             }
 
+            if ($is_free_plan) {
+                // Transparent inventory — counts derived from real audit data, no AI content shown
+                $rw_count = 0;
+                if (!empty($rewrites) && is_array($rewrites)) {
+                    foreach (array('headline','subheadline','value_proposition','primary_cta','secondary_cta','social_proof_intro','feature_1','feature_2','feature_3','faq_answer_1','closing_statement') as $_rk) {
+                        if (!empty($rewrites[$_rk])) $rw_count++;
+                    }
+                }
+                $qw_inv_total = count($quick_wins);
+                $lt_inv_total = count($long_term);
+                $fs_inv_total = !empty($data['functionality_suggestions']) && is_array($data['functionality_suggestions']) ? count($data['functionality_suggestions']) : 0;
+                $ins_total    = count($ai_strengths) + count($ai_weaknesses);
+                $inv_parts = array();
+                if ($ins_total > 0)    $inv_parts[] = $ins_total . ' key insights';
+                if ($qw_inv_total > 0) $inv_parts[] = $qw_inv_total . ' quick wins';
+                if ($lt_inv_total > 0) $inv_parts[] = $lt_inv_total . ' strategic improvements';
+                if ($rw_count > 0)     $inv_parts[] = $rw_count . ' copy rewrites';
+                if ($fs_inv_total > 0) $inv_parts[] = $fs_inv_total . ' feature recommendations';
+                if (!empty($inv_parts)) {
+                    $html .= '<div style="background: #f8fafc; border-radius: 10px; padding: 16px 20px; border: 1px solid #e2e8f0; margin-top: 20px; page-break-inside: avoid;">'
+                        . '<p style="margin: 0 0 5px 0; font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px;">What\'s in your complete report</p>'
+                        . '<p style="margin: 0; font-size: 13px; color: #374151; line-height: 1.7;">This report includes ' . implode(', ', $inv_parts) . ' — all generated specifically for this page.</p>'
+                        . '</div>';
+                }
+            }
+
             $html .= '
             <div class="page-number">Page ' . (++$page_num) . '</div>
         </div>';
@@ -1455,7 +1772,31 @@ class ConversionIQ_Reports
             ciq_log('📋 has_lead_intel: ' . ($has_lead_intel ? 'YES' : 'NO'));
             ciq_log('📋 webhook_stats result: ' . ($webhook_stats ? 'HAS DATA' : 'NULL - section will be HIDDEN'));
             
-            if ($webhook_stats) {
+            if ($is_free_plan) {
+                // Free plan: always show a teaser page — real visitor data never written to HTML
+                $html .= '
+            <div class="page content-page">
+                <div class="content-header">
+                    <h2>Visitor Intelligence</h2>
+                    <span style="font-size: 14px; color: #6b7280;">' . $report_date . '</span>
+                </div>
+                <p style="font-size: 15px; color: #374151; margin-bottom: 24px; line-height: 1.8;">
+                    See which companies are visiting your page, who the decision-makers are, and when they\'re most active — so you can reach out at exactly the right moment.
+                </p>';
+                $html .= $gated_block(
+                    'Visitor Intelligence',
+                    'Company-level visitor identification, industry breakdowns, decision-maker profiles, and peak engagement times — all tied to this specific page.',
+                    array(
+                        array('title' => 'Company Activity', 'body' => 'Acme Corp · SaaS · 4 visitors · Last seen: Apr 12'),
+                        array('title' => 'Visitor Profile', 'body' => 'Industries: Software (38%), Marketing (27%), Professional Services (19%)'),
+                        array('title' => 'Peak Engagement', 'body' => 'Tuesday · 2:00 PM · 28 identified visitors this month'),
+                    ),
+                    '#2563eb'
+                );
+                $html .= '
+                <div class="page-number">Page ' . (++$page_num) . '</div>
+            </div>';
+            } elseif ($webhook_stats) {
                 ciq_log('✅ Rendering Growth Machine Analysis section');
                 $html .= '
             <div class="page content-page">
@@ -1808,8 +2149,16 @@ class ConversionIQ_Reports
             </p>';
 
             // Functionality suggestions
+            $fs_free_limit = 1; // Free plan sees first 1 feature suggestion; rest are gated
             if (!empty($data['functionality_suggestions']) && is_array($data['functionality_suggestions'])) {
+                $fs_counter = 0;
+                $fs_total = count($data['functionality_suggestions']);
                 foreach ($data['functionality_suggestions'] as $feature) {
+                    // For free plans, only render the first item
+                    if ($is_free_plan && $fs_counter >= $fs_free_limit) {
+                        break;
+                    }
+                    $fs_counter++;
                     $feature_title = $feature['title'] ?? 'Suggested Feature';
                     $feature_category = $feature['category'] ?? '';
                     $feature_desc = $feature['description'] ?? '';
@@ -1855,6 +2204,37 @@ class ConversionIQ_Reports
                     }
 
                     $html .= '</div>';
+                }
+                // Gate the remaining features for free plans
+                if ($is_free_plan && $fs_total > $fs_free_limit) {
+                    $remaining_fs = $fs_total - $fs_free_limit;
+                    $html .= '<div class="premium-gate-wrapper">';
+                    $html .= '<div class="premium-gate-blurred">';
+                    for ($i = 0; $i < min($remaining_fs, 2); $i++) {
+                        $placeholder_categories = array(
+                            array('label' => 'Conversion Optimization', 'bg' => '#fef3c7', 'text' => '#b45309'),
+                            array('label' => 'Trust & Social Proof', 'bg' => '#dbeafe', 'text' => '#1d4ed8'),
+                        );
+                        $pc = $placeholder_categories[$i % 2];
+                        $html .= '<div class="feature-card">'
+                            . '<span class="feature-category" style="background:' . $pc['bg'] . ';color:' . $pc['text'] . ';">' . $pc['label'] . '</span>'
+                            . '<h4 class="feature-title">Additional feature recommendation</h4>'
+                            . '<p class="feature-desc">A high-impact feature identified by AI analysis to increase engagement and conversion rates for your specific page and audience type.</p>'
+                            . '</div>';
+                    }
+                    $html .= '</div>'; // .premium-gate-blurred
+                    $html .= '<div class="premium-gate-overlay">';
+                    $html .= '<div style="text-align:center;max-width:360px;">';
+                    $html .= '<div style="font-size:20px;margin-bottom:8px;">&#x1F512;</div>';
+                    $html .= '<div style="font-size:16px;font-weight:700;color:#1e293b;margin-bottom:4px;">'
+                        . $remaining_fs . ' more feature suggestion' . ($remaining_fs > 1 ? 's' : '') . ' available</div>';
+                    $html .= '<div style="font-size:13px;color:#6b7280;margin-bottom:16px;line-height:1.6;">'
+                        . 'See all ' . $fs_total . ' tailored feature recommendations for this page — included with any paid plan.</div>';
+                    $html .= '<a href="' . esc_url($brand_contact_url) . '" '
+                        . 'style="display:inline-block;background:#7c3aed;color:white;padding:10px 24px;'
+                        . 'border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;">'
+                        . 'View Upgrade Options &rarr;</a>';
+                    $html .= '</div></div></div>';
                 }
             }
             else {
@@ -1902,13 +2282,40 @@ class ConversionIQ_Reports
                     ]
                 ];
 
-                foreach ($default_features as $feature) {
+                $df_limit = $is_free_plan ? $fs_free_limit : count($default_features);
+                foreach (array_slice($default_features, 0, $df_limit) as $feature) {
                     $html .= '<div class="feature-card">
                     <span class="feature-category" style="background: ' . $feature['cat_bg'] . '; color: ' . $feature['cat_text'] . ';">' . esc_html($feature['category']) . '</span>
                     <h4 class="feature-title">' . esc_html($feature['icon'] . ' ' . $feature['title']) . '</h4>
                     <p class="feature-desc">' . esc_html($feature['description']) . '</p>
                     <div class="feature-impact">Expected Impact: ' . esc_html($feature['impact']) . '</div>
                 </div>';
+                }
+                // Gate remaining default features for free plans
+                if ($is_free_plan) {
+                    $remaining_df = count($default_features) - $fs_free_limit;
+                    $html .= '<div class="premium-gate-wrapper">';
+                    $html .= '<div class="premium-gate-blurred">';
+                    for ($i = 0; $i < 2; $i++) {
+                        $html .= '<div class="feature-card">'
+                            . '<span class="feature-category" style="background:#ede9fe;color:#7c3aed;">Analytics & Intelligence</span>'
+                            . '<h4 class="feature-title">Additional feature recommendation</h4>'
+                            . '<p class="feature-desc">A high-impact feature identified for your page type to increase engagement and drive more conversions. Includes implementation guidance.</p>'
+                            . '</div>';
+                    }
+                    $html .= '</div>'; // .premium-gate-blurred
+                    $html .= '<div class="premium-gate-overlay">';
+                    $html .= '<div style="text-align:center;max-width:360px;">';
+                    $html .= '<div style="font-size:20px;margin-bottom:8px;">&#x1F512;</div>';
+                    $html .= '<div style="font-size:16px;font-weight:700;color:#1e293b;margin-bottom:4px;">'
+                        . $remaining_df . ' more feature suggestions available</div>';
+                    $html .= '<div style="font-size:13px;color:#6b7280;margin-bottom:16px;line-height:1.6;">'
+                        . 'See all tailored feature recommendations for this page — included with any paid plan.</div>';
+                    $html .= '<a href="' . esc_url($brand_contact_url) . '" '
+                        . 'style="display:inline-block;background:#7c3aed;color:white;padding:10px 24px;'
+                        . 'border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;">'
+                        . 'View Upgrade Options &rarr;</a>';
+                    $html .= '</div></div></div>';
                 }
             }
 
@@ -1942,6 +2349,31 @@ class ConversionIQ_Reports
                 }
 
                 if ($has_rewrite_content) {
+                    if ($is_free_plan) {
+                        // Gate copy rewrites for free plans — real AI copy NEVER written to HTML
+                        $html .= '
+        <div class="page content-page">
+            <div class="content-header">
+                <h2>Suggested Copy Rewrites</h2>
+                <span style="font-size: 14px; color: #6b7280;">' . $report_date . '</span>
+            </div>
+            <p style="font-size: 15px; color: #374151; margin-bottom: 24px; line-height: 1.8;">
+                AI-generated copy suggestions designed to improve clarity, emotional impact, and conversion rates.
+            </p>';
+                        $html .= $gated_block(
+                            'AI Copy Rewrites',
+                            'Ready-to-use headlines, CTAs, and body copy optimized for your audience and conversion goals.',
+                            array(
+                                array('title' => 'Headline', 'body' => '"Stop Wondering Why Visitors Leave — Get AI-Powered Clarity on What\'s Costing You Conversions"'),
+                                array('title' => 'Primary CTA', 'body' => '"Get My Free Conversion Roadmap — See Exactly What to Fix First"'),
+                                array('title' => 'Value Proposition', 'body' => '"The only conversion platform that combines AI analysis with actionable recommendations, so you always know what to do next to grow revenue."'),
+                            ),
+                            '#2563eb'
+                        );
+                        $html .= '
+            <div class="page-number">Page ' . (++$page_num) . '</div>
+        </div>';
+                    } else {
                     $html .= '
         <div class="page content-page">
             <div class="content-header">
@@ -1993,6 +2425,7 @@ class ConversionIQ_Reports
             </div>
             <div class="page-number">Page ' . (++$page_num) . '</div>
         </div>';
+                    } // end else (paid plan copy rewrites)
                 }
             }
 
