@@ -995,7 +995,8 @@ function conversioniq_get_page_content(WP_REST_Request $request)
 
 
 /**
- * GET /business-profile — fetch business profile from Supabase, with WP option fallback.
+ * GET /business-profile — fetch business profile via conversioniq-app.com (primary),
+ * falling back to direct Supabase lookup if the SaaS call fails.
  */
 function conversioniq_get_business_profile(WP_REST_Request $request)
 {
@@ -1005,15 +1006,50 @@ function conversioniq_get_business_profile(WP_REST_Request $request)
     $local = json_decode( get_option( 'conversion_iq_settings', '{}' ), true );
     if ( ! is_array( $local ) ) $local = [];
 
-    // Try Supabase — overwrite local only where Supabase has a non-empty value
-    $sync    = new ConversionIQ_Supabase_Sync();
-    $profile = $sync->fetch_business_profile();
+    $license_key = get_option( 'conversioniq_license_key', '' );
+    $profile     = null;
+    $source      = 'none';
+
+    // ── Primary: fetch via conversioniq-app.com (it knows the org association) ──
+    if ( $license_key ) {
+        $saas_response = wp_remote_post( 'https://conversioniq-app.com/api/get-business-profile', [
+            'timeout' => 15,
+            'headers' => [ 'Content-Type' => 'application/json' ],
+            'body'    => wp_json_encode( [
+                'license_key' => $license_key,
+                'site_url'    => get_site_url(),
+            ] ),
+        ] );
+
+        if ( ! is_wp_error( $saas_response ) && wp_remote_retrieve_response_code( $saas_response ) === 200 ) {
+            $saas_body = json_decode( wp_remote_retrieve_body( $saas_response ), true );
+            if ( is_array( $saas_body ) && ! empty( $saas_body['profile'] ) ) {
+                $profile = $saas_body['profile'];
+                $source  = 'saas';
+                // Cache the organization_id for future Supabase calls if returned
+                if ( ! empty( $saas_body['organization_id'] ) ) {
+                    update_option( 'conversioniq_organization_id', sanitize_text_field( $saas_body['organization_id'] ) );
+                }
+            }
+        }
+    }
+
+    // ── Fallback: direct Supabase lookup ──
+    if ( $profile === null ) {
+        $sync    = new ConversionIQ_Supabase_Sync();
+        $profile = $sync->fetch_business_profile();
+        if ( is_array( $profile ) ) {
+            $source = 'supabase';
+        }
+    }
 
     $debug = [
-        'supabase_reached'   => is_array( $profile ),
-        'supabase_raw'       => $profile,
+        'source'             => $source,
+        'supabase_reached'   => ( $source === 'supabase' ),
+        'supabase_raw'       => ( $source === 'supabase' ) ? $profile : null,
         'org_id_in_options'  => get_option( 'conversioniq_organization_id', null ),
         'api_key_in_options' => get_option( 'conversioniq_api_key' ) ? substr( get_option( 'conversioniq_api_key' ), 0, 8 ) . '…' : null,
+        'license_key_set'    => ! empty( $license_key ),
         'site_url'           => get_site_url(),
     ];
 
