@@ -463,6 +463,7 @@ class ConversionIQ_Supabase_Sync {
                     'headers' => [
                         'apikey'        => $this->supabase_anon_key,
                         'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                        'X-API-Key'     => $this->api_key,
                     ],
                     'timeout' => 10,
                 ] );
@@ -492,6 +493,7 @@ class ConversionIQ_Supabase_Sync {
             'headers' => [
                 'apikey'        => $this->supabase_anon_key,
                 'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                'X-API-Key'     => $this->api_key,
             ],
             'timeout' => 15,
         ] );
@@ -519,8 +521,13 @@ class ConversionIQ_Supabase_Sync {
      * @return bool True on success, false on failure.
      */
     public function save_business_profile( array $profile ) {
-        if ( ! $this->supabase_anon_key || ! $this->organization_id ) {
-            error_log( 'ConversionIQ: save_business_profile skipped — no org ID' );
+        if ( ! $this->supabase_anon_key ) {
+            error_log( 'ConversionIQ: save_business_profile skipped — no anon key' );
+            return false;
+        }
+
+        if ( ! $this->organization_id && ! $this->fetch_business_profile() ) {
+            error_log( 'ConversionIQ: save_business_profile skipped — could not resolve org ID' );
             return false;
         }
 
@@ -544,6 +551,7 @@ class ConversionIQ_Supabase_Sync {
                     'apikey'        => $this->supabase_anon_key,
                     'Authorization' => 'Bearer ' . $this->supabase_anon_key,
                     'Content-Type'  => 'application/json',
+                    'X-API-Key'     => $this->api_key,
                     'Prefer'        => 'return=minimal',
                 ],
                 'body'    => json_encode( $patch ),

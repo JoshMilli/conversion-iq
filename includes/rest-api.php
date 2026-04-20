@@ -1616,6 +1616,12 @@ function conversioniq_license_activate(WP_REST_Request $request)
         error_log('ConversionIQ License: API key stored from validation response');
     }
 
+    // Store organization ID if the validation response includes one
+    if (!empty($body['organization_id'])) {
+        update_option('conversioniq_organization_id', sanitize_text_field($body['organization_id']));
+        error_log('ConversionIQ License: Organization ID stored from validation response');
+    }
+
     // Store customer info if the server returned it
     $customer = null;
     if (!empty($body['customer']) && is_array($body['customer'])) {
