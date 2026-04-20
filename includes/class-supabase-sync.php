@@ -228,6 +228,7 @@ class ConversionIQ_Supabase_Sync {
                 'headers' => [
                     'apikey'        => $this->supabase_anon_key,
                     'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                    'X-API-Key'     => $this->api_key,
                 ],
                 'timeout' => 15,
             ] );
@@ -476,6 +477,29 @@ class ConversionIQ_Supabase_Sync {
                         update_option( 'conversioniq_organization_id', $this->organization_id );
                         error_log( 'ConversionIQ: fetch_business_profile resolved org ID via domain lookup (' . $candidate . ')' );
                         break;
+                    }
+                }
+            }
+
+            // Fallback: look up by the API key stored from license activation
+            if ( ! $this->organization_id && $this->api_key ) {
+                $key_url  = $this->supabase_url . '/rest/v1/organizations?api_key=eq.'
+                    . rawurlencode( $this->api_key ) . '&select=id&limit=1';
+                $key_resp = wp_remote_get( $key_url, [
+                    'headers' => [
+                        'apikey'        => $this->supabase_anon_key,
+                        'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                        'X-API-Key'     => $this->api_key,
+                    ],
+                    'timeout' => 10,
+                ] );
+                if ( ! is_wp_error( $key_resp ) ) {
+                    $key_body = json_decode( wp_remote_retrieve_body( $key_resp ), true );
+                    if ( wp_remote_retrieve_response_code( $key_resp ) === 200
+                         && is_array( $key_body ) && ! empty( $key_body[0]['id'] ) ) {
+                        $this->organization_id = $key_body[0]['id'];
+                        update_option( 'conversioniq_organization_id', $this->organization_id );
+                        error_log( 'ConversionIQ: fetch_business_profile resolved org ID via api_key lookup' );
                     }
                 }
             }

@@ -819,6 +819,90 @@ export default function App() {
       .finally(() => setLoading(false));
   };
 
+  // ── License Gate ──────────────────────────────────────────────────────────
+  if (licenseStatus === 'checking') {
+    return (
+      <div className="ciq-frontend-root" style={{ minHeight: '100vh', background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter,Arial,Helvetica,sans-serif' }}>
+        <div style={{ textAlign: 'center', color: '#6b7280' }}>
+          <div style={{ width: 40, height: 40, border: '4px solid #e5e7eb', borderTopColor: '#7c3aed', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          <p style={{ margin: 0, fontSize: 15 }}>Loading {B.product}…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (licenseStatus === 'inactive') {
+    return (
+      <div className="ciq-frontend-root" style={{ minHeight: '100vh', background: `linear-gradient(135deg, ${B.primaryColor} 0%, ${B.accentColor} 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter,Arial,Helvetica,sans-serif', padding: 24 }}>
+        <div style={{ background: '#fff', borderRadius: 20, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', padding: '48px 40px', maxWidth: 480, width: '100%' }}>
+          {/* Logo / branding */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 32, justifyContent: 'center' }}>
+            <img
+              src={B.logoUrl || `${(window as any).ConversionIQData?.pluginUrl || ''}/assets/images/Webtec.png`}
+              alt={B.company}
+              style={{ width: 100, height: 'auto' }}
+            />
+          </div>
+
+          <h1 style={{ margin: '0 0 8px 0', fontSize: 26, fontWeight: 800, color: '#111827', textAlign: 'center' }}>
+            Activate {B.product}
+          </h1>
+          <p style={{ margin: '0 0 32px 0', fontSize: 15, color: '#6b7280', textAlign: 'center', lineHeight: 1.6 }}>
+            Enter your license key to unlock AI-powered conversion audits.{' '}
+            <a href={`${B.websiteUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: '#7c3aed', fontWeight: 600, textDecoration: 'none' }}>
+              Get a key →
+            </a>
+          </p>
+
+          {notice && (
+            <div style={{
+              background: noticeType === 'error' ? '#fee2e2' : '#d1fae5',
+              border: noticeType === 'error' ? '1px solid #fca5a5' : '1px solid #6ee7b7',
+              color: noticeType === 'error' ? '#991b1b' : '#065f46',
+              borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontWeight: 500, fontSize: 14,
+            }}>
+              {notice}
+            </div>
+          )}
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+              License Key
+            </label>
+            <input
+              type="text"
+              placeholder="CIQ-XXXXX-XXXXX-XXXXX-XXXXX"
+              value={licenseKey}
+              onChange={e => setLicenseKey(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !licenseLoading && handleLicenseActivate()}
+              style={{ width: '100%', padding: '12px 16px', border: '2px solid #e5e7eb', borderRadius: 10, fontSize: 15, outline: 'none', fontFamily: 'monospace', letterSpacing: '0.04em', boxSizing: 'border-box', transition: 'border 0.2s' }}
+              onFocus={e => (e.target.style.borderColor = '#7c3aed')}
+              onBlur={e => (e.target.style.borderColor = '#e5e7eb')}
+              autoFocus
+            />
+          </div>
+
+          <button
+            onClick={handleLicenseActivate}
+            disabled={licenseLoading || !licenseKey.trim()}
+            style={{ width: '100%', padding: '14px 0', background: licenseLoading || !licenseKey.trim() ? '#c4b5fd' : 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: licenseLoading || !licenseKey.trim() ? 'not-allowed' : 'pointer', transition: 'opacity 0.2s', marginBottom: 24 }}
+          >
+            {licenseLoading ? 'Activating…' : 'Activate License'}
+          </button>
+
+          <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 20, textAlign: 'center', fontSize: 13, color: '#9ca3af' }}>
+            Need help?{' '}
+            <a href={`mailto:${B.supportEmail}`} style={{ color: '#7c3aed', fontWeight: 600, textDecoration: 'none' }}>
+              {B.supportEmail}
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  // ── End License Gate ──────────────────────────────────────────────────────
+
   return (
     <div className="ciq-frontend-root" style={{ minHeight: '100vh', background: '#f3f4f6', padding: 0, fontFamily: 'Inter,Arial,Helvetica,sans-serif' }}>
       <header style={{ background: `linear-gradient(135deg, ${B.primaryColor} 0%, ${B.accentColor} 100%)`, color: '#fff', padding: '32px 0', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', marginBottom: 40 }}>
