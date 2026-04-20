@@ -160,6 +160,147 @@ function conversioniq_extract_html_structure($html)
         $summary .= 'Found testimonial attributions: ' . implode('; ', $testimonial_names) . "\n";
         $summary .= "**IMPORTANT**: These names indicate testimonials with attribution. Trust score should be 60+ (not 0).\n";
     }
+
+    // ── CRO Structural Signals ──
+    // Extract explicit HTML evidence for each CRO checklist item so the AI
+    // doesn't have to guess from text alone.
+    $cro_signals = array();
+
+    // 1. CTA Above the Fold — look for button/link in the first ~4000 chars (hero/header area)
+    $above_fold = substr($html, 0, 4000);
+    if (preg_match_all('/<(?:button|a)[^>]*(?:class|role)[^>]*(?:btn|button|cta|get-started|start|try|buy|book|request|contact|sign-up|signup)[^>]*>([^<]{2,60})<\/(?:button|a)>/i', $above_fold, $cta_matches)) {
+        $cta_texts = array_unique(array_map('wp_strip_all_tags', $cta_matches[1]));
+        $cro_signals[] = 'CTA Above the Fold: YES — found button/link element(s) in first screen area: "' . implode('", "', array_slice($cta_texts, 0, 3)) . '"';
+    } elseif (preg_match('/<(?:button|a)[^>]*>([^<]{2,40})<\/(?:button|a)>/i', $above_fold, $m)) {
+        $cro_signals[] = 'CTA Above the Fold: POSSIBLE — interactive element in hero area: "' . wp_strip_all_tags($m[1]) . '"';
+    } else {
+        $cro_signals[] = 'CTA Above the Fold: NOT DETECTED in first screen area';
+    }
+
+    // 2. Trust Signals — image alt text + class names for certs, awards, badges
+    $trust_imgs = array();
+    if (preg_match_all('/<img[^>]*alt=["\']([^"\']*(?:cert|award|badge|accredit|iso|ssl|secure|verified|partner|member|guarantee)[^"\']*)["\'][^>]*>/i', $html, $img_alts)) {
+        $trust_imgs = array_map('wp_strip_all_tags', $img_alts[1]);
+    }
+    $has_trust_section = preg_match('/(?:class|id)=["\'][^"\']*(?:trust|badge|cert|award|accredit|partner|guarantee)[^"\']*["\']/i', $html);
+    $trust_text_match = preg_match('/\b(?:certified|accredited|award[- ]winning|ISO[- ]\d+|BBB|google\s+partner|microsoft\s+partner|as\s+seen\s+in)\b/i', $html);
+    if (!empty($trust_imgs)) {
+        $cro_signals[] = 'Trust Signals (Certs/Awards): YES — trust image(s) with alt: "' . implode('", "', array_slice($trust_imgs, 0, 3)) . '"';
+    } elseif ($has_trust_section || $trust_text_match) {
+        $cro_signals[] = 'Trust Signals (Certs/Awards): POSSIBLE — trust-related class/text detected on page';
+    } else {
+        $cro_signals[] = 'Trust Signals (Certs/Awards): NOT DETECTED — no certification/award images or text found';
+    }
+
+    // 3. Inline Social Proof — testimonials (already handled above), star ratings, review counts
+    $has_rating = preg_match('/(?:\d\.\d\s*(?:out of|\/)\s*5|\d+\s*(?:star|review|rating)s?|\b5\s*stars?\b|★)/i', $html);
+    $has_review_count = preg_match('/\d+\s*(?:\+\s*)?\s*(?:review|client|customer|testimonial)s?/i', $html);
+    if (!empty($testimonial_names)) {
+        $cro_signals[] = 'Inline Social Proof: YES — attributed testimonials found (see above)';
+    } elseif ($has_rating || $has_review_count) {
+        $cro_signals[] = 'Inline Social Proof: YES — star ratings or review counts detected in page content';
+    } elseif (preg_match('/(?:class|id)=["\'][^"\']*(?:testimonial|review|social-proof|feedback)[^"\']*["\']/i', $html)) {
+        $cro_signals[] = 'Inline Social Proof: POSSIBLE — testimonial/review section found but no attributed names extracted';
+    } else {
+        $cro_signals[] = 'Inline Social Proof: NOT DETECTED';
+    }
+
+    // 4. Urgency / Scarcity
+    if (preg_match('/\b(?:limited\s+(?:time|offer|spots?|seats?|stock)|only\s+\d+\s+(?:left|remaining|available)|expires?|ending\s+soon|today\s+only|hurry|act\s+now|last\s+chance|countdown)\b/i', $html)) {
+        $cro_signals[] = 'Urgency/Scarcity: YES — urgency/scarcity language detected in page copy';
+    } else {
+        $cro_signals[] = 'Urgency/Scarcity: NOT DETECTED';
+    }
+
+    // 5. Sticky CTA in Nav — nav element containing a button or CTA-style link
+    if (preg_match('/<(?:nav|header)[^>]*>[\s\S]{0,3000}?<(?:button|a)[^>]*(?:btn|button|cta|get-started|start|try|buy|book|request|sign-up|signup)[^>]*>/i', $html)) {
+        $cro_signals[] = 'Sticky CTA in Nav: YES — CTA button/link detected inside nav or header element';
+    } elseif (preg_match('/(?:class|id)=["\'][^"\']*(?:sticky|fixed)[^"\']*["\']/i', $html) && preg_match('/<(?:button|a)[^>]*(?:btn|cta)[^>]*>/i', $html)) {
+        $cro_signals[] = 'Sticky CTA in Nav: POSSIBLE — sticky/fixed element with CTA detected';
+    } else {
+        $cro_signals[] = 'Sticky CTA in Nav: NOT DETECTED';
+    }
+
+    // 6. Reassurance Micro-copy (friction reducers near CTAs)
+    if (preg_match('/\b(?:no\s+credit\s+card|cancel\s+anytime|free\s+(?:trial|forever|plan)|no\s+commitment|no\s+obligation|no\s+contract|try\s+(?:it\s+)?free|risk[- ]free)\b/i', $html)) {
+        $cro_signals[] = 'Reassurance Micro-copy: YES — friction-reducing phrases detected near CTAs';
+    } else {
+        $cro_signals[] = 'Reassurance Micro-copy: NOT DETECTED';
+    }
+
+    // 7. Clear Visual Hierarchy — presence of H1 + H2/H3 structure
+    $h1_count = preg_match_all('/<h1[^>]*>/i', $html);
+    $h2_count = preg_match_all('/<h2[^>]*>/i', $html);
+    $h3_count = preg_match_all('/<h3[^>]*>/i', $html);
+    if ($h1_count >= 1 && ($h2_count + $h3_count) >= 2) {
+        $cro_signals[] = "Clear Visual Hierarchy: YES — page has H1 ({$h1_count}) + H2 ({$h2_count}) + H3 ({$h3_count}) heading structure";
+    } elseif ($h1_count >= 1) {
+        $cro_signals[] = "Clear Visual Hierarchy: PARTIAL — H1 present but limited sub-heading structure (H2: {$h2_count}, H3: {$h3_count})";
+    } else {
+        $cro_signals[] = 'Clear Visual Hierarchy: NOT DETECTED — no H1 found';
+    }
+
+    // 8. Mobile-First UX — viewport meta tag and responsive indicators
+    $has_viewport = preg_match('/<meta[^>]*name=["\']viewport["\'][^>]*content=["\'][^"\']*width=device-width[^"\']*["\']/i', $html);
+    $has_responsive_class = preg_match('/(?:class|id)=["\'][^"\']*(?:mobile|responsive|breakpoint|col-|flex|grid)[^"\']*["\']/i', $html);
+    if ($has_viewport && $has_responsive_class) {
+        $cro_signals[] = 'Mobile-First UX: YES — viewport meta tag present and responsive CSS classes detected';
+    } elseif ($has_viewport) {
+        $cro_signals[] = 'Mobile-First UX: LIKELY — viewport meta tag set for device-width';
+    } else {
+        $cro_signals[] = 'Mobile-First UX: NOT DETECTED — no mobile viewport meta tag found';
+    }
+
+    // 9. Speed / Ease Cues
+    if (preg_match('/\b(?:instant(?:ly)?|in\s+\d+\s+(?:second|minute|hour|day)s?|quick(?:ly)?|fast(?:er)?|easy|simple|effortless(?:ly)?|set\s+up\s+in|done\s+in|takes?\s+(?:just\s+)?\d+|ready\s+in)\b/i', $html)) {
+        $cro_signals[] = 'Speed/Ease Cues: YES — ease or speed language found in copy';
+    } else {
+        $cro_signals[] = 'Speed/Ease Cues: NOT DETECTED';
+    }
+
+    // 10. Risk Reversal (Guarantee)
+    if (preg_match('/\b(?:\d+[- ]day\s+(?:money[- ]back|guarantee|refund|free\s+trial)|money[- ]back\s+guarantee|satisfaction\s+guaranteed?|full\s+refund|risk[- ]free|no\s+risk|try\s+(?:it\s+)?free|free\s+trial)\b/i', $html)) {
+        $cro_signals[] = 'Risk Reversal (Guarantee): YES — money-back guarantee or risk-removal offer found in page copy';
+    } elseif (preg_match('/(?:class|id)=["\'][^"\']*guarantee[^"\']*["\']/i', $html)) {
+        $cro_signals[] = 'Risk Reversal (Guarantee): POSSIBLE — guarantee section element detected';
+    } else {
+        $cro_signals[] = 'Risk Reversal (Guarantee): NOT DETECTED';
+    }
+
+    // 11. Anchor Pricing — multiple price points suggesting comparison
+    preg_match_all('/\$[\d,]+(?:\.\d{2})?|\b(?:USD|GBP|EUR)\s*[\d,]+/i', $html, $prices);
+    $unique_prices = array_unique($prices[0]);
+    if (count($unique_prices) >= 2) {
+        $cro_signals[] = 'Anchor Pricing: YES — multiple price points detected (' . implode(', ', array_slice($unique_prices, 0, 4)) . '), suggesting comparison pricing';
+    } elseif (preg_match('/(?:class|id)=["\'][^"\']*(?:pricing|plan|package|tier)[^"\']*["\']/i', $html)) {
+        $cro_signals[] = 'Anchor Pricing: POSSIBLE — pricing section detected but single/no prices visible in markup';
+    } else {
+        $cro_signals[] = 'Anchor Pricing: NOT DETECTED';
+    }
+
+    // 12. Exit Intent / Retention elements
+    if (preg_match('/(?:class|id)=["\'][^"\']*(?:exit[- ]intent|popup|modal|overlay|lightbox|optin|opt-in|lead[- ]magnet)[^"\']*["\']/i', $html) ||
+        preg_match('/data-[^=]*(?:exit|popup|trigger)[^=]*=/i', $html)) {
+        $cro_signals[] = 'Exit Intent: YES — popup/exit-intent/modal element found in page markup';
+    } else {
+        $cro_signals[] = 'Exit Intent: NOT DETECTED — no popup or exit-intent markup found';
+    }
+
+    // 13. Progress Indicators — multi-step forms or checkout flows
+    if (preg_match('/(?:class|id)=["\'][^"\']*(?:progress|step[- ]?\d|wizard|multi[- ]step|breadcrumb|stepper)[^"\']*["\']/i', $html) ||
+        preg_match('/\b(?:step\s+\d\s+of\s+\d|\d\s+of\s+\d\s+steps?)\b/i', $html)) {
+        $cro_signals[] = 'Progress Indicators: YES — multi-step or progress element detected';
+    } else {
+        $cro_signals[] = 'Progress Indicators: NOT DETECTED';
+    }
+
+    if (!empty($cro_signals)) {
+        $summary .= "\nCRO Structural Signals (HTML-derived — use these as primary evidence for cro_checklist):\n";
+        foreach ($cro_signals as $signal) {
+            $summary .= '• ' . $signal . "\n";
+        }
+    }
+
     $summary .= "\nNote: Use these section names when categorizing your suggestions.";
 
     return $summary;
@@ -1043,16 +1184,6 @@ function conversioniq_get_business_profile(WP_REST_Request $request)
         }
     }
 
-    $debug = [
-        'source'             => $source,
-        'supabase_reached'   => ( $source === 'supabase' ),
-        'supabase_raw'       => ( $source === 'supabase' ) ? $profile : null,
-        'org_id_in_options'  => get_option( 'conversioniq_organization_id', null ),
-        'api_key_in_options' => get_option( 'conversioniq_api_key' ) ? substr( get_option( 'conversioniq_api_key' ), 0, 8 ) . '…' : null,
-        'license_key_set'    => ! empty( $license_key ),
-        'site_url'           => get_site_url(),
-    ];
-
     if ( is_array( $profile ) ) {
         foreach ( $fields as $f ) {
             if ( isset( $profile[ $f ] ) && $profile[ $f ] !== null && $profile[ $f ] !== '' ) {
@@ -1066,7 +1197,6 @@ function conversioniq_get_business_profile(WP_REST_Request $request)
     foreach ( $fields as $f ) {
         $result[ $f ] = $local[ $f ] ?? null;
     }
-    $result['_debug'] = $debug;
     return rest_ensure_response( $result );
 }
 

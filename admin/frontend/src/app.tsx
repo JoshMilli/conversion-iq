@@ -148,29 +148,19 @@ export default function App() {
         setKnockKnockWebhookSecret(r.data.knockknock_webhook_secret || '');
         setKnockKnockWebhookUrl(r.data.knockknock_webhook_url || '');
         // Chain business profile fetch so it always merges AFTER setSettings(r.data)
-        console.log('[CIQ BP] Fetching business profile (on-mount chain)…', api('business-profile'));
         return axios.get(api('business-profile'), { headers: { 'X-WP-Nonce': nonce } });
       })
       .then(r => {
-        console.log('[CIQ BP] on-mount response status:', r?.status);
-        console.log('[CIQ BP] on-mount raw data:', r?.data);
         if (r?.data && typeof r.data === 'object') {
           const nonEmpty = Object.fromEntries(
             Object.entries(r.data).filter(([, v]) => v != null && v !== '')
           );
-          console.log('[CIQ BP] on-mount non-empty fields:', nonEmpty);
           if (Object.keys(nonEmpty).length > 0) {
             setSettings(prev => ({ ...prev, ...nonEmpty }));
-            console.log('[CIQ BP] on-mount settings merged ✓');
-          } else {
-            console.warn('[CIQ BP] on-mount: all fields were null/empty — nothing merged');
           }
-        } else {
-          console.warn('[CIQ BP] on-mount: unexpected data shape:', r?.data);
         }
       })
       .catch(err => {
-        console.error('[CIQ BP] on-mount fetch failed:', err?.response?.status, err?.response?.data || err?.message);
         console.error('✗ Failed to load settings:', err);
       });
     
@@ -214,25 +204,18 @@ export default function App() {
   // Re-fetch business profile when license becomes active (e.g. after activating on this page)
   useEffect(() => {
     if (licenseStatus !== 'active') return;
-    console.log('[CIQ BP] licenseStatus became active — re-fetching business profile…');
     axios.get(api('business-profile'), { headers: { 'X-WP-Nonce': nonce } })
       .then(r => {
-        console.log('[CIQ BP] licenseActive response status:', r?.status);
-        console.log('[CIQ BP] licenseActive raw data:', r?.data);
         if (r.data && typeof r.data === 'object') {
           const nonEmpty = Object.fromEntries(
             Object.entries(r.data).filter(([, v]) => v != null && v !== '')
           );
-          console.log('[CIQ BP] licenseActive non-empty fields:', nonEmpty);
           if (Object.keys(nonEmpty).length > 0) {
             setSettings(prev => ({ ...prev, ...nonEmpty }));
-            console.log('[CIQ BP] licenseActive settings merged ✓');
-          } else {
-            console.warn('[CIQ BP] licenseActive: all fields null/empty — nothing merged');
           }
         }
       })
-      .catch(err => console.error('[CIQ BP] licenseActive fetch failed:', err?.response?.status, err?.response?.data || err?.message));
+      .catch(err => console.error('✗ Failed to re-fetch business profile:', err?.message));
   }, [licenseStatus]);
 
   // Handlers
@@ -653,23 +636,9 @@ export default function App() {
           console.log('%c✅ Check WordPress debug.log for webhook response details', 'color: #10b981; font-style: italic');
           console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #10b981');
           
-          // Log debug info if present
-          if (result._debug) {
-            console.log('🔍 Debug Info:', result._debug);
-            if (result._debug.status === 'exception') {
-              console.error('💥 EXCEPTION:', result._debug.error);
-            }
-            if (result._debug.status === 'success' && !result._debug.has_all_fields) {
-              console.warn('⚠️ Missing required fields in AI response');
-            }
-          }
-          
           // Warn if using fallback
           if (result.ai_used === false) {
             console.warn('⚠️ This audit used FALLBACK data - AI analysis failed!');
-            if (result._debug?.error) {
-              console.error('❌ Error Details:', result._debug.error);
-            }
             console.log('%c💡 Check WordPress debug.log for detailed API response', 'color: #f59e0b; font-weight: bold');
           }
           

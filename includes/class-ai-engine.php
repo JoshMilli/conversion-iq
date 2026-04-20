@@ -894,7 +894,7 @@ Rules: trust<60 → include Trust feature. engagement<50 → include Engagement 
 
 ─── CRO & UX CHECKLIST ───
 
-For each of the 13 elements below, evaluate whether it is present on the page based on the content provided. Set \"present\" to true only if clear evidence exists in the page copy or structure. Set it to false if absent or unclear. Write one specific sentence in \"explanation\" referencing this page — do NOT write generic definitions.
+The HTML STRUCTURE section of the page data includes pre-extracted \"CRO Structural Signals\" derived directly from the page markup. Use these signals as your PRIMARY EVIDENCE when setting \"present\" true/false for each checklist item — they are more reliable than inferring from copy alone. If a signal says \"YES\", set present=true. If it says \"NOT DETECTED\", set present=false unless the page text contains unmistakable evidence. If it says \"POSSIBLE\", use your judgement based on surrounding copy. Write one specific sentence in \"explanation\" referencing actual page content or the detected signal — do NOT write generic definitions.
 
 Elements to evaluate:
 1. CTA Above the Fold — Is there a call-to-action visible without scrolling?
@@ -1072,8 +1072,8 @@ Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact struc
         if (strlen($content) > 8000) {
             $content = substr($content, 0, 8000) . '... [truncated]';
         }
-        if (strlen($html_structure) > 2000) {
-            $html_structure = substr($html_structure, 0, 2000) . '... [truncated]';
+        if (strlen($html_structure) > 3500) {
+            $html_structure = substr($html_structure, 0, 3500) . '... [truncated]';
         }
 
         // Build lead intelligence JSON fragment if data exists
