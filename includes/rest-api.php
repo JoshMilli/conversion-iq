@@ -1009,6 +1009,14 @@ function conversioniq_get_business_profile(WP_REST_Request $request)
     $sync    = new ConversionIQ_Supabase_Sync();
     $profile = $sync->fetch_business_profile();
 
+    $debug = [
+        'supabase_reached'   => is_array( $profile ),
+        'supabase_raw'       => $profile,
+        'org_id_in_options'  => get_option( 'conversioniq_organization_id', null ),
+        'api_key_in_options' => get_option( 'conversioniq_api_key' ) ? substr( get_option( 'conversioniq_api_key' ), 0, 8 ) . '…' : null,
+        'site_url'           => get_site_url(),
+    ];
+
     if ( is_array( $profile ) ) {
         foreach ( $fields as $f ) {
             if ( isset( $profile[ $f ] ) && $profile[ $f ] !== null && $profile[ $f ] !== '' ) {
@@ -1022,6 +1030,7 @@ function conversioniq_get_business_profile(WP_REST_Request $request)
     foreach ( $fields as $f ) {
         $result[ $f ] = $local[ $f ] ?? null;
     }
+    $result['_debug'] = $debug;
     return rest_ensure_response( $result );
 }
 
