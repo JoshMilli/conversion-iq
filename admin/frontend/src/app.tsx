@@ -148,19 +148,31 @@ export default function App() {
         setKnockKnockWebhookSecret(r.data.knockknock_webhook_secret || '');
         setKnockKnockWebhookUrl(r.data.knockknock_webhook_url || '');
         // Chain business profile fetch so it always merges AFTER setSettings(r.data)
+        console.log('[CIQ BP] Fetching business profile (on-mount chain)…', api('business-profile'));
         return axios.get(api('business-profile'), { headers: { 'X-WP-Nonce': nonce } });
       })
       .then(r => {
+        console.log('[CIQ BP] on-mount response status:', r?.status);
+        console.log('[CIQ BP] on-mount raw data:', r?.data);
         if (r?.data && typeof r.data === 'object') {
           const nonEmpty = Object.fromEntries(
             Object.entries(r.data).filter(([, v]) => v != null && v !== '')
           );
+          console.log('[CIQ BP] on-mount non-empty fields:', nonEmpty);
           if (Object.keys(nonEmpty).length > 0) {
             setSettings(prev => ({ ...prev, ...nonEmpty }));
+            console.log('[CIQ BP] on-mount settings merged ✓');
+          } else {
+            console.warn('[CIQ BP] on-mount: all fields were null/empty — nothing merged');
           }
+        } else {
+          console.warn('[CIQ BP] on-mount: unexpected data shape:', r?.data);
         }
       })
-      .catch(err => console.error('✗ Failed to load settings:', err));
+      .catch(err => {
+        console.error('[CIQ BP] on-mount fetch failed:', err?.response?.status, err?.response?.data || err?.message);
+        console.error('✗ Failed to load settings:', err);
+      });
     
     axios.get(api('pages'), { headers: { 'X-WP-Nonce': nonce } })
       .then(r => {
@@ -202,18 +214,25 @@ export default function App() {
   // Re-fetch business profile when license becomes active (e.g. after activating on this page)
   useEffect(() => {
     if (licenseStatus !== 'active') return;
+    console.log('[CIQ BP] licenseStatus became active — re-fetching business profile…');
     axios.get(api('business-profile'), { headers: { 'X-WP-Nonce': nonce } })
       .then(r => {
+        console.log('[CIQ BP] licenseActive response status:', r?.status);
+        console.log('[CIQ BP] licenseActive raw data:', r?.data);
         if (r.data && typeof r.data === 'object') {
           const nonEmpty = Object.fromEntries(
             Object.entries(r.data).filter(([, v]) => v != null && v !== '')
           );
+          console.log('[CIQ BP] licenseActive non-empty fields:', nonEmpty);
           if (Object.keys(nonEmpty).length > 0) {
             setSettings(prev => ({ ...prev, ...nonEmpty }));
+            console.log('[CIQ BP] licenseActive settings merged ✓');
+          } else {
+            console.warn('[CIQ BP] licenseActive: all fields null/empty — nothing merged');
           }
         }
       })
-      .catch(() => {});
+      .catch(err => console.error('[CIQ BP] licenseActive fetch failed:', err?.response?.status, err?.response?.data || err?.message));
   }, [licenseStatus]);
 
   // Handlers
@@ -1138,14 +1157,23 @@ export default function App() {
                   <button
                     onClick={() => {
                       setProfileRefreshing(true);
+                      console.log('[CIQ BP] Manual Refresh clicked\u2026');
                       axios.get(api('business-profile'), { headers: { 'X-WP-Nonce': nonce } })
                         .then(r => {
+                          console.log('[CIQ BP] Refresh response status:', r?.status);
+                          console.log('[CIQ BP] Refresh raw data:', r?.data);
                           const nonEmpty = Object.fromEntries(
                             Object.entries(r.data).filter(([, v]) => v != null && v !== '')
                           );
-                          if (Object.keys(nonEmpty).length > 0) setSettings(prev => ({ ...prev, ...nonEmpty }));
+                          console.log('[CIQ BP] Refresh non-empty fields:', nonEmpty);
+                          if (Object.keys(nonEmpty).length > 0) {
+                            setSettings(prev => ({ ...prev, ...nonEmpty }));
+                            console.log('[CIQ BP] Refresh merged \u2713');
+                          } else {
+                            console.warn('[CIQ BP] Refresh: all fields null/empty');
+                          }
                         })
-                        .catch(() => {})
+                        .catch(err => console.error('[CIQ BP] Refresh failed:', err?.response?.status, err?.response?.data || err?.message))
                         .finally(() => setProfileRefreshing(false));
                     }}
                     disabled={profileRefreshing}
