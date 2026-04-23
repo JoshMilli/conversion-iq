@@ -155,7 +155,7 @@ class ConversionIQ_Config_Manager
                 'sub_license_distribution' => false,
             ),
             'agency' => array(
-                'max_sites'              => 100,
+                'max_sites'              => 50,
                 'max_pages_per_audit'    => 15,
                 'audits_per_week'        => 3,
                 'conversion_scores'      => 6,

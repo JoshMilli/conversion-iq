@@ -507,6 +507,14 @@ add_action('rest_api_init', function () {
             return current_user_can('manage_options'); }
         ));
 
+        register_rest_route('conversioniq/v1', '/audits/supabase', array(
+            'methods'             => 'GET',
+            'callback'            => 'conversioniq_list_audits_supabase',
+            'permission_callback' => function () {
+                return current_user_can('manage_options');
+            },
+        ));
+
         register_rest_route('conversioniq/v1', '/audits', array(
             'methods' => 'GET',
             'callback' => 'conversioniq_list_audits',
@@ -593,6 +601,24 @@ add_action('rest_api_init', function () {
         register_rest_route('conversioniq/v1', '/score-history', array(
             'methods' => 'GET',
             'callback' => 'conversioniq_score_history',
+            'permission_callback' => function () {
+                return current_user_can('manage_options');
+            }
+        ));
+
+        // Supabase audit history for a specific page URL (score trajectory)
+        register_rest_route('conversioniq/v1', '/audit-history', array(
+            'methods' => 'GET',
+            'callback' => 'conversioniq_audit_history',
+            'permission_callback' => function () {
+                return current_user_can('manage_options');
+            }
+        ));
+
+        // Monthly visitor trend from KnockKnock local tables
+        register_rest_route('conversioniq/v1', '/visitor-trend', array(
+            'methods' => 'GET',
+            'callback' => 'conversioniq_visitor_trend',
             'permission_callback' => function () {
                 return current_user_can('manage_options');
             }
@@ -1018,6 +1044,85 @@ function conversioniq_score_history(WP_REST_Request $request)
     return rest_ensure_response($history);
 }
 
+/**
+ * GET /audit-history?page_url=<url>
+ *
+ * Returns all past Supabase audits for this organization + page, oldest first,
+ * with only the columns needed for a score trajectory chart.
+ */
+function conversioniq_audit_history(WP_REST_Request $request)
+{
+    $page_url = sanitize_text_field($request->get_param('page_url'));
+    if (empty($page_url)) {
+        return new WP_REST_Response(array('success' => false, 'message' => 'page_url is required'), 400);
+    }
+
+    $sync = new ConversionIQ_Supabase_Sync();
+    $history = $sync->get_audit_history($page_url);
+
+    if ($history === false) {
+        return new WP_REST_Response(array('success' => false, 'message' => 'Failed to fetch audit history from Supabase'), 502);
+    }
+
+    return rest_ensure_response($history);
+}
+
+/**
+ * GET /visitor-trend
+ *
+ * Returns month-by-month counts of identified visitors and leads from the local
+ * KnockKnock tables for the last 12 months (current month first).
+ */
+function conversioniq_visitor_trend(WP_REST_Request $request)
+{
+    global $wpdb;
+
+    $table_sessions = $wpdb->prefix . 'conversioniq_visitor_sessions';
+    $table_leads    = $wpdb->prefix . 'conversioniq_leads';
+
+    // Build 12-month buckets: current month down to 11 months ago
+    $months = array();
+    for ($i = 0; $i < 12; $i++) {
+        $ts    = strtotime("-{$i} months");
+        $key   = date('Y-m', $ts);
+        $label = date('M Y', $ts);
+        $months[$key] = array('month' => $key, 'label' => $label, 'visitors' => 0, 'leads' => 0);
+    }
+
+    // Identified visitors by month
+    $visitor_rows = $wpdb->get_results(
+        "SELECT DATE_FORMAT(identified_at, '%Y-%m') AS mo, COUNT(*) AS cnt
+         FROM {$table_sessions}
+         WHERE identified_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+         GROUP BY mo",
+        ARRAY_A
+    );
+    foreach ((array) $visitor_rows as $row) {
+        if (isset($months[$row['mo']])) {
+            $months[$row['mo']]['visitors'] = (int) $row['cnt'];
+        }
+    }
+
+    // Leads by month
+    $lead_rows = $wpdb->get_results(
+        "SELECT DATE_FORMAT(converted_at, '%Y-%m') AS mo, COUNT(*) AS cnt
+         FROM {$table_leads}
+         WHERE converted_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+         GROUP BY mo",
+        ARRAY_A
+    );
+    foreach ((array) $lead_rows as $row) {
+        if (isset($months[$row['mo']])) {
+            $months[$row['mo']]['leads'] = (int) $row['cnt'];
+        }
+    }
+
+    // Return newest-first so index 0 = current month, index 1 = last month
+    $result = array_values($months);
+
+    return rest_ensure_response(array('success' => true, 'months' => $result));
+}
+
 function conversioniq_list_audits(WP_REST_Request $request)
 {
     $rows = ConversionIQ_DB::get_audits();
@@ -1038,6 +1143,80 @@ function conversioniq_list_audits(WP_REST_Request $request)
         }
 
         $formatted[] = $audit;
+    }
+
+    return rest_ensure_response($formatted);
+}
+
+function conversioniq_list_audits_supabase(WP_REST_Request $request)
+{
+    $sync = new ConversionIQ_Supabase_Sync();
+    $rows = $sync->get_all_audits(100);
+
+    if ($rows === false) {
+        return rest_ensure_response(array());
+    }
+
+    // Build a page_url → WP page map so we can resolve page_id and page_title
+    $wp_pages = get_posts(array(
+        'post_type'   => 'page',
+        'numberposts' => -1,
+        'post_status' => 'publish',
+    ));
+    $url_map = array();
+    foreach ($wp_pages as $page) {
+        $permalink = get_permalink($page->ID);
+        $url_map[ trailingslashit($permalink) ]   = $page;
+        $url_map[ untrailingslashit($permalink) ] = $page;
+    }
+
+    $formatted = array();
+    foreach ($rows as $row) {
+        $page_url = isset($row['page_url']) ? $row['page_url'] : '';
+        $wp_page  = isset($url_map[ trailingslashit($page_url) ])
+            ? $url_map[ trailingslashit($page_url) ]
+            : (isset($url_map[ untrailingslashit($page_url) ])
+                ? $url_map[ untrailingslashit($page_url) ]
+                : null);
+
+        // Derive a human title from the URL slug when the WP page isn't found.
+        // Use a deterministic synthetic page_id (crc32) so OverviewTab can group
+        // by page correctly even when the WP page no longer exists.
+        if ($wp_page) {
+            $page_title = $wp_page->post_title;
+            $page_id    = $wp_page->ID;
+        } else {
+            $slug       = basename( rtrim( parse_url( $page_url, PHP_URL_PATH ), '/' ) );
+            $page_title = $slug ? ucwords( str_replace( array('-', '_'), ' ', $slug ) ) : $page_url;
+            // crc32 can return negative on 32-bit; abs() keeps it positive
+            $page_id    = abs( crc32( $page_url ) );
+        }
+
+        // JSON fields may come back as strings from Supabase
+        $decode = function($val) {
+            return is_string($val) ? json_decode($val, true) : $val;
+        };
+
+        $formatted[] = array(
+            'id'                => $row['id'],
+            'insert_id'         => $row['id'],
+            'page_url'          => $page_url,
+            'page_id'           => $page_id,
+            'page_title'        => $page_title,
+            'overall_score'     => $row['overall_score']     ?? null,
+            'clarity_score'     => $row['clarity_score']     ?? null,
+            'emotional_score'   => $row['emotional_score']   ?? null,
+            'cta_strength'      => $row['cta_strength']      ?? null,
+            'readability_score' => $row['readability_score'] ?? null,
+            'engagement_score'  => $row['engagement_score']  ?? null,
+            'trust_score'       => $row['trust_score']       ?? null,
+            'cro_checklist'     => $decode($row['cro_checklist']     ?? null),
+            'insights'          => $decode($row['insights']          ?? null),
+            'recommendations'   => $decode($row['recommendations']   ?? null),
+            'report_token'      => $row['report_token'] ?? null,
+            'created_at'        => $row['created_at']  ?? null,
+            'ai_used'           => true,
+        );
     }
 
     return rest_ensure_response($formatted);

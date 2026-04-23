@@ -728,7 +728,107 @@ class ConversionIQ_Supabase_Sync {
         }
         return intval($score);
     }
-    
+
+    /**
+     * Fetch audit history for a specific page from Supabase.
+     *
+     * Returns all audits for this organization + page_url ordered oldest-first,
+     * with only the score columns and cro_checklist needed for trajectory charts.
+     *
+     * @param string $page_url The page URL to query
+     * @return array|false Array of audit rows on success, false on failure
+     */
+    public function get_audit_history($page_url) {
+        if (!$this->supabase_anon_key) {
+            return false;
+        }
+
+        if (!$this->organization_id && !$this->ensure_organization()) {
+            return false;
+        }
+
+        $select = 'id,created_at,overall_score,clarity_score,emotional_score,cta_strength,readability_score,engagement_score,trust_score,cro_checklist';
+
+        $url = $this->supabase_url . '/rest/v1/audits'
+            . '?organization_id=eq.' . urlencode($this->organization_id)
+            . '&page_url=eq.' . urlencode($page_url)
+            . '&select=' . $select
+            . '&order=created_at.asc';
+
+        $response = wp_remote_get($url, array(
+            'headers' => array(
+                'apikey'        => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                'X-API-Key'     => $this->api_key,
+            ),
+            'timeout' => 15,
+        ));
+
+        if (is_wp_error($response)) {
+            error_log('ConversionIQ audit_history error: ' . $response->get_error_message());
+            return false;
+        }
+
+        $status = wp_remote_retrieve_response_code($response);
+        if ($status !== 200) {
+            error_log('ConversionIQ audit_history non-200: ' . $status . ' — ' . wp_remote_retrieve_body($response));
+            return false;
+        }
+
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        return is_array($body) ? $body : false;
+    }
+
+    /**
+     * Fetch all audits for this organization from Supabase.
+     * Used to restore audit history after plugin reinstall.
+     *
+     * @param int $limit Maximum rows to return (default 100)
+     * @return array|false Array of audit rows or false on failure
+     */
+    public function get_all_audits($limit = 100) {
+        if (!$this->supabase_anon_key) {
+            return false;
+        }
+
+        if (!$this->organization_id && !$this->ensure_organization()) {
+            return false;
+        }
+
+        $select = 'id,created_at,page_url,overall_score,clarity_score,emotional_score,' .
+                  'cta_strength,readability_score,engagement_score,trust_score,' .
+                  'cro_checklist,insights,recommendations,report_token';
+
+        $url = $this->supabase_url . '/rest/v1/audits'
+            . '?organization_id=eq.' . urlencode($this->organization_id)
+            . '&select=' . $select
+            . '&order=created_at.desc'
+            . '&limit=' . (int) $limit;
+
+        $response = wp_remote_get($url, array(
+            'headers' => array(
+                'apikey'        => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                'X-API-Key'     => $this->api_key,
+            ),
+            'timeout' => 15,
+        ));
+
+        if (is_wp_error($response)) {
+            error_log('ConversionIQ get_all_audits error: ' . $response->get_error_message());
+            return false;
+        }
+
+        $status = wp_remote_retrieve_response_code($response);
+        if ($status !== 200) {
+            error_log('ConversionIQ get_all_audits non-200: ' . $status . ' — ' . wp_remote_retrieve_body($response));
+            return false;
+        }
+
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        return is_array($body) ? $body : false;
+    }
+
     /**
      * Fetch case studies from Supabase to enhance AI recommendations
      * 

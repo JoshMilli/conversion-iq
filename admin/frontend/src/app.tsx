@@ -65,8 +65,6 @@ export default function App() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingAutomated, setSavingAutomated] = useState(false);
   const [auditRunning, setAuditRunning] = useState(false);
-  const [modal, setModal] = useState<{ audit?: Audit; open: boolean; tab?: string }>({ open: false, tab: 'overview' });
-  const [expandedSuggestions, setExpandedSuggestions] = useState<Set<number>>(new Set([0])); // First suggestion expanded by default
   const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'automated' | 'audits' | 'knockknock' | 'license' | 'faq'>('overview');
   const [automatedReporting, setAutomatedReporting] = useState({
     enabled: false,
@@ -109,6 +107,7 @@ export default function App() {
   const knockKnockItemsPerPage = 20;
   const [knockKnockStats, setKnockKnockStats] = useState({ totalLeads: 0, totalVisitors: 0, totalToday: 0 });
   const [selectedLead, setSelectedLead] = useState<any>(null);
+  const [visitorTrend, setVisitorTrend] = useState<{ month: string; label: string; visitors: number; leads: number }[]>([]);
 
   // Auto-dismiss toast notifications after a consistent duration
   useEffect(() => {
@@ -202,6 +201,7 @@ export default function App() {
   }, []);
 
   // Re-fetch business profile when license becomes active (e.g. after activating on this page)
+  // Also restore audit history from Supabase — survives plugin reinstalls
   useEffect(() => {
     if (licenseStatus !== 'active') return;
     axios.get(api('business-profile'), { headers: { 'X-WP-Nonce': nonce } })
@@ -216,6 +216,33 @@ export default function App() {
         }
       })
       .catch(err => console.error('✗ Failed to re-fetch business profile:', err?.message));
+
+    // Restore audit history from Supabase so data survives reinstalls
+    axios.get(api('audits/supabase'), { headers: { 'X-WP-Nonce': nonce } })
+      .then(r => {
+        if (Array.isArray(r.data) && r.data.length > 0) {
+          setAudits(r.data);
+          // Also derive scoreHistory from these audits so the Overview tab renders
+          // (scoreHistory normally comes from the local WP DB which is empty after reinstall)
+          const history = r.data
+            .map((a: any) => ({
+              id:               a.id,
+              page_id:          a.page_id,
+              page_title:       a.page_title,
+              created_at:       a.created_at,
+              overall_score:    a.overall_score,
+              clarity_score:    a.clarity_score,
+              emotional_score:  a.emotional_score,
+              cta_strength:     a.cta_strength,
+              readability_score: a.readability_score,
+              engagement_score: a.engagement_score,
+              trust_score:      a.trust_score,
+            }))
+            .reverse(); // Supabase returns newest-first; scoreHistory expects oldest-first
+          setScoreHistory(history);
+        }
+      })
+      .catch(err => console.error('✗ Failed to restore audits from Supabase:', err?.message));
   }, [licenseStatus]);
 
   // Handlers
@@ -521,9 +548,13 @@ export default function App() {
   // Load KnockKnock leads when Growth Machine tab is opened
   useEffect(() => {
     const hasAuth = knockKnockCompanyId || knockKnockWebhookSecret;
-    
+
     if (activeTab === 'knockknock' && hasAuth) {
       fetchKnockKnockLeads();
+      // Load monthly visitor trend
+      axios.get(api('visitor-trend'), { headers: { 'X-WP-Nonce': nonce } })
+        .then(r => { if (r.data?.months) setVisitorTrend(r.data.months); })
+        .catch(() => {});
     }
   }, [activeTab, knockKnockCompanyId, knockKnockWebhookSecret]);
 
@@ -712,99 +743,6 @@ export default function App() {
       setLoading(false);
       setProgress(0);
     }
-  };
-  const handleExportReport = (insert_id?: number) => {
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('📄 EXPORT REPORT INITIATED');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('Audit ID provided:', insert_id);
-    console.log('Audit ID type:', typeof insert_id);
-    console.log('Audit ID truthy?', !!insert_id);
-    
-    if (!insert_id) {
-      console.error('❌ Cannot export: No audit ID provided');
-      setNotice('Cannot export - no audit ID');
-      return;
-    }
-    
-    console.log('✅ Audit ID validated:', insert_id);
-    console.log('🌐 API endpoint:', api('report'));
-    console.log('📦 Request payload:', { audit_id: insert_id });
-    console.log('🔐 Nonce:', nonce ? 'Present' : 'MISSING');
-    
-    setLoading(true);
-    setNotice('Generating report...');
-    
-    console.log('🚀 Sending POST request...');
-    const startTime = Date.now();
-    
-    axios.post(api('report'), { audit_id: insert_id }, { headers: { 'X-WP-Nonce': nonce } })
-      .then(r => {
-        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-        console.log(`✅ Request completed in ${duration}s`);
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('📨 RESPONSE RECEIVED');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('Status:', r.status, r.statusText);
-        console.log('Response data:', r.data);
-        console.log('Response data type:', typeof r.data);
-        console.log('Response data length:', r.data ? r.data.length : 'null/undefined');
-        console.log('Is empty string?', r.data === '');
-        console.log('Response headers:', {
-          'content-type': r.headers['content-type'],
-          'content-length': r.headers['content-length'],
-          'x-wp-nonce': r.headers['x-wp-nonce']
-        });
-        
-        if (typeof r.data === 'object' && r.data !== null) {
-          console.log('Response data keys:', Object.keys(r.data));
-          console.log('Has success?', 'success' in r.data);
-          console.log('Has url?', 'url' in r.data);
-          console.log('Has test?', 'test' in r.data);
-        } else {
-          console.log('Response is not an object - raw value:', r.data);
-        }
-        
-        if (r.data && r.data.url) {
-          console.log('✅ Report URL found:', r.data.url);
-          
-          // Trigger download instead of opening in new tab
-          const link = document.createElement('a');
-          link.href = r.data.url;
-          link.download = `conversion-iq-report-${insert_id}.html`;
-          link.target = '_blank';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          
-          setNotice('✅ Report downloaded successfully!');
-        } else if (r.data && r.data.test) {
-          console.log('🧪 Test response received:', r.data.test);
-          setNotice('Test response: ' + r.data.test);
-        } else {
-          console.error('⚠️ No URL in response');
-          console.error('Expected r.data.url but got:', r.data);
-          setNotice('Report generation failed - no URL returned');
-        }
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      })
-      .catch(err => {
-        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.error(`❌ REQUEST FAILED after ${duration}s`);
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.error('Error object:', err);
-        console.error('Error message:', err.message);
-        console.error('Error response:', err.response);
-        if (err.response) {
-          console.error('Error status:', err.response.status);
-          console.error('Error data:', err.response.data);
-          console.error('Error headers:', err.response.headers);
-        }
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        setNotice('Report export failed - check console');
-      })
-      .finally(() => setLoading(false));
   };
 
   // ── License Gate ──────────────────────────────────────────────────────────
@@ -1101,7 +1039,6 @@ export default function App() {
             pages={pages}
             audits={audits}
             setActiveTab={setActiveTab as any}
-            setModal={setModal}
           />
         )}
 
@@ -1844,63 +1781,26 @@ export default function App() {
                       🔄 Retry Audit
                     </button>
                   ) : (
-                    <>
-                      <button className="ciq-btn primary" onClick={() => setModal({ audit: a, open: true, tab: 'overview' })} style={{ flex: 1, padding: '12px 20px', background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 12px rgba(124, 58, 237, 0.3)', transition: 'transform 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
-                        View Full Report
-                      </button>
-                      <button className="ciq-btn" onClick={() => handleExportReport(a.insert_id)} style={{ padding: '12px 20px', background: '#fff', color: '#7c3aed', border: '1px solid #7c3aed', borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={(e) => { e.currentTarget.style.background = '#7c3aed'; e.currentTarget.style.color = '#fff'; }} onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#7c3aed'; }}>
-                        Export PDF
-                      </button>
-                      {a.report_token && (
-                        <a
-                          href={`https://conversioniq-app.com/reports/${a.report_token}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '12px 20px', background: '#fff', color: '#0891b2', border: '1px solid #0891b2', borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: 'pointer', textDecoration: 'none', transition: 'all 0.2s', whiteSpace: 'nowrap' }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = '#0891b2'; e.currentTarget.style.color = '#fff'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#0891b2'; }}
-                        >
-                          🔗 Share Report
-                        </a>
-                      )}
-                    </>
+                    a.report_token ? (
+                      <a
+                        href={`https://conversioniq-app.com/reports/${a.report_token}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: '14px 20px', background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', color: '#fff', borderRadius: 10, fontSize: 15, fontWeight: 600, textDecoration: 'none', boxShadow: '0 4px 12px rgba(124, 58, 237, 0.3)', transition: 'transform 0.2s' }}
+                        onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                        onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                      >
+                        View Full Report →
+                      </a>
+                    ) : null
                   )}
-                </div>
-                <a
-                  href={`mailto:${B.supportEmail}?subject=Free 15-Min Expert Review Request - ${encodeURIComponent(a.page_title || 'Audit')}&body=Hi ${B.company} Team,%0D%0A%0D%0AI'd like to schedule a FREE 15-minute expert review of my ${B.product} audit results.%0D%0A%0D%0APage: ${encodeURIComponent(a.page_title || 'N/A')}%0D%0AAudit Date: ${a.created_at ? encodeURIComponent(new Date(a.created_at).toLocaleDateString()) : 'N/A'}%0D%0A%0D%0APlease let me know your availability.%0D%0A%0D%0AThank you!`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    padding: '10px 16px',
-                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                    color: '#fff',
-                    textDecoration: 'none',
-                    borderRadius: 10,
-                    fontSize: 14,
-                    fontWeight: 600,
-                    transition: 'all 0.2s',
-                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)',
-                    border: 'none'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.35)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.25)';
-                  }}
-                >
-                  <span>🎯 Get FREE 15-Min Expert Review</span>
-                </a>
               </div>
             </div>
-          ))}
+                  </div>
+                      ))}
                     </div>
                   </div>
-                ))
+                ));
               })()}
             </section>
           </>
@@ -1948,7 +1848,14 @@ export default function App() {
 
             {canUse('knockknock') && (<>
             {/* Statistics Cards */}
-            {(knockKnockCompanyId || knockKnockWebhookSecret) && knockKnockLeads.length > 0 && (
+            {(knockKnockCompanyId || knockKnockWebhookSecret) && knockKnockLeads.length > 0 && (() => {
+              const thisMonth  = visitorTrend[0]  ?? { visitors: 0, leads: 0, label: 'This Month' };
+              const lastMonth  = visitorTrend[1]  ?? { visitors: 0, leads: 0, label: 'Last Month' };
+              const visitorDelta = thisMonth.visitors - lastMonth.visitors;
+              const leadDelta    = thisMonth.leads    - lastMonth.leads;
+              const deltaStyle = (n: number) => ({ color: n >= 0 ? '#bbf7d0' : '#fecaca', fontSize: 12, fontWeight: 600 });
+              const deltaLabel = (n: number) => n === 0 ? '— same as last month' : `${n > 0 ? '▲' : '▼'} ${Math.abs(n)} vs last month`;
+              return (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20, marginBottom: 32 }}>
                 <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 12, padding: 24, color: '#fff' }}>
                   <div style={{ fontSize: 14, fontWeight: 600, opacity: 0.9, marginBottom: 8 }}>Total Interactions</div>
@@ -1956,18 +1863,14 @@ export default function App() {
                   <div style={{ fontSize: 13, opacity: 0.8 }}>All time tracking</div>
                 </div>
                 <div style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: 12, padding: 24, color: '#fff' }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, opacity: 0.9, marginBottom: 8 }}>Leads Captured</div>
-                  <div style={{ fontSize: 36, fontWeight: 700, marginBottom: 4 }}>
-                    {knockKnockLeads.filter(l => l.type === 'lead').length}
-                  </div>
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>Converted visitors</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, opacity: 0.9, marginBottom: 8 }}>Leads — {thisMonth.label}</div>
+                  <div style={{ fontSize: 36, fontWeight: 700, marginBottom: 4 }}>{thisMonth.leads}</div>
+                  <div style={deltaStyle(leadDelta)}>{deltaLabel(leadDelta)}</div>
                 </div>
                 <div style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)', borderRadius: 12, padding: 24, color: '#fff' }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, opacity: 0.9, marginBottom: 8 }}>Identified Visitors</div>
-                  <div style={{ fontSize: 36, fontWeight: 700, marginBottom: 4 }}>
-                    {knockKnockLeads.filter(l => l.type === 'visitor').length}
-                  </div>
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>Tracked users</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, opacity: 0.9, marginBottom: 8 }}>Identified Visitors — {thisMonth.label}</div>
+                  <div style={{ fontSize: 36, fontWeight: 700, marginBottom: 4 }}>{thisMonth.visitors}</div>
+                  <div style={deltaStyle(visitorDelta)}>{deltaLabel(visitorDelta)}</div>
                 </div>
                 <div style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', borderRadius: 12, padding: 24, color: '#fff' }}>
                   <div style={{ fontSize: 14, fontWeight: 600, opacity: 0.9, marginBottom: 8 }}>Today</div>
@@ -1980,7 +1883,8 @@ export default function App() {
                   <div style={{ fontSize: 13, opacity: 0.8 }}>New interactions</div>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* Configuration Section */}
             <div style={{ background: '#f9fafb', borderRadius: 12, padding: 24, marginBottom: 32, border: '1px solid #e5e7eb' }}>
@@ -2873,502 +2777,6 @@ export default function App() {
         )}
       </main>
 
-        {modal.open && modal.audit && (
-          <div style={{ position: 'fixed', left: 0, top: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setModal({ open: false })}>
-            <div style={{ background: '#fff', borderRadius: 12, padding: 0, maxWidth: 900, width: '100%', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
-              {/* Header */}
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Audit Report: {modal.audit.page_title}</h3>
-                  <div style={{ fontSize: 13, color: '#666', marginTop: 4 }}>
-                    AI Powered: {modal.audit.ai_used === false ? '✗ Fallback Mode' : '✓ Active'}
-                    {modal.audit.created_at && (
-                      <span style={{ marginLeft: 12 }}>
-                        • Run on {new Date(modal.audit.created_at).toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <button onClick={() => setModal({ open: false })} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#999' }}>×</button>
-              </div>
-
-              {/* Tabs */}
-              <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #eee', padding: '0 24px', background: '#fafafa' }}>
-                {['overview', 'insights', 'suggestions', 'functionality'].map(tab => (
-                  <button 
-                    key={tab} 
-                    onClick={() => setModal({ ...modal, tab })}
-                    style={{ 
-                      padding: '12px 20px', 
-                      background: modal.tab === tab ? '#fff' : 'transparent',
-                      border: 'none',
-                      borderBottom: modal.tab === tab ? '2px solid #7c3aed' : '2px solid transparent',
-                      cursor: 'pointer',
-                      fontWeight: modal.tab === tab ? 600 : 400,
-                      color: modal.tab === tab ? '#7c3aed' : '#666',
-                      textTransform: 'capitalize'
-                    }}
-                  >
-                    {tab === 'functionality' ? 'Suggested Functionality' : tab === 'suggestions' ? 'Copy Suggestions' : tab}
-                  </button>
-                ))}
-              </div>
-
-              {/* Content */}
-              <div style={{ padding: 24, overflowY: 'auto', flex: 1 }}>
-                {modal.tab === 'overview' && (
-                  <div>
-                    <h4 style={{ marginTop: 0, marginBottom: 16 }}>Performance Scores</h4>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
-                      {[
-                        { label: 'Conversion Clarity', value: modal.audit.clarity_score, color: '#2b9af3' },
-                        { label: 'Emotional Resonance', value: modal.audit.emotional_score, color: '#f39c12' },
-                        { label: 'CTA Strength', value: modal.audit.cta_strength, color: '#27ae60' },
-                        { label: 'Readability', value: modal.audit.readability_score, color: '#9333ea' },
-                        { label: 'Engagement', value: modal.audit.engagement_score, color: '#d97706' },
-                        { label: 'Trust', value: modal.audit.trust_score, color: '#0284c7' },
-                      ].map((metric, idx) => metric.value ? (
-                        <div key={idx} style={{ padding: 16, background: '#f9fafb', borderRadius: 8, textAlign: 'center' }}>
-                          <div style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>{metric.label}</div>
-                          <div style={{ fontSize: 32, fontWeight: 700, color: metric.color }}>{metric.value}</div>
-                          <div style={{ marginTop: 8, height: 6, background: '#e5e7eb', borderRadius: 3, overflow: 'hidden' }}>
-                            <div style={{ width: `${metric.value}%`, height: 6, background: metric.color, transition: 'width 0.3s' }}></div>
-                          </div>
-                        </div>
-                      ) : null)}
-                    </div>
-                    
-
-                  </div>
-                )}
-
-                {modal.tab === 'insights' && (
-                  <div>
-                    {modal.audit.insights?.executive_summary && (
-                      <div style={{ marginBottom: 24, padding: 20, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 12, color: '#fff', boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-                          <span style={{ fontSize: 28, marginRight: 10 }}>📊</span>
-                          <h4 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Executive Summary</h4>
-                        </div>
-                        <p style={{ margin: 0, fontSize: 15, lineHeight: 1.7, opacity: 0.95 }}>{modal.audit.insights.executive_summary}</p>
-                      </div>
-                    )}
-
-                    {modal.audit.insights?.top_priority_insight && (
-                      <div style={{ marginBottom: 24, padding: 20, background: '#fff7ed', borderRadius: 12, border: '2px solid #f59e0b', boxShadow: '0 2px 8px rgba(245, 158, 11, 0.15)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-                          <span style={{ fontSize: 28, marginRight: 10 }}>🎯</span>
-                          <h4 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#ea580c' }}>Top Priority Focus</h4>
-                        </div>
-                        <p style={{ margin: 0, fontSize: 15, lineHeight: 1.7, color: '#374151' }}>{modal.audit.insights.top_priority_insight}</p>
-                      </div>
-                    )}
-
-                    {modal.audit.insights?.strengths && modal.audit.insights.strengths.length > 0 && (
-                      <div style={{ marginBottom: 24 }}>
-                        <h4 style={{ color: '#27ae60', marginBottom: 12, fontSize: 17, fontWeight: 700 }}>💪 What's Working Well</h4>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                          {modal.audit.insights.strengths.map((s, i) => (
-                            <div key={i} style={{ background: '#f0fdf4', padding: 16, borderRadius: 8, borderLeft: '4px solid #27ae60', fontSize: 14, lineHeight: 1.6, color: '#374151' }}>{s}</div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {modal.audit.insights?.weaknesses && modal.audit.insights.weaknesses.length > 0 && (
-                      <div style={{ marginBottom: 24 }}>
-                        <h4 style={{ color: '#dc2626', marginBottom: 12, fontSize: 17, fontWeight: 700 }}>⚠️ Areas for Improvement</h4>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                          {modal.audit.insights.weaknesses.map((w, i) => (
-                            <div key={i} style={{ background: '#fef2f2', padding: 16, borderRadius: 8, borderLeft: '4px solid #dc2626', fontSize: 14, lineHeight: 1.6, color: '#374151' }}>{w}</div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {modal.audit.insights?.opportunities && modal.audit.insights.opportunities.length > 0 && (
-                      <div style={{ marginBottom: 24 }}>
-                        <h4 style={{ color: '#0284c7', marginBottom: 12, fontSize: 17, fontWeight: 700 }}>🚀 Growth Opportunities</h4>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                          {modal.audit.insights.opportunities.map((o, i) => (
-                            <div key={i} style={{ background: '#e0f2fe', padding: 16, borderRadius: 8, borderLeft: '4px solid #0284c7', fontSize: 14, lineHeight: 1.6, color: '#374151' }}>{o}</div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {modal.audit.insights?.audience_alignment && (
-                      <div style={{ padding: 20, background: '#f3f4f6', borderRadius: 12, border: '2px solid #9ca3af' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-                          <span style={{ fontSize: 24, marginRight: 10 }}>👥</span>
-                          <h4 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#374151' }}>Audience Alignment</h4>
-                        </div>
-                        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: '#4b5563' }}>{modal.audit.insights.audience_alignment}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {modal.tab === 'suggestions' && (
-                  <div>
-                    <h4 style={{ marginTop: 0, marginBottom: 16 }}>Improvement Suggestions</h4>
-                    {(() => {
-                      const allSuggestions = modal.audit.suggestions || [];
-                      const splitAt = Math.ceil(allSuggestions.length / 2);
-                      const unlockedSuggestions = canUse('suggestions_unlocked') ? allSuggestions : allSuggestions.slice(0, splitAt);
-                      const lockedCount = canUse('suggestions_unlocked') ? 0 : allSuggestions.length - splitAt;
-                      return (
-                        <>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {unlockedSuggestions.map((s, i) => {
-                        const suggestion = typeof s === 'string' ? { text: s } : s;
-                        const isExpanded = expandedSuggestions.has(i);
-                        const hasSection = suggestion.section && suggestion.section.trim() !== '';
-                        
-                        return (
-                          <div key={i} style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
-                            <button
-                              onClick={() => {
-                                const newExpanded = new Set(expandedSuggestions);
-                                if (isExpanded) {
-                                  newExpanded.delete(i);
-                                } else {
-                                  newExpanded.add(i);
-                                }
-                                setExpandedSuggestions(newExpanded);
-                              }}
-                              style={{
-                                width: '100%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                padding: '14px 16px',
-                                background: isExpanded ? '#f0f6ff' : '#fff',
-                                border: 'none',
-                                cursor: 'pointer',
-                                textAlign: 'left',
-                                transition: 'background 0.2s'
-                              }}
-                              onMouseEnter={(e) => !isExpanded && (e.currentTarget.style.background = '#f9fafb')}
-                              onMouseLeave={(e) => !isExpanded && (e.currentTarget.style.background = '#fff')}
-                            >
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 15, fontWeight: 600, color: '#111827', marginBottom: hasSection ? 4 : 0 }}>
-                                  Suggestion #{i + 1}
-                                </div>
-                                {hasSection && (
-                                  <div style={{ fontSize: 12, color: '#7c3aed', fontWeight: 500 }}>
-                                    {suggestion.section}
-                                  </div>
-                                )}
-                              </div>
-                              <div style={{ fontSize: 18, color: '#9ca3af', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                                ▼
-                              </div>
-                            </button>
-                            {isExpanded && (
-                              <div style={{ padding: '16px', background: '#f0f6ff', borderTop: '1px solid #e5e7eb' }}>
-                                <p style={{ margin: 0, color: '#374151', lineHeight: 1.6, fontSize: 14, fontWeight: 600 }}>
-                                  {suggestion.text}
-                                </p>
-                                {suggestion.why && (
-                                  <div style={{ marginTop: 12, padding: 12, background: '#fff', borderRadius: 6, borderLeft: '3px solid #7c3aed' }}>
-                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#7c3aed', marginBottom: 4, textTransform: 'uppercase' }}>Why This Matters</div>
-                                    <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5 }}>{suggestion.why}</p>
-                                  </div>
-                                )}
-                                {suggestion.impact && (
-                                  <div style={{ marginTop: 8, padding: 12, background: '#fff', borderRadius: 6, borderLeft: '3px solid #10b981' }}>
-                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#10b981', marginBottom: 4, textTransform: 'uppercase' }}>Expected Impact</div>
-                                    <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5 }}>{suggestion.impact}</p>
-                                  </div>
-                                )}
-                                {suggestion.implementation && (
-                                  <div style={{ marginTop: 8, padding: 12, background: '#fff', borderRadius: 6, borderLeft: '3px solid #f59e0b' }}>
-                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#f59e0b', marginBottom: 4, textTransform: 'uppercase' }}>How To Implement</div>
-                                    <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5 }}>{suggestion.implementation}</p>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Locked suggestions overlay for free plan */}
-                    {lockedCount > 0 && (
-                      <div style={{ position: 'relative', marginTop: 8 }}>
-                        {/* Blurred preview of locked suggestions */}
-                        <div style={{ filter: 'blur(4px)', pointerEvents: 'none', userSelect: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {[...Array(Math.min(lockedCount, 3))].map((_, i) => (
-                            <div key={i} style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
-                              <div style={{ padding: '14px 16px', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <div>
-                                  <div style={{ fontSize: 15, fontWeight: 600, color: '#111827', marginBottom: 4 }}>Suggestion #{splitAt + i + 1}</div>
-                                  <div style={{ fontSize: 12, color: '#7c3aed', fontWeight: 500 }}>Unlock to view</div>
-                                </div>
-                                <div style={{ fontSize: 18, color: '#9ca3af' }}>▼</div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        {/* Upgrade overlay */}
-                        <div style={{
-                          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                          background: 'linear-gradient(to bottom, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.95) 40%)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          borderRadius: 8
-                        }}>
-                          <div style={{ textAlign: 'center', padding: '24px 32px', background: '#fff', borderRadius: 12, boxShadow: '0 4px 20px rgba(0,0,0,0.12)', border: '1px solid #e5e7eb', maxWidth: 380 }}>
-                            <div style={{ fontSize: 32, marginBottom: 8 }}>🔒</div>
-                            <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 6 }}>
-                              {lockedCount} more suggestion{lockedCount !== 1 ? 's' : ''} locked
-                            </div>
-                            <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 16px 0', lineHeight: 1.5 }}>
-                              Free plan shows 50% of recommendations. Upgrade to unlock all suggestions, quick wins, and strategic improvements.
-                            </p>
-                            <button
-                              onClick={() => { setModal({ open: false }); setActiveTab('license'); }}
-                              style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
-                            >
-                              Upgrade to unlock all →
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                        </>
-                      );
-                    })()}
-
-                    {modal.audit.recommendations?.quick_wins && modal.audit.recommendations.quick_wins.length > 0 && (
-                      <div style={{ marginTop: 24 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                          <div>
-                            <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>Quick Wins</div>
-                            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>High-impact changes you can make right away</div>
-                          </div>
-                          <span style={{ marginLeft: 'auto', padding: '3px 10px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 20, fontSize: 11, fontWeight: 600, color: '#15803d', whiteSpace: 'nowrap' }}>Easy to Implement</span>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                          {modal.audit.recommendations.quick_wins.map((q, i) => {
-                            const quickWin = typeof q === 'string' ? { text: q } : q;
-                            const difficultyColor = quickWin.difficulty?.toLowerCase().includes('hard') ? { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca' } : quickWin.difficulty?.toLowerCase().includes('medium') ? { bg: '#fffbeb', text: '#b45309', border: '#fde68a' } : { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' };
-                            return (
-                              <div key={i} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', borderTop: '3px solid #10b981', overflow: 'hidden' }}>
-                                <div style={{ padding: '16px 20px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: quickWin.why || quickWin.impact ? 12 : 0 }}>
-                                    <div style={{ width: 28, height: 28, borderRadius: 8, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{i + 1}</div>
-                                    <div style={{ flex: 1 }}>
-                                      <div style={{ fontSize: 14, fontWeight: 700, color: '#111827', lineHeight: 1.5 }}>{quickWin.text}</div>
-                                    </div>
-                                    {quickWin.difficulty && (
-                                      <span style={{ padding: '3px 10px', background: difficultyColor.bg, border: `1px solid ${difficultyColor.border}`, borderRadius: 20, fontSize: 11, fontWeight: 600, color: difficultyColor.text, whiteSpace: 'nowrap', flexShrink: 0 }}>{quickWin.difficulty}</span>
-                                    )}
-                                  </div>
-                                  {(quickWin.why || quickWin.impact) && (
-                                    <div style={{ marginLeft: 42, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                      {quickWin.why && (
-                                        <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6 }}>
-                                          <span style={{ fontWeight: 600, color: '#374151' }}>Why: </span>{quickWin.why}
-                                        </div>
-                                      )}
-                                      {quickWin.impact && (
-                                        <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6, paddingTop: quickWin.why ? 4 : 0, borderTop: quickWin.why ? '1px solid #f3f4f6' : 'none' }}>
-                                          <span style={{ fontWeight: 600, color: '#10b981' }}>Impact: </span>{quickWin.impact}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {modal.audit.recommendations?.long_term && modal.audit.recommendations.long_term.length > 0 && (
-                      <div style={{ marginTop: 28 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                          <div>
-                            <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>Strategic Improvements</div>
-                            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>Larger initiatives that drive sustained growth over time</div>
-                          </div>
-                          <span style={{ marginLeft: 'auto', padding: '3px 10px', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 20, fontSize: 11, fontWeight: 600, color: '#6d28d9', whiteSpace: 'nowrap' }}>Long-Term Growth</span>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                          {modal.audit.recommendations.long_term.map((l, i) => {
-                            const longTerm = typeof l === 'string' ? { text: l } : l;
-                            const accentColors = ['#7c3aed', '#6d28d9', '#5b21b6', '#4c1d95'];
-                            const accent = accentColors[i % accentColors.length];
-                            const difficultyColor = longTerm.difficulty?.toLowerCase().includes('hard') ? { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca' } : longTerm.difficulty?.toLowerCase().includes('medium') ? { bg: '#fffbeb', text: '#b45309', border: '#fde68a' } : { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' };
-                            return (
-                              <div key={i} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', borderTop: `3px solid ${accent}`, overflow: 'hidden' }}>
-                                <div style={{ padding: '16px 20px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: longTerm.why || longTerm.impact ? 12 : 0 }}>
-                                    <div style={{ width: 28, height: 28, borderRadius: 8, background: `${accent}15`, border: `1px solid ${accent}40`, color: accent, fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{i + 1}</div>
-                                    <div style={{ flex: 1 }}>
-                                      <div style={{ fontSize: 14, fontWeight: 700, color: '#111827', lineHeight: 1.5 }}>{longTerm.text}</div>
-                                    </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', flexShrink: 0 }}>
-                                      {longTerm.timeframe && (
-                                        <span style={{ padding: '3px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 20, fontSize: 11, fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>{longTerm.timeframe}</span>
-                                      )}
-                                      {longTerm.difficulty && (
-                                        <span style={{ padding: '3px 10px', background: difficultyColor.bg, border: `1px solid ${difficultyColor.border}`, borderRadius: 20, fontSize: 11, fontWeight: 600, color: difficultyColor.text, whiteSpace: 'nowrap' }}>{longTerm.difficulty}</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {(longTerm.why || longTerm.impact) && (
-                                    <div style={{ marginLeft: 42, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                      {longTerm.why && (
-                                        <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6 }}>
-                                          <span style={{ fontWeight: 600, color: '#374151' }}>Why: </span>{longTerm.why}
-                                        </div>
-                                      )}
-                                      {longTerm.impact && (
-                                        <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6, paddingTop: longTerm.why ? 4 : 0, borderTop: longTerm.why ? '1px solid #f3f4f6' : 'none' }}>
-                                          <span style={{ fontWeight: 600, color: accent }}>Impact: </span>{longTerm.impact}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {modal.audit.recommendations?.priority && (
-                      <div style={{ marginTop: 28 }}>
-                        {(() => {
-                          const priority = typeof modal.audit.recommendations.priority === 'string'
-                            ? { text: modal.audit.recommendations.priority }
-                            : modal.audit.recommendations.priority;
-                          return (
-                            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #fed7aa', borderTop: '3px solid #f97316', overflow: 'hidden' }}>
-                              <div style={{ padding: '14px 20px', background: '#fff7ed', borderBottom: '1px solid #fed7aa', display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <div style={{ width: 28, height: 28, borderRadius: 8, background: '#ffedd5', border: '1px solid #fed7aa', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ea580c" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                                </div>
-                                <span style={{ fontSize: 13, fontWeight: 700, color: '#ea580c', letterSpacing: '0.02em' }}>PRIORITY RECOMMENDATION</span>
-                              </div>
-                              <div style={{ padding: '16px 20px' }}>
-                                <p style={{ margin: '0 0 0 0', fontSize: 14, fontWeight: 600, color: '#111827', lineHeight: 1.6 }}>{priority.text}</p>
-                                {(priority.why || priority.impact || priority.next_steps) && (
-                                  <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                    {priority.why && (
-                                      <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6, paddingTop: 8, borderTop: '1px solid #f3f4f6' }}>
-                                        <span style={{ fontWeight: 600, color: '#374151' }}>Why this is priority: </span>{priority.why}
-                                      </div>
-                                    )}
-                                    {priority.impact && (
-                                      <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6, paddingTop: 8, borderTop: '1px solid #f3f4f6' }}>
-                                        <span style={{ fontWeight: 600, color: '#ea580c' }}>Impact: </span>{priority.impact}
-                                      </div>
-                                    )}
-                                    {priority.next_steps && (
-                                      <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6, paddingTop: 8, borderTop: '1px solid #f3f4f6', whiteSpace: 'pre-line' }}>
-                                        <span style={{ fontWeight: 600, color: '#374151' }}>Next steps: </span>{priority.next_steps}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {modal.tab === 'functionality' && (
-                  <div>
-                    <div style={{ marginBottom: 24 }}>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 4 }}>Additional Features & Functionality</div>
-                      <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.5 }}>Based on your audit results, these additions could meaningfully improve your conversion rate and user experience.</div>
-                    </div>
-
-                    {modal.audit.functionality_suggestions && modal.audit.functionality_suggestions.length > 0 ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {modal.audit.functionality_suggestions.map((feature: any, i: number) => {
-                          const accentColors = ['#2563eb', '#4f46e5', '#7c3aed', '#9333ea'];
-                          const accent = accentColors[i % accentColors.length];
-                          const initial = (feature.title || '?').charAt(0).toUpperCase();
-                          return (
-                            <div
-                              key={i}
-                              style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', borderTop: `3px solid ${accent}`, overflow: 'hidden', transition: 'box-shadow 0.2s' }}
-                              onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
-                            >
-                              <div style={{ padding: '16px 20px' }}>
-                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-                                  <div style={{ width: 36, height: 36, borderRadius: 9, background: `${accent}15`, border: `1px solid ${accent}30`, color: accent, fontSize: 15, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, letterSpacing: '-0.5px' }}>{initial}</div>
-                                  <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: 14, fontWeight: 700, color: '#111827', marginBottom: 4, lineHeight: 1.4 }}>{feature.title}</div>
-                                    <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6, marginBottom: feature.why ? 10 : 0 }}>{feature.description}</div>
-                                    {feature.why && (
-                                      <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6, paddingTop: 8, borderTop: '1px solid #f3f4f6' }}>
-                                        <span style={{ fontWeight: 600, color: accent }}>Why: </span>{feature.why}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div style={{ textAlign: 'center', padding: 40, background: '#f9fafb', borderRadius: 12, color: '#6b7280', border: '1px solid #e5e7eb' }}>
-                        <p style={{ margin: 0, fontSize: 14 }}>No feature suggestions available for this audit.</p>
-                      </div>
-                    )}
-
-                    <div style={{ marginTop: 16, padding: '16px 20px', background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 16 }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', marginBottom: 2 }}>Interested in any of these?</div>
-                        <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.5 }}>{B.company} can implement these for you or build a custom solution for your specific goals.</div>
-                      </div>
-                      <a
-                        href={`mailto:${B.supportEmail}?subject=Feature Implementation Inquiry&body=Hi! I reviewed my ${B.product} audit and I'm interested in discussing some of the recommended features for my website.%0D%0A%0D%0ACould you provide more details about implementation and pricing?`}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', background: '#111827', color: '#fff', textDecoration: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.2s' }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2937'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = '#111827'; }}
-                      >
-                        Get in Touch <span style={{ fontSize: 14 }}>→</span>
-                      </a>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div style={{ padding: '16px 24px', borderTop: '1px solid #eee', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
-                {modal.audit?.report_token && (
-                  <a
-                    href={`https://conversioniq-app.com/reports/${modal.audit.report_token}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: '#fff', color: '#0891b2', border: '1px solid #0891b2', borderRadius: 8, fontSize: 14, fontWeight: 600, textDecoration: 'none', transition: 'all 0.2s', marginRight: 'auto' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = '#0891b2'; e.currentTarget.style.color = '#fff'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#0891b2'; }}
-                  >
-                    🔗 Share Public Report
-                  </a>
-                )}
-                <button className="ciq-btn" onClick={() => handleExportReport(modal.audit?.insert_id)}>Export PDF</button>
-                <button className="ciq-btn primary" onClick={() => setModal({ open: false })}>Close</button>
-              </div>
-            </div>
-          </div>
-        )}
       {/* Audit Progress Modal */}
       {auditProgress.isRunning && (
         <div style={{

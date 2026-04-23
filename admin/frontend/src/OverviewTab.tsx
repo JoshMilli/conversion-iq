@@ -8,10 +8,9 @@ interface OverviewTabProps {
   pages: Page[];
   audits: Audit[];
   setActiveTab: (tab: string) => void;
-  setModal: (m: { audit?: Audit; open: boolean; tab?: string; gaData?: any }) => void;
 }
 
-export default function OverviewTab({ scoreHistory, overviewPageFilter, setOverviewPageFilter, pages, audits, setActiveTab, setModal }: OverviewTabProps) {
+export default function OverviewTab({ scoreHistory, overviewPageFilter, setOverviewPageFilter, pages, audits, setActiveTab }: OverviewTabProps) {
   const uniquePages = Array.from(new Map(scoreHistory.map((h: any) => [h.page_id, h.page_title])).entries());
   const filtered = overviewPageFilter === 'all' ? scoreHistory : scoreHistory.filter((h: any) => String(h.page_id) === overviewPageFilter);
 
@@ -251,8 +250,8 @@ export default function OverviewTab({ scoreHistory, overviewPageFilter, setOverv
                     <button
                       onClick={() => {
                         const fullAudit = audits.find((a: any) => a.page_id === p.page_id);
-                        if (fullAudit) {
-                          setModal({ audit: fullAudit, open: true, tab: 'overview' });
+                        if (fullAudit?.report_token) {
+                          window.open(`https://conversioniq-app.com/reports/${fullAudit.report_token}`, '_blank', 'noopener,noreferrer');
                         } else {
                           setActiveTab('audits');
                         }
