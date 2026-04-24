@@ -109,6 +109,14 @@ export default function App() {
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [visitorTrend, setVisitorTrend] = useState<{ month: string; label: string; visitors: number; leads: number }[]>([]);
 
+  // Remote audit configuration
+  const [trackedPages, setTrackedPages] = useState<number[]>([]);
+  const [remoteSecret, setRemoteSecret] = useState('');
+  const [remoteEndpoint, setRemoteEndpoint] = useState('');
+  const [trackedPagesSaving, setTrackedPagesSaving] = useState(false);
+  const [trackedPagesSaved, setTrackedPagesSaved] = useState(false);
+  const [showRemoteSecret, setShowRemoteSecret] = useState(false);
+
   // Auto-dismiss toast notifications after a consistent duration
   useEffect(() => {
     if (!notice) return;
@@ -198,6 +206,14 @@ export default function App() {
         setAutomatedReporting(settings);
       })
       .catch(err => console.error('✗ Failed to load automated settings:', err));
+
+    axios.get(api('tracked-pages'), { headers: { 'X-WP-Nonce': nonce } })
+      .then(r => {
+        setTrackedPages(Array.isArray(r.data.tracked_pages) ? r.data.tracked_pages : []);
+        setRemoteSecret(r.data.remote_secret || '');
+        setRemoteEndpoint(r.data.endpoint || '');
+      })
+      .catch(err => console.error('✗ Failed to load tracked pages:', err));
   }, []);
 
   // Re-fetch business profile when license becomes active (e.g. after activating on this page)
@@ -1056,6 +1072,7 @@ export default function App() {
           const hasAnyProfile = !!(settings.business_name || settings.industry || settings.product || settings.audience || settings.goal);
 
           return (
+            <>
             <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                 <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#111827' }}>Business Information</h2>
@@ -1088,14 +1105,14 @@ export default function App() {
                     {profileRefreshing ? '⏳' : '↻'} {profileRefreshing ? 'Syncing…' : 'Refresh'}
                   </button>
                   <a
-                    href="https://conversioniq-app.com/onboarding"
+                    href="https://conversioniq-app.com/dashboard/profile"
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', color: '#fff', textDecoration: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, boxShadow: '0 2px 8px rgba(124,58,237,0.3)', whiteSpace: 'nowrap', transition: 'opacity 0.2s' }}
                     onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
                     onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
                   >
-                    ✏️ Edit profile
+                    Edit Profile
                   </a>
                 </div>
               </div>
@@ -1167,6 +1184,106 @@ export default function App() {
                 Profile syncs automatically when you activate your license. Use the Refresh button to pull the latest changes manually.
               </div>
             </section>
+
+            {/* Remote Audit Configuration */}
+            <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32, marginTop: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#111827' }}>Remote Audit Configuration</h2>
+              </div>
+              <p style={{ color: '#6b7280', marginBottom: 24, fontSize: 15 }}>
+                Select which pages get audited when a remote trigger is fired from your ConversionIQ dashboard. Your dashboard can start a fresh audit on this site without anyone needing to log in.
+              </p>
+
+              {/* Page picker */}
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827' }}>Pages to Audit Remotely</label>
+                <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>These pages will be audited when your dashboard sends a remote trigger request.</p>
+                <div style={{ maxHeight: 220, overflow: 'auto', border: '1px solid #d1d5db', borderRadius: 8, padding: 12, background: '#f9fafb' }}>
+                  {pages.length === 0 ? (
+                    <div style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>No published pages found.</div>
+                  ) : (
+                    pages.map(p => (
+                      <label key={p.id} style={{ display: 'flex', alignItems: 'center', padding: '8px 10px', marginBottom: 6, background: trackedPages.includes(p.id) ? '#f3e8ff' : '#fff', borderRadius: 6, cursor: 'pointer', transition: 'all 0.2s' }}>
+                        <input
+                          type="checkbox"
+                          checked={trackedPages.includes(p.id)}
+                          onChange={() => {
+                            setTrackedPages(prev =>
+                              prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]
+                            );
+                          }}
+                          style={{ marginRight: 10, width: 16, height: 16, cursor: 'pointer', accentColor: '#7c3aed' }}
+                        />
+                        <span style={{ flex: 1, fontWeight: 500, color: '#374151', fontSize: 14 }}>{p.title}</span>
+                        <span style={{ fontSize: 12, color: '#9ca3af' }}>ID: {p.id}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+                <div style={{ marginTop: 8, fontSize: 13, color: '#6b7280' }}>
+                  {trackedPages.length === 0 ? 'No pages selected — remote triggers will fall back to the homepage.' : `${trackedPages.length} page${trackedPages.length !== 1 ? 's' : ''} selected`}
+                </div>
+              </div>
+
+              <button
+                onClick={async () => {
+                  setTrackedPagesSaving(true);
+                  setTrackedPagesSaved(false);
+                  try {
+                    await axios.post(api('tracked-pages'), { page_ids: trackedPages }, { headers: { 'X-WP-Nonce': nonce, 'Content-Type': 'application/json' } });
+                    setTrackedPagesSaved(true);
+                    showSuccess('Remote audit pages saved.');
+                    setTimeout(() => setTrackedPagesSaved(false), 3000);
+                  } catch {
+                    showError('Failed to save tracked pages.');
+                  } finally {
+                    setTrackedPagesSaving(false);
+                  }
+                }}
+                disabled={trackedPagesSaving}
+                style={{ padding: '12px 28px', background: trackedPagesSaved ? '#059669' : '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: trackedPagesSaving ? 'wait' : 'pointer', opacity: trackedPagesSaving ? 0.7 : 1, transition: 'all 0.2s', marginBottom: 28 }}
+              >
+                {trackedPagesSaving ? 'Saving…' : trackedPagesSaved ? '✓ Saved' : 'Save Tracked Pages'}
+              </button>
+
+              {/* Integration details for the dashboard */}
+              <div style={{ padding: '20px 24px', background: '#f5f3ff', border: '1px solid #ede9fe', borderRadius: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#7c3aed', marginBottom: 14 }}>Dashboard Integration</div>
+                <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>
+                  Use these values to configure the remote trigger in your ConversionIQ dashboard. The dashboard will POST to the endpoint with the secret in the <code style={{ background: '#ede9fe', padding: '1px 5px', borderRadius: 3 }}>X-CIQ-API-Key</code> header.
+                </p>
+
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#5b21b6', marginBottom: 6 }}>Endpoint</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <code style={{ flex: 1, background: '#fff', border: '1px solid #c4b5fd', borderRadius: 6, padding: '8px 12px', fontSize: 13, color: '#111827', wordBreak: 'break-all' }}>{remoteEndpoint}</code>
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(remoteEndpoint); showSuccess('Endpoint copied!'); }}
+                      style={{ padding: '8px 14px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    >Copy</button>
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#5b21b6', marginBottom: 6 }}>Secret Key <span style={{ fontWeight: 400, color: '#9ca3af', textTransform: 'none', letterSpacing: 0 }}>(X-CIQ-API-Key header value)</span></div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <code style={{ flex: 1, background: '#fff', border: '1px solid #c4b5fd', borderRadius: 6, padding: '8px 12px', fontSize: 13, color: '#111827', wordBreak: 'break-all' }}>
+                      {showRemoteSecret ? remoteSecret : '•'.repeat(Math.min(remoteSecret.length, 40))}
+                    </code>
+                    <button
+                      onClick={() => setShowRemoteSecret(s => !s)}
+                      style={{ padding: '8px 14px', background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    >{showRemoteSecret ? 'Hide' : 'Reveal'}</button>
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(remoteSecret); showSuccess('Secret copied!'); }}
+                      style={{ padding: '8px 14px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    >Copy</button>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 6 }}>Keep this secret private. Regenerate it by contacting support if compromised.</div>
+                </div>
+              </div>
+            </section>
+            </>
           );
         })()}
 

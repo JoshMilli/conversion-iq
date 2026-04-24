@@ -1255,6 +1255,62 @@ class ConversionIQ_Supabase_Sync {
      * @param array $data Data to update
      * @return bool Success status
      */
+    /**
+     * Push tracked pages to Supabase organizations.tracked_pages.
+     * Called whenever the admin saves the tracked pages list.
+     *
+     * @param array $page_ids Array of WP post IDs to track
+     * @return bool
+     */
+    public function push_tracked_pages( $page_ids ) {
+        if ( ! $this->supabase_anon_key || ! $this->organization_id ) {
+            ciq_log( 'ConversionIQ: Cannot push tracked pages - missing credentials or org ID' );
+            return false;
+        }
+
+        $pages_data = array();
+        foreach ( $page_ids as $pid ) {
+            $post = get_post( absint( $pid ) );
+            if ( $post && $post->post_status === 'publish' ) {
+                $pages_data[] = array(
+                    'id'    => $post->ID,
+                    'title' => $post->post_title,
+                    'url'   => get_permalink( $post ),
+                );
+            }
+        }
+
+        $response = wp_remote_request(
+            $this->supabase_url . '/rest/v1/organizations?id=eq.' . urlencode( $this->organization_id ),
+            array(
+                'method'  => 'PATCH',
+                'headers' => array(
+                    'apikey'        => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                    'Content-Type'  => 'application/json',
+                    'X-API-Key'     => $this->api_key,
+                    'Prefer'        => 'return=minimal',
+                ),
+                'body'    => json_encode( array( 'tracked_pages' => $pages_data ) ),
+                'timeout' => 15,
+            )
+        );
+
+        if ( is_wp_error( $response ) ) {
+            ciq_log( 'ConversionIQ: Failed to push tracked pages - ' . $response->get_error_message() );
+            return false;
+        }
+
+        $status = wp_remote_retrieve_response_code( $response );
+        if ( $status !== 200 && $status !== 204 ) {
+            ciq_log( 'ConversionIQ: push_tracked_pages returned HTTP ' . $status );
+            return false;
+        }
+
+        ciq_log( 'ConversionIQ: Tracked pages pushed to Supabase (' . count( $pages_data ) . ' pages)' );
+        return true;
+    }
+
     public function update_organization($organization_id, $data) {
         if (!$this->supabase_anon_key || !$organization_id) {
             ciq_log('ConversionIQ: Cannot update organization - missing credentials or ID');

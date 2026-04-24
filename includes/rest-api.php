@@ -623,6 +623,29 @@ add_action('rest_api_init', function () {
                 return current_user_can('manage_options');
             }
         ));
+
+        // Tracked pages for remote audit trigger
+        register_rest_route('conversioniq/v1', '/tracked-pages', array(
+            'methods'             => 'GET',
+            'callback'            => 'conversioniq_get_tracked_pages',
+            'permission_callback' => function () {
+                return current_user_can('manage_options');
+            },
+        ));
+        register_rest_route('conversioniq/v1', '/tracked-pages', array(
+            'methods'             => 'POST',
+            'callback'            => 'conversioniq_save_tracked_pages',
+            'permission_callback' => function () {
+                return current_user_can('manage_options');
+            },
+        ));
+
+        // Remote audit trigger — authenticated by X-CIQ-API-Key header (no WP session required)
+        register_rest_route('conversioniq/v1', '/remote-audit', array(
+            'methods'             => 'POST',
+            'callback'            => 'conversioniq_remote_audit',
+            'permission_callback' => '__return_true',
+        ));
     });
 
 
@@ -2488,4 +2511,146 @@ function conversioniq_ga_top_pages(WP_REST_Request $request)
 
     $ga = new ConversionIQ_Google_Analytics();
     return rest_ensure_response($ga->get_top_pages($limit, $days));
+}
+
+// ── Remote Audit Trigger ─────────────────────────────────────────────────────
+
+/**
+ * GET /tracked-pages
+ * Returns the list of pages configured for remote audit, plus the remote secret
+ * and endpoint URL so the admin can copy them into their dashboard.
+ */
+function conversioniq_get_tracked_pages()
+{
+    // Auto-generate a dedicated remote secret if none exists yet
+    $secret = get_option('conversioniq_remote_secret', '');
+    if (empty($secret)) {
+        $secret = 'ciq_' . bin2hex(random_bytes(24));
+        update_option('conversioniq_remote_secret', $secret);
+    }
+
+    $tracked = get_option('conversioniq_tracked_pages', array());
+
+    return rest_ensure_response(array(
+        'tracked_pages'   => $tracked,
+        'remote_secret'   => $secret,
+        'endpoint'        => get_site_url() . '/wp-json/conversioniq/v1/remote-audit',
+        'site_url'        => get_site_url(),
+    ));
+}
+
+/**
+ * POST /tracked-pages
+ * Saves the list of pages to audit when a remote trigger fires.
+ * Syncs the list (with title + URL) to Supabase organizations.tracked_pages.
+ */
+function conversioniq_save_tracked_pages(WP_REST_Request $request)
+{
+    $body     = $request->get_json_params();
+    $page_ids = isset($body['page_ids']) ? $body['page_ids'] : array();
+
+    // Validate: must be published pages/posts
+    $allowed_types = array('page', 'post');
+    $valid_ids     = array();
+    foreach ($page_ids as $pid) {
+        $pid  = absint($pid);
+        if ($pid <= 0) continue;
+        $post = get_post($pid);
+        if ($post && $post->post_status === 'publish' && in_array($post->post_type, $allowed_types, true)) {
+            $valid_ids[] = $pid;
+        }
+    }
+
+    update_option('conversioniq_tracked_pages', $valid_ids);
+
+    // Best-effort sync to Supabase so the dashboard can read the list
+    $org_id = get_option('conversioniq_organization_id', '');
+    if ($org_id) {
+        try {
+            $supabase = new ConversionIQ_Supabase_Sync();
+            $supabase->push_tracked_pages($valid_ids);
+        } catch (Exception $e) {
+            ciq_log('conversioniq_save_tracked_pages: Supabase sync failed - ' . $e->getMessage());
+        }
+    }
+
+    return rest_ensure_response(array('success' => true, 'tracked_pages' => $valid_ids));
+}
+
+/**
+ * POST /remote-audit
+ * Authenticated by X-CIQ-API-Key header (the site's remote secret).
+ * No WordPress session required — designed to be called from conversioniq-app.com.
+ *
+ * Body (optional): { "page_ids": [123, 456] }
+ * Falls back to stored tracked pages, then homepage.
+ */
+function conversioniq_remote_audit(WP_REST_Request $request)
+{
+    // ── Auth ──────────────────────────────────────────────────────────────────
+    $provided_key = $request->get_header('X-CIQ-API-Key');
+    $stored_key   = get_option('conversioniq_remote_secret', '');
+
+    if (empty($provided_key) || empty($stored_key) || !hash_equals($stored_key, $provided_key)) {
+        return new WP_REST_Response(array('success' => false, 'message' => 'Unauthorized'), 401);
+    }
+
+    // ── Rate limit (5 min between remote triggers) ────────────────────────────
+    if (get_transient('ciq_remote_audit_lock')) {
+        return new WP_REST_Response(array(
+            'success' => false,
+            'message' => 'An audit was triggered recently. Please wait 5 minutes between remote triggers.',
+        ), 429);
+    }
+    set_transient('ciq_remote_audit_lock', 1, 300);
+
+    // ── Resolve page IDs ─────────────────────────────────────────────────────
+    $body     = $request->get_json_params();
+    $page_ids = !empty($body['page_ids']) ? $body['page_ids'] : array();
+
+    // Fall back to stored tracked pages
+    if (empty($page_ids)) {
+        $page_ids = get_option('conversioniq_tracked_pages', array());
+    }
+
+    // Last resort: homepage or first published page
+    if (empty($page_ids)) {
+        $front_id = (int) get_option('page_on_front');
+        if ($front_id > 0) {
+            $page_ids = array($front_id);
+        } else {
+            $fallback = get_posts(array('post_type' => array('page', 'post'), 'post_status' => 'publish', 'numberposts' => 1));
+            if (!empty($fallback)) {
+                $page_ids = array($fallback[0]->ID);
+            }
+        }
+    }
+
+    if (empty($page_ids)) {
+        return new WP_REST_Response(array(
+            'success' => false,
+            'message' => 'No pages to audit. Configure tracked pages in the plugin settings.',
+        ), 400);
+    }
+
+    // ── Delegate to the existing audit runner ─────────────────────────────────
+    // Set a WP user context so rate-limiting transient key is deterministic
+    $admins = get_users(array('role' => 'administrator', 'number' => 1, 'fields' => 'ids'));
+    if (!empty($admins)) {
+        wp_set_current_user($admins[0]);
+    }
+
+    $audit_request = new WP_REST_Request('POST');
+    $audit_request->set_body(json_encode(array('pages' => $page_ids)));
+    $audit_request->set_header('Content-Type', 'application/json');
+
+    $result = conversioniq_run_audit($audit_request);
+    $data   = $result->get_data();
+
+    return rest_ensure_response(array(
+        'success'       => $data['success'] ?? false,
+        'results'       => $data['results'] ?? array(),
+        'pages_audited' => count($page_ids),
+        'message'       => $data['message'] ?? null,
+    ));
 }
