@@ -78,7 +78,7 @@ class ConversionIQ_Supabase_Sync {
      */
     private function register_installation() {
         if (!$this->supabase_anon_key) {
-            error_log('ConversionIQ: Cannot register - Supabase credentials not configured');
+            ciq_log('ConversionIQ: Cannot register - Supabase credentials not configured');
             return false;
         }
         
@@ -119,14 +119,14 @@ class ConversionIQ_Supabase_Sync {
         ]);
         
         if (is_wp_error($response)) {
-            error_log('ConversionIQ Registration Error: ' . $response->get_error_message());
+            ciq_log('ConversionIQ Registration Error: ' . $response->get_error_message());
             return false;
         }
         
         $status_code = wp_remote_retrieve_response_code($response);
         if ($status_code !== 201) {
-            error_log('ConversionIQ Registration Failed: Status ' . $status_code);
-            error_log('Response: ' . wp_remote_retrieve_body($response));
+            ciq_log('ConversionIQ Registration Failed: Status ' . $status_code);
+            ciq_log('Response: ' . wp_remote_retrieve_body($response));
             return false;
         }
         
@@ -137,7 +137,7 @@ class ConversionIQ_Supabase_Sync {
             $this->api_key = $body[0]['api_key'];
             $this->organization_id = $body[0]['id'];
             
-            error_log('ConversionIQ: Successfully registered as organization ' . $this->organization_id);
+            ciq_log('ConversionIQ: Successfully registered as organization ' . $this->organization_id);
             return true;
         }
         
@@ -186,19 +186,19 @@ class ConversionIQ_Supabase_Sync {
             if ($status === 201 && isset($body[0]['id'])) {
                 update_option('conversioniq_organization_id', $body[0]['id']);
                 $this->organization_id = $body[0]['id'];
-                error_log('ConversionIQ: Auto-registered as org ' . $this->organization_id);
+                ciq_log('ConversionIQ: Auto-registered as org ' . $this->organization_id);
                 return true;
             }
 
             // 409 = unique conflict (domain already exists) — look it up instead
             if ($status === 409 || $status === 422 || $status === 400) {
-                error_log('ConversionIQ: Org INSERT conflict (HTTP ' . $status . ') — looking up existing org by domain');
+                ciq_log('ConversionIQ: Org INSERT conflict (HTTP ' . $status . ') — looking up existing org by domain');
                 return $this->lookup_organization_by_domain($domain);
             }
 
-            error_log('ConversionIQ: Org registration returned HTTP ' . $status . ' — ' . wp_remote_retrieve_body($response));
+            ciq_log('ConversionIQ: Org registration returned HTTP ' . $status . ' — ' . wp_remote_retrieve_body($response));
         } else {
-            error_log('ConversionIQ: Org registration request failed — ' . $response->get_error_message());
+            ciq_log('ConversionIQ: Org registration request failed — ' . $response->get_error_message());
         }
 
         // Last-resort fallback: try to find the org anyway
@@ -234,7 +234,7 @@ class ConversionIQ_Supabase_Sync {
             ] );
 
             if ( is_wp_error( $response ) ) {
-                error_log( 'ConversionIQ: Org lookup failed — ' . $response->get_error_message() );
+                ciq_log( 'ConversionIQ: Org lookup failed — ' . $response->get_error_message() );
                 continue;
             }
 
@@ -244,12 +244,12 @@ class ConversionIQ_Supabase_Sync {
             if ( $status === 200 && is_array( $body ) && isset( $body[0]['id'] ) ) {
                 update_option( 'conversioniq_organization_id', $body[0]['id'] );
                 $this->organization_id = $body[0]['id'];
-                error_log( 'ConversionIQ: Found existing org ' . $this->organization_id . ' for domain ' . $candidate );
+                ciq_log( 'ConversionIQ: Found existing org ' . $this->organization_id . ' for domain ' . $candidate );
                 return true;
             }
         }
 
-        error_log( 'ConversionIQ: Could not find org for any domain candidate derived from ' . $site_url );
+        ciq_log( 'ConversionIQ: Could not find org for any domain candidate derived from ' . $site_url );
         return false;
     }
 
@@ -319,7 +319,7 @@ class ConversionIQ_Supabase_Sync {
      */
     public function validate_login($username, $password) {
         if (!$this->supabase_anon_key) {
-            error_log('ConversionIQ: Cannot validate login - Supabase not configured');
+            ciq_log('ConversionIQ: Cannot validate login - Supabase not configured');
             return false;
         }
         
@@ -334,7 +334,7 @@ class ConversionIQ_Supabase_Sync {
         ]);
         
         if (is_wp_error($response)) {
-            error_log('ConversionIQ: Failed to validate login - ' . $response->get_error_message());
+            ciq_log('ConversionIQ: Failed to validate login - ' . $response->get_error_message());
             return false;
         }
         
@@ -442,7 +442,7 @@ class ConversionIQ_Supabase_Sync {
      */
     public function fetch_business_profile() {
         if ( ! $this->supabase_anon_key ) {
-            error_log( 'ConversionIQ: fetch_business_profile — no anon key configured' );
+            ciq_log( 'ConversionIQ: fetch_business_profile — no anon key configured' );
             return null;
         }
 
@@ -475,7 +475,7 @@ class ConversionIQ_Supabase_Sync {
                          && is_array( $lookup_body ) && ! empty( $lookup_body[0]['id'] ) ) {
                         $this->organization_id = $lookup_body[0]['id'];
                         update_option( 'conversioniq_organization_id', $this->organization_id );
-                        error_log( 'ConversionIQ: fetch_business_profile resolved org ID via domain lookup (' . $candidate . ')' );
+                        ciq_log( 'ConversionIQ: fetch_business_profile resolved org ID via domain lookup (' . $candidate . ')' );
                         break;
                     }
                 }
@@ -499,13 +499,13 @@ class ConversionIQ_Supabase_Sync {
                          && is_array( $key_body ) && ! empty( $key_body[0]['id'] ) ) {
                         $this->organization_id = $key_body[0]['id'];
                         update_option( 'conversioniq_organization_id', $this->organization_id );
-                        error_log( 'ConversionIQ: fetch_business_profile resolved org ID via api_key lookup' );
+                        ciq_log( 'ConversionIQ: fetch_business_profile resolved org ID via api_key lookup' );
                     }
                 }
             }
 
             if ( ! $this->organization_id ) {
-                error_log( 'ConversionIQ: fetch_business_profile — could not resolve organization ID for ' . get_site_url() );
+                ciq_log( 'ConversionIQ: fetch_business_profile — could not resolve organization ID for ' . get_site_url() );
                 return null;
             }
         }
@@ -523,7 +523,7 @@ class ConversionIQ_Supabase_Sync {
         ] );
 
         if ( is_wp_error( $response ) ) {
-            error_log( 'ConversionIQ: fetch_business_profile request failed — ' . $response->get_error_message() );
+            ciq_log( 'ConversionIQ: fetch_business_profile request failed — ' . $response->get_error_message() );
             return null;
         }
 
@@ -534,7 +534,7 @@ class ConversionIQ_Supabase_Sync {
             return $body[0];
         }
 
-        error_log( 'ConversionIQ: fetch_business_profile returned HTTP ' . $status . ' — ' . wp_remote_retrieve_body( $response ) );
+        ciq_log( 'ConversionIQ: fetch_business_profile returned HTTP ' . $status . ' — ' . wp_remote_retrieve_body( $response ) );
         return null;
     }
 
@@ -546,12 +546,12 @@ class ConversionIQ_Supabase_Sync {
      */
     public function save_business_profile( array $profile ) {
         if ( ! $this->supabase_anon_key ) {
-            error_log( 'ConversionIQ: save_business_profile skipped — no anon key' );
+            ciq_log( 'ConversionIQ: save_business_profile skipped — no anon key' );
             return false;
         }
 
         if ( ! $this->organization_id && ! $this->fetch_business_profile() ) {
-            error_log( 'ConversionIQ: save_business_profile skipped — could not resolve org ID' );
+            ciq_log( 'ConversionIQ: save_business_profile skipped — could not resolve org ID' );
             return false;
         }
 
@@ -584,13 +584,13 @@ class ConversionIQ_Supabase_Sync {
         );
 
         if ( is_wp_error( $response ) ) {
-            error_log( 'ConversionIQ: save_business_profile PATCH failed — ' . $response->get_error_message() );
+            ciq_log( 'ConversionIQ: save_business_profile PATCH failed — ' . $response->get_error_message() );
             return false;
         }
 
         $status = wp_remote_retrieve_response_code( $response );
         if ( $status !== 200 && $status !== 204 ) {
-            error_log( 'ConversionIQ: save_business_profile PATCH returned HTTP ' . $status );
+            ciq_log( 'ConversionIQ: save_business_profile PATCH returned HTTP ' . $status );
             return false;
         }
 
@@ -611,13 +611,13 @@ class ConversionIQ_Supabase_Sync {
     public function send_audit($audit_data) {
         // Anon key is baked into the plugin — if it's missing something is very wrong
         if (!$this->supabase_anon_key) {
-            error_log('ConversionIQ: Cannot sync audit - Supabase credentials not configured');
+            ciq_log('ConversionIQ: Cannot sync audit - Supabase credentials not configured');
             return false;
         }
 
         // Auto-register this site if we don't have an organization_id yet
         if (!$this->organization_id && !$this->ensure_organization()) {
-            error_log('ConversionIQ: Cannot sync audit - failed to obtain organization_id');
+            ciq_log('ConversionIQ: Cannot sync audit - failed to obtain organization_id');
             return false;
         }
 
@@ -659,14 +659,14 @@ class ConversionIQ_Supabase_Sync {
         ]);
 
         if (is_wp_error($response)) {
-            error_log('ConversionIQ Sync Error: ' . $response->get_error_message());
+            ciq_log('ConversionIQ Sync Error: ' . $response->get_error_message());
             return false;
         }
 
         $status_code = wp_remote_retrieve_response_code($response);
         if ($status_code !== 201) {
-            error_log('ConversionIQ Sync Failed (Phase 1): Status ' . $status_code);
-            error_log('ConversionIQ Sync Response: ' . wp_remote_retrieve_body($response));
+            ciq_log('ConversionIQ Sync Failed (Phase 1): Status ' . $status_code);
+            ciq_log('ConversionIQ Sync Response: ' . wp_remote_retrieve_body($response));
             return false;
         }
 
@@ -700,16 +700,16 @@ class ConversionIQ_Supabase_Sync {
                 );
 
                 if (is_wp_error($patch_response)) {
-                    error_log('ConversionIQ Sync Warning (Phase 2 PATCH): ' . $patch_response->get_error_message());
+                    ciq_log('ConversionIQ Sync Warning (Phase 2 PATCH): ' . $patch_response->get_error_message());
                 } else {
                     $patch_status = wp_remote_retrieve_response_code($patch_response);
                     if ($patch_status !== 200 && $patch_status !== 204) {
-                        error_log('ConversionIQ Sync Warning (Phase 2 PATCH): Status ' . $patch_status);
-                        error_log('ConversionIQ PATCH Response: ' . wp_remote_retrieve_body($patch_response));
+                        ciq_log('ConversionIQ Sync Warning (Phase 2 PATCH): Status ' . $patch_status);
+                        ciq_log('ConversionIQ PATCH Response: ' . wp_remote_retrieve_body($patch_response));
                     }
                 }
             } else {
-                error_log('ConversionIQ Sync Warning: Could not JSON-encode JSONB fields for PATCH');
+                ciq_log('ConversionIQ Sync Warning: Could not JSON-encode JSONB fields for PATCH');
             }
         }
 
@@ -765,13 +765,13 @@ class ConversionIQ_Supabase_Sync {
         ));
 
         if (is_wp_error($response)) {
-            error_log('ConversionIQ audit_history error: ' . $response->get_error_message());
+            ciq_log('ConversionIQ audit_history error: ' . $response->get_error_message());
             return false;
         }
 
         $status = wp_remote_retrieve_response_code($response);
         if ($status !== 200) {
-            error_log('ConversionIQ audit_history non-200: ' . $status . ' — ' . wp_remote_retrieve_body($response));
+            ciq_log('ConversionIQ audit_history non-200: ' . $status . ' — ' . wp_remote_retrieve_body($response));
             return false;
         }
 
@@ -815,13 +815,13 @@ class ConversionIQ_Supabase_Sync {
         ));
 
         if (is_wp_error($response)) {
-            error_log('ConversionIQ get_all_audits error: ' . $response->get_error_message());
+            ciq_log('ConversionIQ get_all_audits error: ' . $response->get_error_message());
             return false;
         }
 
         $status = wp_remote_retrieve_response_code($response);
         if ($status !== 200) {
-            error_log('ConversionIQ get_all_audits non-200: ' . $status . ' — ' . wp_remote_retrieve_body($response));
+            ciq_log('ConversionIQ get_all_audits non-200: ' . $status . ' — ' . wp_remote_retrieve_body($response));
             return false;
         }
 
@@ -857,7 +857,7 @@ class ConversionIQ_Supabase_Sync {
         ]);
         
         if (is_wp_error($response)) {
-            error_log('ConversionIQ: Failed to fetch case studies - ' . $response->get_error_message());
+            ciq_log('ConversionIQ: Failed to fetch case studies - ' . $response->get_error_message());
             return [];
         }
         
@@ -1027,7 +1027,7 @@ class ConversionIQ_Supabase_Sync {
      */
     public function get_organization($organization_id) {
         if (!$this->supabase_anon_key || !$organization_id) {
-            error_log('ConversionIQ: Cannot get organization - missing credentials or ID');
+            ciq_log('ConversionIQ: Cannot get organization - missing credentials or ID');
             return null;
         }
         
@@ -1044,13 +1044,13 @@ class ConversionIQ_Supabase_Sync {
         );
         
         if (is_wp_error($response)) {
-            error_log('ConversionIQ: Failed to get organization - ' . $response->get_error_message());
+            ciq_log('ConversionIQ: Failed to get organization - ' . $response->get_error_message());
             return null;
         }
         
         $status_code = wp_remote_retrieve_response_code($response);
         if ($status_code !== 200) {
-            error_log('ConversionIQ: Failed to get organization - status ' . $status_code);
+            ciq_log('ConversionIQ: Failed to get organization - status ' . $status_code);
             return null;
         }
         
@@ -1066,12 +1066,12 @@ class ConversionIQ_Supabase_Sync {
      */
     public function create_organization($org_data) {
         if (!$this->supabase_anon_key) {
-            error_log('ConversionIQ: Cannot create organization - Supabase credentials not configured');
-            error_log('Supabase URL: ' . ($this->supabase_url ? $this->supabase_url : 'NOT SET'));
+            ciq_log('ConversionIQ: Cannot create organization - Supabase credentials not configured');
+            ciq_log('Supabase URL: ' . ($this->supabase_url ? $this->supabase_url : 'NOT SET'));
             return null;
         }
         
-        error_log('ConversionIQ: Creating organization with data: ' . wp_json_encode($org_data));
+        ciq_log('ConversionIQ: Creating organization with data: ' . wp_json_encode($org_data));
         
         $response = wp_remote_post(
             $this->supabase_url . '/rest/v1/organizations',
@@ -1088,18 +1088,18 @@ class ConversionIQ_Supabase_Sync {
         );
         
         if (is_wp_error($response)) {
-            error_log('ConversionIQ: Organization creation failed - ' . $response->get_error_message());
+            ciq_log('ConversionIQ: Organization creation failed - ' . $response->get_error_message());
             return null;
         }
         
         $status_code = wp_remote_retrieve_response_code($response);
         $body = wp_remote_retrieve_body($response);
         
-        error_log('ConversionIQ: Create organization response status: ' . $status_code);
-        error_log('ConversionIQ: Create organization response body: ' . $body);
+        ciq_log('ConversionIQ: Create organization response status: ' . $status_code);
+        ciq_log('ConversionIQ: Create organization response body: ' . $body);
         
         if ($status_code !== 201) {
-            error_log('ConversionIQ: Organization creation failed with status ' . $status_code);
+            ciq_log('ConversionIQ: Organization creation failed with status ' . $status_code);
             return null;
         }
         
@@ -1202,14 +1202,14 @@ class ConversionIQ_Supabase_Sync {
         ) );
 
         if ( is_wp_error( $response ) ) {
-            error_log( 'ConversionIQ: License validation failed - ' . $response->get_error_message() );
+            ciq_log( 'ConversionIQ: License validation failed - ' . $response->get_error_message() );
             return array( 'valid' => false, 'message' => 'Could not reach the license server. Please try again.' );
         }
 
         $code = wp_remote_retrieve_response_code( $response );
         $body = json_decode( wp_remote_retrieve_body( $response ), true );
 
-        error_log( 'ConversionIQ: License validation response ' . $code . ' - ' . wp_json_encode( $body ) );
+        ciq_log( 'ConversionIQ: License validation response ' . $code . ' - ' . wp_json_encode( $body ) );
 
         if ( $code !== 200 || ! is_array( $body ) ) {
             return array( 'valid' => false, 'message' => 'License validation failed. Please try again.' );
@@ -1257,16 +1257,16 @@ class ConversionIQ_Supabase_Sync {
      */
     public function update_organization($organization_id, $data) {
         if (!$this->supabase_anon_key || !$organization_id) {
-            error_log('ConversionIQ: Cannot update organization - missing credentials or ID');
-            error_log('Supabase URL: ' . ($this->supabase_url ? 'SET' : 'NOT SET'));
-            error_log('Supabase Key: ' . ($this->supabase_anon_key ? 'SET' : 'NOT SET'));
-            error_log('Organization ID: ' . $organization_id);
+            ciq_log('ConversionIQ: Cannot update organization - missing credentials or ID');
+            ciq_log('Supabase URL: ' . ($this->supabase_url ? 'SET' : 'NOT SET'));
+            ciq_log('Supabase Key: ' . ($this->supabase_anon_key ? 'SET' : 'NOT SET'));
+            ciq_log('Organization ID: ' . $organization_id);
             return false;
         }
         
         $url = $this->supabase_url . '/rest/v1/organizations?id=eq.' . urlencode($organization_id);
-        error_log('ConversionIQ: Updating organization - URL: ' . $url);
-        error_log('ConversionIQ: Update data: ' . wp_json_encode($data));
+        ciq_log('ConversionIQ: Updating organization - URL: ' . $url);
+        ciq_log('ConversionIQ: Update data: ' . wp_json_encode($data));
         
         $response = wp_remote_request(
             $url,
@@ -1284,18 +1284,18 @@ class ConversionIQ_Supabase_Sync {
         );
         
         if (is_wp_error($response)) {
-            error_log('ConversionIQ: Organization update failed - ' . $response->get_error_message());
+            ciq_log('ConversionIQ: Organization update failed - ' . $response->get_error_message());
             return false;
         }
         
         $status_code = wp_remote_retrieve_response_code($response);
         $response_body = wp_remote_retrieve_body($response);
         
-        error_log('ConversionIQ: Update response status: ' . $status_code);
-        error_log('ConversionIQ: Update response body: ' . $response_body);
+        ciq_log('ConversionIQ: Update response status: ' . $status_code);
+        ciq_log('ConversionIQ: Update response body: ' . $response_body);
         
         if ($status_code !== 200) {
-            error_log('ConversionIQ: Organization update failed with status ' . $status_code);
+            ciq_log('ConversionIQ: Organization update failed with status ' . $status_code);
             return false;
         }
         

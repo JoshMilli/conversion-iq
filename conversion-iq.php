@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 2.0.57
+ * Version: 2.0.58
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'CONVERSION_IQ_VERSION', '2.0.57' );
+define( 'CONVERSION_IQ_VERSION', '2.0.58' );
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
@@ -59,7 +59,7 @@ add_action('upgrader_process_complete', function($upgrader_object, $options) {
                     // Force browser cache refresh by updating version option
                     update_option('conversioniq_last_updated', time());
                     
-                    error_log('Conversion IQ: Cache cleared after update to version ' . CONVERSION_IQ_VERSION);
+                    ciq_log('Conversion IQ: Cache cleared after update to version ' . CONVERSION_IQ_VERSION);
                 }
             }
         }
@@ -100,6 +100,11 @@ add_action( 'init', function() {
     if ( ! wp_next_scheduled( 'conversioniq_sync_config' ) ) {
         wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'conversioniq_sync_config' );
     }
+
+    // Schedule weekly DB pruning if not already scheduled
+    if ( ! wp_next_scheduled( 'conversioniq_prune_db' ) ) {
+        wp_schedule_event( time() + DAY_IN_SECONDS, 'weekly', 'conversioniq_prune_db' );
+    }
     
     // Force flush rewrite rules if version changed (for new REST endpoints)
     $stored_version = get_option( 'conversioniq_version', '0' );
@@ -116,6 +121,11 @@ add_action( 'conversioniq_sync_config', function() {
     ConversionIQ_Config_Manager::sync_from_saas();
 } );
 
+// Weekly DB pruning cron — keep tables from growing unbounded across 300+ sites
+add_action( 'conversioniq_prune_db', function() {
+    ConversionIQ_DB::prune_old_records();
+} );
+
 // Activation hook
 function conversioniq_install() {
     ConversionIQ_DB::create_tables();
@@ -125,7 +135,7 @@ function conversioniq_install() {
     // Enable automated audits with no default pages selected
     $admin_email = get_option( 'admin_email' );
     $automated_settings = array(
-        'enabled' => true,
+        'enabled' => false,
         'frequency' => 'weekly',
         'email' => $admin_email,
         'defaultPages' => array()
@@ -199,7 +209,7 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
         return;
     }
 
-    error_log( 'Conversion IQ: Enqueueing admin assets for hook: ' . $hook );
+    ciq_log( 'Conversion IQ: Enqueueing admin assets for hook: ' . $hook );
 
     // CSS - base admin styles
     wp_enqueue_style( 'conversioniq-admin', CONVERSION_IQ_URL . 'assets/css/admin.css', array(), CONVERSION_IQ_VERSION );
@@ -208,27 +218,27 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
     $assets_dir = CONVERSION_IQ_DIR . 'admin/build/vite-dist/assets/';
     $assets_url = CONVERSION_IQ_URL . 'admin/build/vite-dist/assets/';
     
-    error_log( 'Conversion IQ: Looking for assets in: ' . $assets_dir );
+    ciq_log( 'Conversion IQ: Looking for assets in: ' . $assets_dir );
     
     $js_file = null;
     $css_file = null;
     
     if ( is_dir( $assets_dir ) ) {
         $files = scandir( $assets_dir );
-        error_log( 'Conversion IQ: Found files: ' . print_r( $files, true ) );
+        ciq_log( 'Conversion IQ: Found files: ' . print_r( $files, true ) );
         
         foreach ( $files as $file ) {
             if ( strpos( $file, 'index.' ) === 0 && substr( $file, -3 ) === '.js' ) {
                 $js_file = $file;
-                error_log( 'Conversion IQ: Found JS file: ' . $js_file );
+                ciq_log( 'Conversion IQ: Found JS file: ' . $js_file );
             }
             if ( strpos( $file, 'index.' ) === 0 && substr( $file, -4 ) === '.css' ) {
                 $css_file = $file;
-                error_log( 'Conversion IQ: Found CSS file: ' . $css_file );
+                ciq_log( 'Conversion IQ: Found CSS file: ' . $css_file );
             }
         }
     } else {
-        error_log( 'Conversion IQ: Assets directory does not exist: ' . $assets_dir );
+        ciq_log( 'Conversion IQ: Assets directory does not exist: ' . $assets_dir );
     }
     
     // Dashboard app bundle (built)
@@ -237,7 +247,7 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
         $cache_buster = CONVERSION_IQ_VERSION . '.' . get_option('conversioniq_last_updated', time());
         
         $script_url = $assets_url . $js_file;
-        error_log( 'Conversion IQ: Enqueueing script from: ' . $script_url );
+        ciq_log( 'Conversion IQ: Enqueueing script from: ' . $script_url );
         
         wp_enqueue_script(
             'conversion-iq-admin',
@@ -255,14 +265,14 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
             'pluginUrl' => CONVERSION_IQ_URL,
             'version' => $cache_buster,
         );
-        error_log( 'Conversion IQ: Localizing script data: ' . wp_json_encode( $localized_data ) );
+        ciq_log( 'Conversion IQ: Localizing script data: ' . wp_json_encode( $localized_data ) );
         wp_localize_script( 'conversion-iq-admin', 'ConversionIQData', $localized_data );
         
         // Set type="module" for the dashboard bundle
         // Also add error handling script
         add_filter( 'script_loader_tag', function( $tag, $handle, $src ) {
             if ( $handle === 'conversion-iq-admin' ) {
-                error_log( 'Conversion IQ: Setting module type for script: ' . $handle );
+                ciq_log( 'Conversion IQ: Setting module type for script: ' . $handle );
                 $tag = str_replace( '<script ', '<script type="module" ', $tag );
                 // Add error event handler to catch module loading errors
                 $tag = str_replace( '<script type="module" ', '<script type="module" onError="console.error(\'Conversion IQ module failed to load:\', event)" ', $tag );
@@ -274,7 +284,7 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
         // Inline script to ensure ConversionIQData is available before the app loads
         wp_add_inline_script( 'conversion-iq-admin', 'console.log("Conversion IQ: Admin script loaded. Version:", ConversionIQData?.version);', 'before' );
     } else {
-        error_log( 'Conversion IQ: ERROR - No JS file found!' );
+        ciq_log( 'Conversion IQ: ERROR - No JS file found!' );
     }
 
     // Enqueue built CSS bundle if it exists

@@ -59,16 +59,16 @@ function conversioniq_extract_html_structure($html)
     
     // Strategy 1: Look for jet-listing or Elementor dynamic field patterns (specific to user's site structure)
     // Extract names from h3/h6 tags and titles from span tags within jet-listing-dynamic-field__content
-    error_log('ðŸ” Strategy 1: Searching for jet-listing-dynamic-field__content patterns');
+    ciq_log('Ã°Å¸â€Â Strategy 1: Searching for jet-listing-dynamic-field__content patterns');
     
     if (preg_match_all('/<(?:h[3-6]|div)[^>]*class="[^"]*jet-listing-dynamic-field__content[^"]*"[^>]*>([^<]+)<\/(?:h[3-6]|div)>/is', $html, $name_elements)) {
         $potential_names = array_map('wp_strip_all_tags', $name_elements[1]);
-        error_log('ðŸ” Found ' . count($potential_names) . ' potential name elements: ' . implode(', ', array_slice($potential_names, 0, 10)));
+        ciq_log('Ã°Å¸â€Â Found ' . count($potential_names) . ' potential name elements: ' . implode(', ', array_slice($potential_names, 0, 10)));
         
         // Extract titles from span elements with same class
         if (preg_match_all('/<span[^>]*class="[^"]*jet-listing-dynamic-field__content[^"]*"[^>]*>([^<]+)<\/span>/is', $html, $title_elements)) {
             $potential_titles = array_map('wp_strip_all_tags', $title_elements[1]);
-            error_log('ðŸ” Found ' . count($potential_titles) . ' potential title elements: ' . implode(', ', array_slice($potential_titles, 0, 10)));
+            ciq_log('Ã°Å¸â€Â Found ' . count($potential_titles) . ' potential title elements: ' . implode(', ', array_slice($potential_titles, 0, 10)));
             
             // Match names with titles (skip non-name elements like quote text)
             $name_count = 0;
@@ -88,19 +88,19 @@ function conversioniq_extract_html_structure($html)
                             }
                             $testimonial_names[] = $name . ', ' . $formatted_title;
                             $name_count++;
-                            error_log('âœ… Matched testimonial: ' . $name . ', ' . $formatted_title);
+                            ciq_log('Ã¢Å“â€¦ Matched testimonial: ' . $name . ', ' . $formatted_title);
                         } else {
-                            error_log('âš ï¸ Name found but title not recognized: ' . $name . ' -> "' . $title . '"');
+                            ciq_log('Ã¢Å¡Â Ã¯Â¸Â Name found but title not recognized: ' . $name . ' -> "' . $title . '"');
                         }
                     }
                 }
             }
-            error_log('ðŸ” Strategy 1 result: Found ' . $name_count . ' valid testimonials');
+            ciq_log('Ã°Å¸â€Â Strategy 1 result: Found ' . $name_count . ' valid testimonials');
         } else {
-            error_log('âš ï¸ No span elements with jet-listing-dynamic-field__content found');
+            ciq_log('Ã¢Å¡Â Ã¯Â¸Â No span elements with jet-listing-dynamic-field__content found');
         }
     } else {
-        error_log('âš ï¸ No h3-h6/div elements with jet-listing-dynamic-field__content found');
+        ciq_log('Ã¢Å¡Â Ã¯Â¸Â No h3-h6/div elements with jet-listing-dynamic-field__content found');
     }
     
     // Strategy 2: Look for testimonial blocks with traditional class names
@@ -142,10 +142,10 @@ function conversioniq_extract_html_structure($html)
     
     // Log extracted testimonial names for debugging
     if (!empty($testimonial_names)) {
-        error_log('ðŸ‘¤ Extracted testimonial names: ' . implode('; ', $testimonial_names));
+        ciq_log('Ã°Å¸â€˜Â¤ Extracted testimonial names: ' . implode('; ', $testimonial_names));
     } else {
-        error_log('ðŸ‘¤ No testimonial names found in HTML structure (' . strlen($html) . ' characters fetched)');
-        error_log('ðŸ“„ HTML preview (first 500 chars): ' . substr($html, 0, 500));
+        ciq_log('Ã°Å¸â€˜Â¤ No testimonial names found in HTML structure (' . strlen($html) . ' characters fetched)');
+        ciq_log('Ã°Å¸â€œâ€ž HTML preview (first 500 chars): ' . substr($html, 0, 500));
     }
 
     // Build a concise summary for the AI
@@ -161,23 +161,23 @@ function conversioniq_extract_html_structure($html)
         $summary .= "**IMPORTANT**: These names indicate testimonials with attribution. Trust score should be 60+ (not 0).\n";
     }
 
-    // ── CRO Structural Signals ──
+    // â”€â”€ CRO Structural Signals â”€â”€
     // Extract explicit HTML evidence for each CRO checklist item so the AI
     // doesn't have to guess from text alone.
     $cro_signals = array();
 
-    // 1. CTA Above the Fold — look for button/link in the first ~4000 chars (hero/header area)
+    // 1. CTA Above the Fold â€” look for button/link in the first ~4000 chars (hero/header area)
     $above_fold = substr($html, 0, 4000);
     if (preg_match_all('/<(?:button|a)[^>]*(?:class|role)[^>]*(?:btn|button|cta|get-started|start|try|buy|book|request|contact|sign-up|signup)[^>]*>([^<]{2,60})<\/(?:button|a)>/i', $above_fold, $cta_matches)) {
         $cta_texts = array_unique(array_map('wp_strip_all_tags', $cta_matches[1]));
-        $cro_signals[] = 'CTA Above the Fold: YES — found button/link element(s) in first screen area: "' . implode('", "', array_slice($cta_texts, 0, 3)) . '"';
+        $cro_signals[] = 'CTA Above the Fold: YES â€” found button/link element(s) in first screen area: "' . implode('", "', array_slice($cta_texts, 0, 3)) . '"';
     } elseif (preg_match('/<(?:button|a)[^>]*>([^<]{2,40})<\/(?:button|a)>/i', $above_fold, $m)) {
-        $cro_signals[] = 'CTA Above the Fold: POSSIBLE — interactive element in hero area: "' . wp_strip_all_tags($m[1]) . '"';
+        $cro_signals[] = 'CTA Above the Fold: POSSIBLE â€” interactive element in hero area: "' . wp_strip_all_tags($m[1]) . '"';
     } else {
         $cro_signals[] = 'CTA Above the Fold: NOT DETECTED in first screen area';
     }
 
-    // 2. Trust Signals — image alt text + class names for certs, awards, badges
+    // 2. Trust Signals â€” image alt text + class names for certs, awards, badges
     $trust_imgs = array();
     if (preg_match_all('/<img[^>]*alt=["\']([^"\']*(?:cert|award|badge|accredit|iso|ssl|secure|verified|partner|member|guarantee)[^"\']*)["\'][^>]*>/i', $html, $img_alts)) {
         $trust_imgs = array_map('wp_strip_all_tags', $img_alts[1]);
@@ -185,95 +185,95 @@ function conversioniq_extract_html_structure($html)
     $has_trust_section = preg_match('/(?:class|id)=["\'][^"\']*(?:trust|badge|cert|award|accredit|partner|guarantee)[^"\']*["\']/i', $html);
     $trust_text_match = preg_match('/\b(?:certified|accredited|award[- ]winning|ISO[- ]\d+|BBB|google\s+partner|microsoft\s+partner|as\s+seen\s+in)\b/i', $html);
     if (!empty($trust_imgs)) {
-        $cro_signals[] = 'Trust Signals (Certs/Awards): YES — trust image(s) with alt: "' . implode('", "', array_slice($trust_imgs, 0, 3)) . '"';
+        $cro_signals[] = 'Trust Signals (Certs/Awards): YES â€” trust image(s) with alt: "' . implode('", "', array_slice($trust_imgs, 0, 3)) . '"';
     } elseif ($has_trust_section || $trust_text_match) {
-        $cro_signals[] = 'Trust Signals (Certs/Awards): POSSIBLE — trust-related class/text detected on page';
+        $cro_signals[] = 'Trust Signals (Certs/Awards): POSSIBLE â€” trust-related class/text detected on page';
     } else {
-        $cro_signals[] = 'Trust Signals (Certs/Awards): NOT DETECTED — no certification/award images or text found';
+        $cro_signals[] = 'Trust Signals (Certs/Awards): NOT DETECTED â€” no certification/award images or text found';
     }
 
-    // 3. Inline Social Proof — testimonials (already handled above), star ratings, review counts
-    $has_rating = preg_match('/(?:\d\.\d\s*(?:out of|\/)\s*5|\d+\s*(?:star|review|rating)s?|\b5\s*stars?\b|★)/i', $html);
+    // 3. Inline Social Proof â€” testimonials (already handled above), star ratings, review counts
+    $has_rating = preg_match('/(?:\d\.\d\s*(?:out of|\/)\s*5|\d+\s*(?:star|review|rating)s?|\b5\s*stars?\b|â˜…)/i', $html);
     $has_review_count = preg_match('/\d+\s*(?:\+\s*)?\s*(?:review|client|customer|testimonial)s?/i', $html);
     if (!empty($testimonial_names)) {
-        $cro_signals[] = 'Inline Social Proof: YES — attributed testimonials found (see above)';
+        $cro_signals[] = 'Inline Social Proof: YES â€” attributed testimonials found (see above)';
     } elseif ($has_rating || $has_review_count) {
-        $cro_signals[] = 'Inline Social Proof: YES — star ratings or review counts detected in page content';
+        $cro_signals[] = 'Inline Social Proof: YES â€” star ratings or review counts detected in page content';
     } elseif (preg_match('/(?:class|id)=["\'][^"\']*(?:testimonial|review|social-proof|feedback)[^"\']*["\']/i', $html)) {
-        $cro_signals[] = 'Inline Social Proof: POSSIBLE — testimonial/review section found but no attributed names extracted';
+        $cro_signals[] = 'Inline Social Proof: POSSIBLE â€” testimonial/review section found but no attributed names extracted';
     } else {
         $cro_signals[] = 'Inline Social Proof: NOT DETECTED';
     }
 
     // 4. Urgency / Scarcity
     if (preg_match('/\b(?:limited\s+(?:time|offer|spots?|seats?|stock)|only\s+\d+\s+(?:left|remaining|available)|expires?|ending\s+soon|today\s+only|hurry|act\s+now|last\s+chance|countdown)\b/i', $html)) {
-        $cro_signals[] = 'Urgency/Scarcity: YES — urgency/scarcity language detected in page copy';
+        $cro_signals[] = 'Urgency/Scarcity: YES â€” urgency/scarcity language detected in page copy';
     } else {
         $cro_signals[] = 'Urgency/Scarcity: NOT DETECTED';
     }
 
-    // 5. Sticky CTA in Nav — nav element containing a button or CTA-style link
+    // 5. Sticky CTA in Nav â€” nav element containing a button or CTA-style link
     if (preg_match('/<(?:nav|header)[^>]*>[\s\S]{0,3000}?<(?:button|a)[^>]*(?:btn|button|cta|get-started|start|try|buy|book|request|sign-up|signup)[^>]*>/i', $html)) {
-        $cro_signals[] = 'Sticky CTA in Nav: YES — CTA button/link detected inside nav or header element';
+        $cro_signals[] = 'Sticky CTA in Nav: YES â€” CTA button/link detected inside nav or header element';
     } elseif (preg_match('/(?:class|id)=["\'][^"\']*(?:sticky|fixed)[^"\']*["\']/i', $html) && preg_match('/<(?:button|a)[^>]*(?:btn|cta)[^>]*>/i', $html)) {
-        $cro_signals[] = 'Sticky CTA in Nav: POSSIBLE — sticky/fixed element with CTA detected';
+        $cro_signals[] = 'Sticky CTA in Nav: POSSIBLE â€” sticky/fixed element with CTA detected';
     } else {
         $cro_signals[] = 'Sticky CTA in Nav: NOT DETECTED';
     }
 
     // 6. Reassurance Micro-copy (friction reducers near CTAs)
     if (preg_match('/\b(?:no\s+credit\s+card|cancel\s+anytime|free\s+(?:trial|forever|plan)|no\s+commitment|no\s+obligation|no\s+contract|try\s+(?:it\s+)?free|risk[- ]free)\b/i', $html)) {
-        $cro_signals[] = 'Reassurance Micro-copy: YES — friction-reducing phrases detected near CTAs';
+        $cro_signals[] = 'Reassurance Micro-copy: YES â€” friction-reducing phrases detected near CTAs';
     } else {
         $cro_signals[] = 'Reassurance Micro-copy: NOT DETECTED';
     }
 
-    // 7. Clear Visual Hierarchy — presence of H1 + H2/H3 structure
+    // 7. Clear Visual Hierarchy â€” presence of H1 + H2/H3 structure
     $h1_count = preg_match_all('/<h1[^>]*>/i', $html);
     $h2_count = preg_match_all('/<h2[^>]*>/i', $html);
     $h3_count = preg_match_all('/<h3[^>]*>/i', $html);
     if ($h1_count >= 1 && ($h2_count + $h3_count) >= 2) {
-        $cro_signals[] = "Clear Visual Hierarchy: YES — page has H1 ({$h1_count}) + H2 ({$h2_count}) + H3 ({$h3_count}) heading structure";
+        $cro_signals[] = "Clear Visual Hierarchy: YES â€” page has H1 ({$h1_count}) + H2 ({$h2_count}) + H3 ({$h3_count}) heading structure";
     } elseif ($h1_count >= 1) {
-        $cro_signals[] = "Clear Visual Hierarchy: PARTIAL — H1 present but limited sub-heading structure (H2: {$h2_count}, H3: {$h3_count})";
+        $cro_signals[] = "Clear Visual Hierarchy: PARTIAL â€” H1 present but limited sub-heading structure (H2: {$h2_count}, H3: {$h3_count})";
     } else {
-        $cro_signals[] = 'Clear Visual Hierarchy: NOT DETECTED — no H1 found';
+        $cro_signals[] = 'Clear Visual Hierarchy: NOT DETECTED â€” no H1 found';
     }
 
-    // 8. Mobile-First UX — viewport meta tag and responsive indicators
+    // 8. Mobile-First UX â€” viewport meta tag and responsive indicators
     $has_viewport = preg_match('/<meta[^>]*name=["\']viewport["\'][^>]*content=["\'][^"\']*width=device-width[^"\']*["\']/i', $html);
     $has_responsive_class = preg_match('/(?:class|id)=["\'][^"\']*(?:mobile|responsive|breakpoint|col-|flex|grid)[^"\']*["\']/i', $html);
     if ($has_viewport && $has_responsive_class) {
-        $cro_signals[] = 'Mobile-First UX: YES — viewport meta tag present and responsive CSS classes detected';
+        $cro_signals[] = 'Mobile-First UX: YES â€” viewport meta tag present and responsive CSS classes detected';
     } elseif ($has_viewport) {
-        $cro_signals[] = 'Mobile-First UX: LIKELY — viewport meta tag set for device-width';
+        $cro_signals[] = 'Mobile-First UX: LIKELY â€” viewport meta tag set for device-width';
     } else {
-        $cro_signals[] = 'Mobile-First UX: NOT DETECTED — no mobile viewport meta tag found';
+        $cro_signals[] = 'Mobile-First UX: NOT DETECTED â€” no mobile viewport meta tag found';
     }
 
     // 9. Speed / Ease Cues
     if (preg_match('/\b(?:instant(?:ly)?|in\s+\d+\s+(?:second|minute|hour|day)s?|quick(?:ly)?|fast(?:er)?|easy|simple|effortless(?:ly)?|set\s+up\s+in|done\s+in|takes?\s+(?:just\s+)?\d+|ready\s+in)\b/i', $html)) {
-        $cro_signals[] = 'Speed/Ease Cues: YES — ease or speed language found in copy';
+        $cro_signals[] = 'Speed/Ease Cues: YES â€” ease or speed language found in copy';
     } else {
         $cro_signals[] = 'Speed/Ease Cues: NOT DETECTED';
     }
 
     // 10. Risk Reversal (Guarantee)
     if (preg_match('/\b(?:\d+[- ]day\s+(?:money[- ]back|guarantee|refund|free\s+trial)|money[- ]back\s+guarantee|satisfaction\s+guaranteed?|full\s+refund|risk[- ]free|no\s+risk|try\s+(?:it\s+)?free|free\s+trial)\b/i', $html)) {
-        $cro_signals[] = 'Risk Reversal (Guarantee): YES — money-back guarantee or risk-removal offer found in page copy';
+        $cro_signals[] = 'Risk Reversal (Guarantee): YES â€” money-back guarantee or risk-removal offer found in page copy';
     } elseif (preg_match('/(?:class|id)=["\'][^"\']*guarantee[^"\']*["\']/i', $html)) {
-        $cro_signals[] = 'Risk Reversal (Guarantee): POSSIBLE — guarantee section element detected';
+        $cro_signals[] = 'Risk Reversal (Guarantee): POSSIBLE â€” guarantee section element detected';
     } else {
         $cro_signals[] = 'Risk Reversal (Guarantee): NOT DETECTED';
     }
 
-    // 11. Anchor Pricing — multiple price points suggesting comparison
+    // 11. Anchor Pricing â€” multiple price points suggesting comparison
     preg_match_all('/\$[\d,]+(?:\.\d{2})?|\b(?:USD|GBP|EUR)\s*[\d,]+/i', $html, $prices);
     $unique_prices = array_unique($prices[0]);
     if (count($unique_prices) >= 2) {
-        $cro_signals[] = 'Anchor Pricing: YES — multiple price points detected (' . implode(', ', array_slice($unique_prices, 0, 4)) . '), suggesting comparison pricing';
+        $cro_signals[] = 'Anchor Pricing: YES â€” multiple price points detected (' . implode(', ', array_slice($unique_prices, 0, 4)) . '), suggesting comparison pricing';
     } elseif (preg_match('/(?:class|id)=["\'][^"\']*(?:pricing|plan|package|tier)[^"\']*["\']/i', $html)) {
-        $cro_signals[] = 'Anchor Pricing: POSSIBLE — pricing section detected but single/no prices visible in markup';
+        $cro_signals[] = 'Anchor Pricing: POSSIBLE â€” pricing section detected but single/no prices visible in markup';
     } else {
         $cro_signals[] = 'Anchor Pricing: NOT DETECTED';
     }
@@ -281,23 +281,23 @@ function conversioniq_extract_html_structure($html)
     // 12. Exit Intent / Retention elements
     if (preg_match('/(?:class|id)=["\'][^"\']*(?:exit[- ]intent|popup|modal|overlay|lightbox|optin|opt-in|lead[- ]magnet)[^"\']*["\']/i', $html) ||
         preg_match('/data-[^=]*(?:exit|popup|trigger)[^=]*=/i', $html)) {
-        $cro_signals[] = 'Exit Intent: YES — popup/exit-intent/modal element found in page markup';
+        $cro_signals[] = 'Exit Intent: YES â€” popup/exit-intent/modal element found in page markup';
     } else {
-        $cro_signals[] = 'Exit Intent: NOT DETECTED — no popup or exit-intent markup found';
+        $cro_signals[] = 'Exit Intent: NOT DETECTED â€” no popup or exit-intent markup found';
     }
 
-    // 13. Progress Indicators — multi-step forms or checkout flows
+    // 13. Progress Indicators â€” multi-step forms or checkout flows
     if (preg_match('/(?:class|id)=["\'][^"\']*(?:progress|step[- ]?\d|wizard|multi[- ]step|breadcrumb|stepper)[^"\']*["\']/i', $html) ||
         preg_match('/\b(?:step\s+\d\s+of\s+\d|\d\s+of\s+\d\s+steps?)\b/i', $html)) {
-        $cro_signals[] = 'Progress Indicators: YES — multi-step or progress element detected';
+        $cro_signals[] = 'Progress Indicators: YES â€” multi-step or progress element detected';
     } else {
         $cro_signals[] = 'Progress Indicators: NOT DETECTED';
     }
 
     if (!empty($cro_signals)) {
-        $summary .= "\nCRO Structural Signals (HTML-derived — use these as primary evidence for cro_checklist):\n";
+        $summary .= "\nCRO Structural Signals (HTML-derived â€” use these as primary evidence for cro_checklist):\n";
         foreach ($cro_signals as $signal) {
-            $summary .= '• ' . $signal . "\n";
+            $summary .= 'â€¢ ' . $signal . "\n";
         }
     }
 
@@ -332,12 +332,12 @@ function conversioniq_get_cpt_reviews() {
     }
 
     if (empty($review_cpt_candidates)) {
-        error_log('â„¹ï¸ No review/testimonial CPTs detected on this site');
+        ciq_log('Ã¢â€žÂ¹Ã¯Â¸Â No review/testimonial CPTs detected on this site');
         $cached_result = '';
         return '';
     }
 
-    error_log('ðŸ” Detected review CPTs: ' . implode(', ', $review_cpt_candidates));
+    ciq_log('Ã°Å¸â€Â Detected review CPTs: ' . implode(', ', $review_cpt_candidates));
 
     // Common meta field names used by popular review/testimonial CPT setups
     $name_fields     = array('_name', 'reviewer_name', 'client_name', 'author_name', 'name', 'review_author');
@@ -359,7 +359,7 @@ function conversioniq_get_cpt_reviews() {
             continue;
         }
 
-        error_log('ðŸ“ CPT "' . $cpt . '": ' . count($posts) . ' published reviews');
+        ciq_log('Ã°Å¸â€œÂ CPT "' . $cpt . '": ' . count($posts) . ' published reviews');
 
         foreach ($posts as $post) {
             // Reviewer name
@@ -418,13 +418,13 @@ function conversioniq_get_cpt_reviews() {
     }
 
     if (empty($all_reviews)) {
-        error_log('â„¹ï¸ Review CPTs found but no publishable review data could be extracted');
+        ciq_log('Ã¢â€žÂ¹Ã¯Â¸Â Review CPTs found but no publishable review data could be extracted');
         $cached_result = '';
         return '';
     }
 
     $count = count($all_reviews);
-    error_log('âœ… ' . $count . ' CPT reviews extracted for trust scoring');
+    ciq_log('Ã¢Å“â€¦ ' . $count . ' CPT reviews extracted for trust scoring');
 
     $summary  = "\n\n**SITE REVIEWS (WordPress Custom Post Type - Database):**\n";
     $summary .= 'This site has ' . $count . ' published customer reviews stored in a WordPress Custom Post Type (these are manually curated reviews often not rendered in standard page HTML).' . "\n";
@@ -568,7 +568,7 @@ add_action('rest_api_init', function () {
             return current_user_can('manage_options'); }
         ));
 
-        // Business profile — stored in Supabase organizations table
+        // Business profile â€” stored in Supabase organizations table
         register_rest_route('conversioniq/v1', '/business-profile', array(
             array(
                 'methods'             => 'GET',
@@ -759,7 +759,7 @@ function conversioniq_run_audit(WP_REST_Request $request)
         if ($recent_count >= $audits_per_week) {
             return new WP_REST_Response(array(
                 'success'       => false,
-                'message'       => __('Weekly audit limit reached. Your plan allows 3 audits per week. Limit resets 7 days after your first audit this period.', 'conversion-iq'),
+                'message'       => sprintf(__('Weekly audit limit reached. Your plan allows %d audits per week. Limit resets 7 days after your first audit this period.', 'conversion-iq'), $audits_per_week),
                 'error_code'    => 'weekly_limit_reached',
                 'audits_used'   => $recent_count,
                 'audits_allowed' => $audits_per_week,
@@ -796,13 +796,13 @@ function conversioniq_run_audit(WP_REST_Request $request)
     $business = json_decode(get_option('conversion_iq_settings', '{}'), true);
 
     // Research industry benchmarks once at start of audit
-    error_log('ðŸ”¬ Researching industry benchmarks...');
+    ciq_log('Ã°Å¸â€Â¬ Researching industry benchmarks...');
     $benchmark_research = ConversionIQ_AI::research_industry_benchmarks(
         isset($business['industry']) ? $business['industry'] : '',
         isset($business['audience']) ? $business['audience'] : '',
         isset($business['goal']) ? $business['goal'] : ''
     );
-    error_log('ðŸ“Š Benchmark research complete: avg=' . ($benchmark_research['industry_average'] ?? 'N/A') . ', top=' . ($benchmark_research['top_performers_threshold'] ?? 'N/A'));
+    ciq_log('Ã°Å¸â€œÅ  Benchmark research complete: avg=' . ($benchmark_research['industry_average'] ?? 'N/A') . ', top=' . ($benchmark_research['top_performers_threshold'] ?? 'N/A'));
 
     $results = array();
 
@@ -823,7 +823,7 @@ function conversioniq_run_audit(WP_REST_Request $request)
         ciq_log('Fetching HTML from: ' . $page_url);
         $response = wp_remote_get($page_url, array(
             'timeout' => 10,
-            'sslverify' => false,
+            'sslverify' => true,
         ));
 
         if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
@@ -884,8 +884,8 @@ function conversioniq_run_audit(WP_REST_Request $request)
             $ai_used = isset($ai['ai_used']) ? $ai['ai_used'] : true;
 
             if (!$has_clarity || !$has_suggestions) {
-                error_log('âš ï¸ AI response missing required fields. Has clarity: ' . ($has_clarity ? 'YES' : 'NO') . ', Has suggestions: ' . ($has_suggestions ? 'YES' : 'NO'));
-                error_log('ðŸ“‹ Response keys: ' . json_encode(array_keys($ai)));
+                ciq_log('Ã¢Å¡Â Ã¯Â¸Â AI response missing required fields. Has clarity: ' . ($has_clarity ? 'YES' : 'NO') . ', Has suggestions: ' . ($has_suggestions ? 'YES' : 'NO'));
+                ciq_log('Ã°Å¸â€œâ€¹ Response keys: ' . json_encode(array_keys($ai)));
             }
 
             $insert_id = ConversionIQ_DB::insert_audit($post->ID, $post->post_title, $ai, $content_hash);
@@ -907,13 +907,6 @@ function conversioniq_run_audit(WP_REST_Request $request)
             $ai['page_url'] = $page_url;
             $ai['created_at'] = current_time('mysql');
             $ai['company_info'] = $company_info;
-            $ai['_debug'] = array(
-                'audit_time' => $audit_time . 's',
-                'ai_used' => $ai_used,
-                'content_length' => strlen($content),
-                'has_all_fields' => ($has_clarity && $has_suggestions),
-                'status' => 'success'
-            );
             $results[] = $ai;
             $last_result_idx = count($results) - 1;
 
@@ -957,30 +950,20 @@ function conversioniq_run_audit(WP_REST_Request $request)
                 // Track usage for analytics
                 $supabase_sync->track_usage('analyze_page');
 
-                // Expose sync result in debug output so it's visible in browser console
-                $results[$last_result_idx]['_debug']['supabase_sync'] = $sync_success ? 'success' : 'FAILED - check wp-content/debug.log';
-                $results[$last_result_idx]['_debug']['report_url'] = $sync_success
-                    ? 'https://conversioniq-app.com/reports/' . ($ai['report_token'] ?? '')
-                    : null;
-
                 if (!$sync_success) {
                     ciq_log('Failed to sync audit to Supabase cloud');
                 }
             }
             catch (Exception $e) {
                 ciq_log('Supabase sync exception - ' . $e->getMessage());
-                $results[$last_result_idx]['_debug']['supabase_sync'] = 'EXCEPTION: ' . $e->getMessage();
             }
-
-            // Send to webhook if configured
-            conversioniq_send_webhook($ai);
 
             ciq_log('Audit completed for: ' . $post->post_title . ' in ' . $audit_time . 's');
         }
         catch (Exception $e) {
             $audit_time = round((microtime(true) - $audit_start), 2);
-            error_log('ConversionIQ: Audit EXCEPTION for ' . $post->post_title . ': ' . $e->getMessage());
-            // Add fallback result with debug info
+            ciq_log('Audit EXCEPTION for ' . $post->post_title . ': ' . $e->getMessage());
+            // Add fallback result
             $results[] = array(
                 'page_id' => $post->ID,
                 'page_title' => $post->post_title,
@@ -996,11 +979,6 @@ function conversioniq_run_audit(WP_REST_Request $request)
                 ),
                 'ai_used' => false,
                 'created_at' => current_time('mysql'),
-                '_debug' => array(
-                    'error' => $e->getMessage(),
-                    'audit_time' => $audit_time . 's',
-                    'status' => 'exception'
-                )
             );
         }
     }
@@ -1157,7 +1135,7 @@ function conversioniq_list_audits_supabase(WP_REST_Request $request)
         return rest_ensure_response(array());
     }
 
-    // Build a page_url → WP page map so we can resolve page_id and page_title
+    // Build a page_url â†’ WP page map so we can resolve page_id and page_title
     $wp_pages = get_posts(array(
         'post_type'   => 'page',
         'numberposts' => -1,
@@ -1229,42 +1207,42 @@ function conversioniq_generate_report(WP_REST_Request $request)
         ob_clean();
     }
 
-    error_log('ðŸ”µ REST API: Report generation endpoint called');
+    ciq_log('Ã°Å¸â€Âµ REST API: Report generation endpoint called');
 
     $params = $request->get_json_params();
     if (empty($params['audit_id'])) {
-        error_log('âŒ REST API: Missing audit_id');
+        ciq_log('Ã¢ÂÅ’ REST API: Missing audit_id');
         return new WP_REST_Response(array('success' => false, 'message' => 'Missing audit_id'), 400);
     }
 
     $audit_id = intval($params['audit_id']);
-    error_log('ðŸ”µ REST API: Audit ID: ' . $audit_id);
+    ciq_log('Ã°Å¸â€Âµ REST API: Audit ID: ' . $audit_id);
 
     $audit = ConversionIQ_DB::get_audit($audit_id);
     if (!$audit) {
-        error_log('âŒ REST API: Audit not found: ' . $audit_id);
+        ciq_log('Ã¢ÂÅ’ REST API: Audit not found: ' . $audit_id);
         return new WP_REST_Response(array('success' => false, 'message' => 'Audit not found'), 404);
     }
 
-    error_log('ðŸ”µ REST API: Audit found, calling generate_pdf_for_audit()');
+    ciq_log('Ã°Å¸â€Âµ REST API: Audit found, calling generate_pdf_for_audit()');
 
     // Generate report with error handling
     try {
         $res = ConversionIQ_Reports::generate_pdf_for_audit($audit);
-        error_log('ðŸ”µ REST API: generate_pdf_for_audit() returned: ' . json_encode($res));
+        ciq_log('Ã°Å¸â€Âµ REST API: generate_pdf_for_audit() returned: ' . json_encode($res));
         return rest_ensure_response($res);
     }
     catch (Exception $e) {
-        error_log('âŒ REST API: Exception caught: ' . $e->getMessage());
-        error_log('âŒ REST API: Stack trace: ' . $e->getTraceAsString());
+        ciq_log('Ã¢ÂÅ’ REST API: Exception caught: ' . $e->getMessage());
+        ciq_log('Ã¢ÂÅ’ REST API: Stack trace: ' . $e->getTraceAsString());
         return new WP_REST_Response(array(
             'success' => false,
             'message' => 'Report generation error: ' . $e->getMessage()
         ), 500);
     }
     catch (Error $e) {
-        error_log('âŒ REST API: Fatal error caught: ' . $e->getMessage());
-        error_log('âŒ REST API: Stack trace: ' . $e->getTraceAsString());
+        ciq_log('Ã¢ÂÅ’ REST API: Fatal error caught: ' . $e->getMessage());
+        ciq_log('Ã¢ÂÅ’ REST API: Stack trace: ' . $e->getTraceAsString());
         return new WP_REST_Response(array(
             'success' => false,
             'message' => 'Report generation fatal error: ' . $e->getMessage()
@@ -1315,7 +1293,7 @@ function conversioniq_get_page_content(WP_REST_Request $request)
 
 
 /**
- * GET /business-profile — fetch business profile via conversioniq-app.com (primary),
+ * GET /business-profile â€” fetch business profile via conversioniq-app.com (primary),
  * falling back to direct Supabase lookup if the SaaS call fails.
  */
 function conversioniq_get_business_profile(WP_REST_Request $request)
@@ -1330,7 +1308,7 @@ function conversioniq_get_business_profile(WP_REST_Request $request)
     $profile     = null;
     $source      = 'none';
 
-    // ── Primary: fetch via conversioniq-app.com (it knows the org association) ──
+    // â”€â”€ Primary: fetch via conversioniq-app.com (it knows the org association) â”€â”€
     if ( $license_key ) {
         $saas_response = wp_remote_post( 'https://conversioniq-app.com/api/get-business-profile', [
             'timeout' => 15,
@@ -1354,7 +1332,7 @@ function conversioniq_get_business_profile(WP_REST_Request $request)
         }
     }
 
-    // ── Fallback: direct Supabase lookup ──
+    // â”€â”€ Fallback: direct Supabase lookup â”€â”€
     if ( $profile === null ) {
         $sync    = new ConversionIQ_Supabase_Sync();
         $profile = $sync->fetch_business_profile();
@@ -1380,7 +1358,7 @@ function conversioniq_get_business_profile(WP_REST_Request $request)
 }
 
 /**
- * POST /business-profile — save business profile to Supabase + local WP cache.
+ * POST /business-profile â€” save business profile to Supabase + local WP cache.
  */
 function conversioniq_save_business_profile_endpoint(WP_REST_Request $request)
 {
@@ -1399,7 +1377,7 @@ function conversioniq_save_business_profile_endpoint(WP_REST_Request $request)
         }
     }
 
-    // Always persist to local WP option — fast read path for AI audits
+    // Always persist to local WP option â€” fast read path for AI audits
     $local = json_decode( get_option( 'conversion_iq_settings', '{}' ), true );
     if ( ! is_array( $local ) ) $local = [];
     $local = array_merge( $local, $clean );
@@ -1414,7 +1392,7 @@ function conversioniq_save_business_profile_endpoint(WP_REST_Request $request)
 
 function conversioniq_guess_business_info(WP_REST_Request $request)
 {
-    error_log('Auto-fill: Reading homepage content');
+    ciq_log('Auto-fill: Reading homepage content');
 
     $content = '';
 
@@ -1425,7 +1403,7 @@ function conversioniq_guess_business_info(WP_REST_Request $request)
         if ($page && !empty($page->post_content)) {
             $rendered = apply_filters('the_content', $page->post_content);
             $content  = wp_strip_all_tags($rendered);
-            error_log('Auto-fill: Front page read from DB (ID ' . $front_page_id . ', ' . strlen($content) . ' chars)');
+            ciq_log('Auto-fill: Front page read from DB (ID ' . $front_page_id . ', ' . strlen($content) . ' chars)');
         }
     }
 
@@ -1438,20 +1416,20 @@ function conversioniq_guess_business_info(WP_REST_Request $request)
     // --- Strategy 2: HTTP fallback for page builder sites (Elementor etc.) ---
     // Only used when DB content is thin (page builders store content outside post_content)
     if (strlen(trim($content)) < 200) {
-        error_log('Auto-fill: DB content thin, trying HTTP fallback');
+        ciq_log('Auto-fill: DB content thin, trying HTTP fallback');
         $home_url      = get_home_url();
         $http_response = wp_remote_get($home_url, array(
             'timeout'    => 25,
-            'sslverify'  => false,
+            'sslverify'  => true,
             'user-agent' => 'ConversionIQ-AutoFill/1.0',
         ));
 
         if (!is_wp_error($http_response)) {
             $html    = wp_remote_retrieve_body($http_response);
             $content = wp_strip_all_tags($html);
-            error_log('Auto-fill: HTTP fetch succeeded (' . strlen($content) . ' chars)');
+            ciq_log('Auto-fill: HTTP fetch succeeded (' . strlen($content) . ' chars)');
         } else {
-            error_log('Auto-fill: HTTP fallback failed: ' . $http_response->get_error_message());
+            ciq_log('Auto-fill: HTTP fallback failed: ' . $http_response->get_error_message());
         }
     }
 
@@ -1465,7 +1443,7 @@ function conversioniq_guess_business_info(WP_REST_Request $request)
     $content = preg_replace('/\s+/', ' ', $content); // Normalize whitespace
     $content = substr($content, 0, 3000);            // Limit to first 3000 chars
 
-    error_log('Auto-fill: Final content length sent to AI: ' . strlen($content) . ' chars');
+    ciq_log('Auto-fill: Final content length sent to AI: ' . strlen($content) . ' chars');
     // Build AI prompt for business info extraction
     $prompt = "You are analyzing a homepage to extract business information. Extract the following details from the page content below:
 
@@ -1497,7 +1475,7 @@ IMPORTANT: Return ONLY valid JSON, no code blocks, no explanations.";
     // Call AI
     $api_key = get_option('conversioniq_api_key', '');
     if (empty($api_key)) {
-        error_log('❌ Guess fields: No API key found — license must be activated first.');
+        ciq_log('âŒ Guess fields: No API key found â€” license must be activated first.');
         return new WP_REST_Response(array(
             'success' => false,
             'message' => 'License not activated. Please activate your license to use this feature.',
@@ -1527,40 +1505,40 @@ IMPORTANT: Return ONLY valid JSON, no code blocks, no explanations.";
         'sslverify' => true,
     );
 
-    error_log('ðŸ¤– Calling AI to extract business info...');
+    ciq_log('Ã°Å¸Â¤â€“ Calling AI to extract business info...');
     $ai_response = wp_remote_post('https://routellm.abacus.ai/v1/chat/completions', $ai_args);
 
     if (is_wp_error($ai_response)) {
-        error_log('âŒ AI API error: ' . $ai_response->get_error_message());
+        ciq_log('Ã¢ÂÅ’ AI API error: ' . $ai_response->get_error_message());
         return new WP_REST_Response(array('success' => false, 'message' => 'AI analysis failed'), 500);
     }
 
     $status_code = wp_remote_retrieve_response_code($ai_response);
-    error_log('ðŸ“¡ Auto-fill API response status: ' . $status_code);
+    ciq_log('Ã°Å¸â€œÂ¡ Auto-fill API response status: ' . $status_code);
 
     if ($status_code !== 200) {
         $error_body = wp_remote_retrieve_body($ai_response);
-        error_log('âŒ Auto-fill API returned non-200 status: ' . $status_code);
-        error_log('âŒ Response body: ' . substr($error_body, 0, 500));
+        ciq_log('Ã¢ÂÅ’ Auto-fill API returned non-200 status: ' . $status_code);
+        ciq_log('Ã¢ÂÅ’ Response body: ' . substr($error_body, 0, 500));
         return new WP_REST_Response(array('success' => false, 'message' => 'AI API error: ' . $status_code), 500);
     }
 
     $response_body = wp_remote_retrieve_body($ai_response);
-    error_log('ðŸ“„ Response body length: ' . strlen($response_body) . ' chars');
-    error_log('ðŸ“„ First 500 chars: ' . substr($response_body, 0, 500));
+    ciq_log('Ã°Å¸â€œâ€ž Response body length: ' . strlen($response_body) . ' chars');
+    ciq_log('Ã°Å¸â€œâ€ž First 500 chars: ' . substr($response_body, 0, 500));
 
     $ai_data = json_decode($response_body, true);
 
     if (!$ai_data) {
-        error_log('âŒ Failed to parse AI response as JSON: ' . json_last_error_msg());
+        ciq_log('Ã¢ÂÅ’ Failed to parse AI response as JSON: ' . json_last_error_msg());
         return new WP_REST_Response(array('success' => false, 'message' => 'Invalid JSON response'), 500);
     }
 
-    error_log('ðŸ” Response structure keys: ' . json_encode(array_keys($ai_data)));
+    ciq_log('Ã°Å¸â€Â Response structure keys: ' . json_encode(array_keys($ai_data)));
 
     if (!isset($ai_data['choices'][0]['message']['content'])) {
-        error_log('âš ï¸ No AI response content');
-        error_log('âš ï¸ Full response structure: ' . json_encode($ai_data));
+        ciq_log('Ã¢Å¡Â Ã¯Â¸Â No AI response content');
+        ciq_log('Ã¢Å¡Â Ã¯Â¸Â Full response structure: ' . json_encode($ai_data));
         return new WP_REST_Response(array('success' => false, 'message' => 'AI returned no content'), 500);
     }
 
@@ -1577,12 +1555,12 @@ IMPORTANT: Return ONLY valid JSON, no code blocks, no explanations.";
     $fields = json_decode($ai_content, true);
 
     if (!$fields) {
-        error_log('âš ï¸ Failed to parse AI response as JSON');
-        error_log('Raw AI response: ' . substr($ai_content, 0, 500));
+        ciq_log('Ã¢Å¡Â Ã¯Â¸Â Failed to parse AI response as JSON');
+        ciq_log('Raw AI response: ' . substr($ai_content, 0, 500));
         return new WP_REST_Response(array('success' => false, 'message' => 'Failed to parse AI response'), 500);
     }
 
-    error_log('âœ… Successfully extracted business info');
+    ciq_log('Ã¢Å“â€¦ Successfully extracted business info');
 
     return rest_ensure_response(array(
         'success' => true,
@@ -1619,15 +1597,15 @@ function conversioniq_license_deactivate(WP_REST_Request $request)
     delete_option('conversioniq_api_key');
 
     if (is_wp_error($response)) {
-        error_log('ConversionIQ: License server unreachable during deactivation — local data cleared anyway.');
+        ciq_log('ConversionIQ: License server unreachable during deactivation â€” local data cleared anyway.');
         return rest_ensure_response(array(
             'success' => true,
-            'message' => 'License deactivated locally. Note: could not reach license server to release the slot — contact support if needed.',
+            'message' => 'License deactivated locally. Note: could not reach license server to release the slot â€” contact support if needed.',
         ));
     }
 
     $body = json_decode(wp_remote_retrieve_body($response), true);
-    error_log('ConversionIQ: License deactivated for site ' . get_site_url());
+    ciq_log('ConversionIQ: License deactivated for site ' . get_site_url());
 
     return rest_ensure_response(array(
         'success' => true,
@@ -1704,7 +1682,7 @@ function conversioniq_license_remove_site(WP_REST_Request $request)
         return new WP_REST_Response(array('success' => false, 'message' => $body['message'] ?? 'Failed to remove site.'), $code);
     }
 
-    error_log('ConversionIQ: Removed site slot ' . $site_url . ' from license ' . $license_key);
+    ciq_log('ConversionIQ: Removed site slot ' . $site_url . ' from license ' . $license_key);
 
     return rest_ensure_response(array(
         'success' => true,
@@ -1712,81 +1690,6 @@ function conversioniq_license_remove_site(WP_REST_Request $request)
     ));
 }
 
-/**
- * Send audit results to webhook endpoint
- */
-function conversioniq_send_webhook($audit_data)
-{
-    // Hardcoded webhook URL (your support portal endpoint)
-    $webhook_url = 'https://webtecsupportportal.abacusai.app/api/webhook/conversion-iq';
-
-    // Get account info for API key
-    $account = get_option('conversioniq_account', null);
-
-    // Skip if no account (user not registered)
-    if (!$account || empty($account['api_key'])) {
-        error_log('âš ï¸ Webhook skipped: No account registered');
-        return;
-    }
-
-    $api_key = $account['api_key'];
-
-    // Prepare payload
-    $payload = array(
-        'company' => array(
-            'name' => $account['company'] ?? '',
-            'id' => $account['company_id'] ?? '',
-            'email' => $account['email'] ?? ''
-        ),
-        'page_title' => $audit_data['page_title'] ?? '',
-        'page_url' => $audit_data['page_url'] ?? '',
-        'page_id' => $audit_data['page_id'] ?? 0,
-        'scores' => array(
-            'clarity_score' => $audit_data['clarity_score'] ?? 0,
-            'emotional_score' => $audit_data['emotional_score'] ?? 0,
-            'cta_strength' => $audit_data['cta_strength'] ?? 0,
-            'readability_score' => $audit_data['readability_score'] ?? 0,
-            'engagement_score' => $audit_data['engagement_score'] ?? 0,
-            'trust_score' => $audit_data['trust_score'] ?? 0,
-        ),
-        'suggestions' => $audit_data['suggestions'] ?? array(),
-        'ai_used' => $audit_data['ai_used'] ?? true,
-        'created_at' => $audit_data['created_at'] ?? current_time('mysql'),
-        'site_url' => get_site_url(),
-        'site_name' => get_bloginfo('name')
-    );
-
-    // Prepare headers with API key from account
-    $headers = array(
-        'Content-Type' => 'application/json',
-        'User-Agent' => 'ConversionIQ-WordPress-Plugin/1.0',
-        'X-API-Key' => $api_key
-    );
-
-    // Send webhook (blocking to ensure delivery and get response)
-    $response = wp_remote_post($webhook_url, array(
-        'headers' => $headers,
-        'body' => wp_json_encode($payload),
-        'timeout' => 15,
-        'blocking' => true // Blocking to ensure delivery
-    ));
-
-    // Log detailed webhook results
-    if (is_wp_error($response)) {
-        error_log('âŒ Webhook FAILED: ' . $response->get_error_message());
-        error_log('   URL: ' . $webhook_url);
-        error_log('   API Key: ' . substr($api_key, 0, 8) . '...');
-    }
-    else {
-        $status_code = wp_remote_retrieve_response_code($response);
-        $body = wp_remote_retrieve_body($response);
-        error_log('âœ… Webhook SENT successfully!');
-        error_log('   URL: ' . $webhook_url);
-        error_log('   Status: ' . $status_code);
-        error_log('   Response: ' . $body);
-        error_log('   Page: ' . $payload['page_title']);
-    }
-}
 
 /**
  * License functions
@@ -1932,7 +1835,7 @@ function conversioniq_license_activate(WP_REST_Request $request)
     ));
 
     if (is_wp_error($response)) {
-        error_log('ConversionIQ License Validation Error: ' . $response->get_error_message());
+        ciq_log('ConversionIQ License Validation Error: ' . $response->get_error_message());
         // Allow activation if we already had a recent successful validation (grace period)
         $validated_at = get_option('conversioniq_license_validated_at', 0);
         if ($validated_at && (time() - (int) $validated_at) < (7 * DAY_IN_SECONDS)) {
@@ -1967,13 +1870,13 @@ function conversioniq_license_activate(WP_REST_Request $request)
     // Store API key if the validation response includes one
     if (!empty($body['api_key'])) {
         update_option('conversioniq_api_key', sanitize_text_field($body['api_key']));
-        error_log('ConversionIQ License: API key stored from validation response');
+        ciq_log('ConversionIQ License: API key stored from validation response');
     }
 
     // Store organization ID if the validation response includes one
     if (!empty($body['organization_id'])) {
         update_option('conversioniq_organization_id', sanitize_text_field($body['organization_id']));
-        error_log('ConversionIQ License: Organization ID stored from validation response');
+        ciq_log('ConversionIQ License: Organization ID stored from validation response');
     }
 
     // Store customer info if the server returned it
@@ -2026,7 +1929,7 @@ function conversioniq_test_email(WP_REST_Request $request)
     }
 
     $site_name = get_bloginfo('name');
-    $subject = 'âœ… Conversion IQ Test Email - ' . date('M j, Y g:i A');
+    $subject = 'Ã¢Å“â€¦ Conversion IQ Test Email - ' . date('M j, Y g:i A');
 
     // Check if this is a Basecamp email
     $is_basecamp = conversioniq_has_basecamp_email($email);
@@ -2083,7 +1986,7 @@ function conversioniq_test_email(WP_REST_Request $request)
 <body>
     <div class="container">
         <div class="header">
-            <h1>âœ… Email System Working!</h1>
+            <h1>Ã¢Å“â€¦ Email System Working!</h1>
         </div>
         <div class="content">
             <div class="success-box">
@@ -2129,18 +2032,18 @@ function conversioniq_test_email(WP_REST_Request $request)
         );
     }
 
-    error_log('ðŸ“§ Sending test email to: ' . $email . ($is_basecamp ? ' (Basecamp - Plain Text)' : ' (HTML)'));
+    ciq_log('Ã°Å¸â€œÂ§ Sending test email to: ' . $email . ($is_basecamp ? ' (Basecamp - Plain Text)' : ' (HTML)'));
     $sent = wp_mail($email, $subject, $message, $headers);
 
     if ($sent) {
-        error_log('âœ… Test email sent successfully');
+        ciq_log('Ã¢Å“â€¦ Test email sent successfully');
         return rest_ensure_response(array(
             'success' => true,
             'message' => 'Test email sent successfully to ' . $email
         ));
     }
     else {
-        error_log('âŒ Failed to send test email');
+        ciq_log('Ã¢ÂÅ’ Failed to send test email');
         return new WP_REST_Response(array(
             'success' => false,
             'message' => 'Failed to send test email. Check your WordPress email configuration.'
@@ -2158,7 +2061,7 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
     $page_ids = isset($params['page_ids']) ? array_map('intval', $params['page_ids']) : array();
 
     $log = array();
-    $log[] = 'ðŸ” Starting manual report generation...';
+    $log[] = 'Ã°Å¸â€Â Starting manual report generation...';
 
     // Get settings to use configured email or fallback
     $settings = get_option('conversion_iq_automated_reports', array());
@@ -2171,7 +2074,7 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
     $valid_emails = array_filter($emails, 'is_email');
     $email = implode(', ', $valid_emails);
 
-    $log[] = 'ðŸ“§ Target email(s): ' . $email;
+    $log[] = 'Ã°Å¸â€œÂ§ Target email(s): ' . $email;
 
     if (empty($valid_emails)) {
         return new WP_REST_Response(array(
@@ -2182,7 +2085,7 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
     }
 
     if (empty($page_ids)) {
-        $log[] = 'âŒ No pages selected';
+        $log[] = 'Ã¢ÂÅ’ No pages selected';
         return new WP_REST_Response(array(
             'success' => false,
             'message' => 'No pages selected for the report',
@@ -2190,14 +2093,14 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
         ), 400);
     }
 
-    $log[] = 'ðŸ“„ Selected page IDs: ' . implode(', ', $page_ids);
+    $log[] = 'Ã°Å¸â€œâ€ž Selected page IDs: ' . implode(', ', $page_ids);
 
     // Get the most recent audits for the selected pages
     global $wpdb;
     $table = $wpdb->prefix . 'conversioniq_audits';
     $placeholders = implode(',', array_fill(0, count($page_ids), '%d'));
 
-    $log[] = 'ðŸ”Ž Querying database for audits...';
+    $log[] = 'Ã°Å¸â€Å½ Querying database for audits...';
 
     $audits = $wpdb->get_results($wpdb->prepare(
         "SELECT * FROM $table 
@@ -2208,17 +2111,17 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
 
     // If no audits exist, run them automatically
     if (empty($audits)) {
-        $log[] = 'ðŸ“Š No existing audits found - running audits automatically...';
+        $log[] = 'Ã°Å¸â€œÅ  No existing audits found - running audits automatically...';
 
         // Run audits for each page
         foreach ($page_ids as $page_id) {
             $page = get_post($page_id);
             if (!$page) {
-                $log[] = '  âš ï¸ Page ID ' . $page_id . ' not found, skipping';
+                $log[] = '  Ã¢Å¡Â Ã¯Â¸Â Page ID ' . $page_id . ' not found, skipping';
                 continue;
             }
 
-            $log[] = '  ðŸ”„ Running audit for: ' . $page->post_title;
+            $log[] = '  Ã°Å¸â€â€ž Running audit for: ' . $page->post_title;
 
             // Get page content
             $page_url = get_permalink($page_id);
@@ -2230,7 +2133,7 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
             $html_structure = '';
             $response = wp_remote_get($page_url, array(
                 'timeout' => 10,
-                'sslverify' => false,
+                'sslverify' => true,
             ));
 
             if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
@@ -2287,7 +2190,7 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
                     );
 
                     if ($inserted) {
-                        $log[] = '    âœ… Audit completed and saved (ID: ' . $wpdb->insert_id . ')';
+                        $log[] = '    Ã¢Å“â€¦ Audit completed and saved (ID: ' . $wpdb->insert_id . ')';
 
                         // Sync to Supabase cloud database
                         try {
@@ -2328,28 +2231,28 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
                             $supabase_sync->track_usage('analyze_page');
 
                             if ($sync_success) {
-                                $log[] = '    â˜ï¸ Synced to Supabase cloud';
+                                $log[] = '    Ã¢ËœÂÃ¯Â¸Â Synced to Supabase cloud';
                             }
                         }
                         catch (Exception $e) {
-                            $log[] = '    âš ï¸ Supabase sync skipped: ' . $e->getMessage();
+                            $log[] = '    Ã¢Å¡Â Ã¯Â¸Â Supabase sync skipped: ' . $e->getMessage();
                         }
                     }
                     else {
-                        $log[] = '    âš ï¸ Audit completed but failed to save: ' . $wpdb->last_error;
+                        $log[] = '    Ã¢Å¡Â Ã¯Â¸Â Audit completed but failed to save: ' . $wpdb->last_error;
                     }
                 }
                 else {
-                    $log[] = '    âŒ Audit failed: Invalid response from AI';
+                    $log[] = '    Ã¢ÂÅ’ Audit failed: Invalid response from AI';
                 }
             }
             catch (Exception $e) {
-                $log[] = '    âŒ Audit failed: ' . $e->getMessage();
+                $log[] = '    Ã¢ÂÅ’ Audit failed: ' . $e->getMessage();
             }
         }
 
         // Re-query for the newly created audits
-        $log[] = 'ðŸ”„ Fetching newly created audits...';
+        $log[] = 'Ã°Å¸â€â€ž Fetching newly created audits...';
         $audits = $wpdb->get_results($wpdb->prepare(
             "SELECT * FROM $table 
              WHERE page_id IN ($placeholders) 
@@ -2358,7 +2261,7 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
         ), ARRAY_A);
 
         if (empty($audits)) {
-            $log[] = 'âŒ Failed to create audits';
+            $log[] = 'Ã¢ÂÅ’ Failed to create audits';
             return new WP_REST_Response(array(
                 'success' => false,
                 'message' => 'Failed to generate audits for the selected pages.',
@@ -2367,7 +2270,7 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
         }
     }
 
-    $log[] = 'âœ… Found ' . count($audits) . ' audit record(s) in database';
+    $log[] = 'Ã¢Å“â€¦ Found ' . count($audits) . ' audit record(s) in database';
 
     // Group audits by page_id and get the most recent one for each
     $latest_audits = array();
@@ -2382,13 +2285,13 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
         }
     }
 
-    $log[] = 'ðŸ“Š Processing ' . count($latest_audits) . ' unique page audit(s)';
+    $log[] = 'Ã°Å¸â€œÅ  Processing ' . count($latest_audits) . ' unique page audit(s)';
 
     // Prepare results array in the format expected by the email function
     $results = array();
     foreach ($latest_audits as $audit) {
         $data = $audit['data'];
-        $log[] = '  âœ“ ' . $audit['page_title'] . ' (ID: ' . $audit['id'] . ')';
+        $log[] = '  Ã¢Å“â€œ ' . $audit['page_title'] . ' (ID: ' . $audit['id'] . ')';
         $results[] = array(
             'insert_id' => $audit['id'],
             'page_title' => $audit['page_title'],
@@ -2403,7 +2306,7 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
     }
 
     // Get business context
-    $log[] = 'ðŸ¢ Loading business context...';
+    $log[] = 'Ã°Å¸ÂÂ¢ Loading business context...';
     $business_settings = get_option('conversion_iq_settings', '{}');
     $business = json_decode($business_settings, true);
     $business_context = array(
@@ -2413,20 +2316,20 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
     );
 
     // Use the automated reports class to send the email
-    $log[] = 'ðŸ“„ Generating PDF reports...';
+    $log[] = 'Ã°Å¸â€œâ€ž Generating PDF reports...';
     if (!class_exists('ConversionIQ_Automated_Reports')) {
         require_once CONVERSION_IQ_DIR . 'includes/class-automated-reports.php';
     }
 
     // Call the send_email_report method using reflection since it's private
-    $log[] = 'ðŸ“§ Preparing email with attachments...';
+    $log[] = 'Ã°Å¸â€œÂ§ Preparing email with attachments...';
     
     // Add error handler to capture wp_mail errors
     $mail_error = '';
     add_action('wp_mail_failed', function($wp_error) use (&$mail_error, &$log) {
         $mail_error = $wp_error->get_error_message();
-        $log[] = 'âŒ Email error: ' . $mail_error;
-        error_log('âŒ wp_mail error: ' . $mail_error);
+        $log[] = 'Ã¢ÂÅ’ Email error: ' . $mail_error;
+        ciq_log('Ã¢ÂÅ’ wp_mail error: ' . $mail_error);
     });
     
     $reflection = new ReflectionClass('ConversionIQ_Automated_Reports');
@@ -2445,15 +2348,15 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
     }
 
     if ($sent) {
-        $log[] = 'âœ… Email sent successfully via wp_mail()';
-        $log[] = 'ðŸ“¬ Email queued for delivery to: ' . $email;
-        $log[] = 'â„¹ï¸ If you don\'t receive the email, check:';
+        $log[] = 'Ã¢Å“â€¦ Email sent successfully via wp_mail()';
+        $log[] = 'Ã°Å¸â€œÂ¬ Email queued for delivery to: ' . $email;
+        $log[] = 'Ã¢â€žÂ¹Ã¯Â¸Â If you don\'t receive the email, check:';
         $log[] = '  - Your spam/junk folder';
         $log[] = '  - WordPress email configuration';
         $log[] = '  - Server email sending limits';
         $log[] = '  - PDF attachment size (might be rejected by email server)';
         
-        error_log('âœ… Manual audit report queued for delivery to: ' . $email . ' with ' . count($results) . ' page(s)');
+        ciq_log('Ã¢Å“â€¦ Manual audit report queued for delivery to: ' . $email . ' with ' . count($results) . ' page(s)');
         return rest_ensure_response(array(
             'success' => true,
             'message' => 'Audit report queued for delivery to ' . $email . ' with ' . count($results) . ' page(s). Check your inbox and spam folder.',
@@ -2461,17 +2364,17 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
         ));
     }
     else {
-        $log[] = 'âŒ wp_mail() returned false - email not sent';
+        $log[] = 'Ã¢ÂÅ’ wp_mail() returned false - email not sent';
         if (!empty($mail_error)) {
-            $log[] = 'âŒ Error details: ' . $mail_error;
+            $log[] = 'Ã¢ÂÅ’ Error details: ' . $mail_error;
         }
-        $log[] = 'ðŸ’¡ Troubleshooting steps:';
+        $log[] = 'Ã°Å¸â€™Â¡ Troubleshooting steps:';
         $log[] = '  1. Test email delivery works (confirm this first)';
         $log[] = '  2. Check if PDFs are being generated';
         $log[] = '  3. Try sending to one page at a time';
         $log[] = '  4. Contact your hosting provider about email sending';
         
-        error_log('âŒ Failed to send manual audit report to: ' . $email . ($mail_error ? ' - Error: ' . $mail_error : ''));
+        ciq_log('Ã¢ÂÅ’ Failed to send manual audit report to: ' . $email . ($mail_error ? ' - Error: ' . $mail_error : ''));
         
         return new WP_REST_Response(array(
             'success' => false,

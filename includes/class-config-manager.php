@@ -155,7 +155,7 @@ class ConversionIQ_Config_Manager
                 'sub_license_distribution' => false,
             ),
             'agency' => array(
-                'max_sites'              => 50,
+                'max_sites'              => 100,
                 'max_pages_per_audit'    => 15,
                 'audits_per_week'        => 3,
                 'conversion_scores'      => 6,
@@ -261,19 +261,19 @@ class ConversionIQ_Config_Manager
         ));
 
         if (is_wp_error($response)) {
-            error_log('ConversionIQ Config Sync failed: ' . $response->get_error_message());
+            ciq_log('ConversionIQ Config Sync failed: ' . $response->get_error_message());
             return false;
         }
 
         $code = wp_remote_retrieve_response_code($response);
         if ($code !== 200) {
-            error_log('ConversionIQ Config Sync returned HTTP ' . $code);
+            ciq_log('ConversionIQ Config Sync returned HTTP ' . $code);
             return false;
         }
 
         $body = json_decode(wp_remote_retrieve_body($response), true);
         if (!$body || !isset($body['branding'])) {
-            error_log('ConversionIQ Config Sync: invalid response body');
+            ciq_log('ConversionIQ Config Sync: invalid response body');
             return false;
         }
 
@@ -289,11 +289,11 @@ class ConversionIQ_Config_Manager
         // Store API key if present (Abacus.ai key enabling AI audit features)
         if (!empty($body['api_key'])) {
             update_option('conversioniq_api_key', sanitize_text_field($body['api_key']));
-            error_log('ConversionIQ Config Sync: API key updated');
+            ciq_log('ConversionIQ Config Sync: API key updated');
         }
 
         update_option(self::CONFIG_UPDATED_OPTION, time());
-        error_log('ConversionIQ Config Sync: success');
+        ciq_log('ConversionIQ Config Sync: success');
         return true;
     }
 

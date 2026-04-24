@@ -52,12 +52,12 @@ class ConversionIQ_Automated_Reports
      */
     public static function run_automated_audit()
     {
-        error_log('🤖 ConversionIQ: Starting automated audit...');
+        ciq_log('🤖 ConversionIQ: Starting automated audit...');
 
         $settings = get_option('conversion_iq_automated_reports', array());
 
         if (empty($settings['enabled']) || empty($settings['defaultPages']) || empty($settings['email'])) {
-            error_log('⚠️ Automated audit cancelled: invalid settings');
+            ciq_log('⚠️ Automated audit cancelled: invalid settings');
             return;
         }
 
@@ -81,7 +81,7 @@ class ConversionIQ_Automated_Reports
 
             $response = wp_remote_get($page_url, array(
                 'timeout' => 10,
-                'sslverify' => false,
+                'sslverify' => true,
             ));
 
             if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
@@ -100,7 +100,7 @@ class ConversionIQ_Automated_Reports
                 ),
             );
 
-            error_log('📄 Automated audit: ' . $post->post_title);
+            ciq_log('📄 Automated audit: ' . $post->post_title);
 
             try {
                 // Always run a fresh audit analysis
@@ -118,37 +118,34 @@ class ConversionIQ_Automated_Reports
                     $ai['created_at'] = current_time('mysql');
                     $results[] = $ai;
 
-                    error_log('✅ Fresh audit completed for: ' . $post->post_title . ' (Audit ID: ' . $insert_id . ')');
+                    ciq_log('✅ Fresh audit completed for: ' . $post->post_title . ' (Audit ID: ' . $insert_id . ')');
 
                     // Sync to Supabase so the public report link is live
                     $sync = new ConversionIQ_Supabase_Sync();
                     $sync->send_audit( $ai );
 
-                    // Send to webhook if configured
-                    if (function_exists('conversioniq_send_webhook')) {
-                        conversioniq_send_webhook($ai);
-                    }
+
                 }
                 else {
-                    error_log('⚠️ Audit analysis returned non-array result for: ' . $post->post_title);
+                    ciq_log('⚠️ Audit analysis returned non-array result for: ' . $post->post_title);
                 }
             }
             catch (Exception $e) {
-                error_log('❌ Automated audit error for ' . $post->post_title . ': ' . $e->getMessage());
+                ciq_log('❌ Automated audit error for ' . $post->post_title . ': ' . $e->getMessage());
             }
         }
 
         if (empty($results)) {
-            error_log('⚠️ No audit results to email');
+            ciq_log('⚠️ No audit results to email');
             return;
         }
 
-        error_log('✅ Automated audits completed. Generated ' . count($results) . ' fresh audit(s) for scheduled report');
+        ciq_log('✅ Automated audits completed. Generated ' . count($results) . ' fresh audit(s) for scheduled report');
 
         // Send email with results
         self::send_email_report($settings['email'], $results, $business);
 
-        error_log('📧 Automated report emailed to ' . $settings['email'] . ' with ' . count($results) . ' page(s)');
+        ciq_log('📧 Automated report emailed to ' . $settings['email'] . ' with ' . count($results) . ' page(s)');
     }
 
     /**
@@ -166,7 +163,7 @@ class ConversionIQ_Automated_Reports
 
         if (empty($valid_emails)) {
             $msg = '❌ No valid email addresses provided';
-            error_log($msg);
+            ciq_log($msg);
             $messages[] = $msg;
             return array('success' => false, 'messages' => $messages);
         }
@@ -332,10 +329,6 @@ class ConversionIQ_Automated_Reports
                             
                             <p style="margin: 0 0 12px; color: #4b5563; font-size: 15px;">
                                 Feel free to book a quick chat if you have any questions: <a href="' . $brand_booking_url . '" style="color: #2563eb; text-decoration: none;">' . $brand_booking_url . '</a>
-                            </p>
-                            
-                            <p style="margin: 0 0 24px; color: #4b5563; font-size: 15px;">
-                                You are also invited to paste any recommendations directly into Basecamp and our Customer Success Team will get onto them right away.
                             </p>
                             
                             <p style="margin: 0 0 24px; color: #4b5563; font-size: 15px;">
@@ -519,7 +512,7 @@ class ConversionIQ_Automated_Reports
             $message .= "We analyzed " . $total_pages . " page" . ($total_pages > 1 ? 's' : '') . " on your website.\n\n";
             $message .= "Feel free to book a quick chat if you have any questions:\n";
             $message .= $brand_booking_url . "\n\n";
-            $message .= "You can paste any recommendations directly into Basecamp and our Customer Success Team will get onto them right away.\n\n";
+
             $message .= "Thanks,\n" . $brand_company . "\n\n";
 
             $message .= "OVERALL PERFORMANCE: " . $overall_score . "/100 - " . $status . "\n";
@@ -567,7 +560,7 @@ class ConversionIQ_Automated_Reports
         }
 
         $msg = '📧 Preparing to send email to: ' . implode(', ', $valid_emails) . ($is_basecamp ? ' (Basecamp - Plain Text)' : ' (HTML)');
-        error_log($msg);
+        ciq_log($msg);
         $messages[] = $msg;
         
         // Send email to all recipients
@@ -575,23 +568,23 @@ class ConversionIQ_Automated_Reports
 
         if ($sent) {
             $msg = '✅ Email queued successfully for ' . count($valid_emails) . ' recipient(s): ' . implode(', ', $valid_emails);
-            error_log($msg);
+            ciq_log($msg);
             $messages[] = $msg;
         }
         else {
             $msg = '❌ Failed to send email to: ' . implode(', ', $valid_emails);
-            error_log($msg);
+            ciq_log($msg);
             $messages[] = $msg;
             
             global $phpmailer;
             if (isset($phpmailer) && is_object($phpmailer)) {
                 $msg = '❌ PHPMailer Error: ' . $phpmailer->ErrorInfo;
-                error_log($msg);
+                ciq_log($msg);
                 $messages[] = $msg;
             }
             else {
                 $msg = '❌ PHPMailer object not available for debugging';
-                error_log($msg);
+                ciq_log($msg);
                 $messages[] = $msg;
             }
         }

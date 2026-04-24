@@ -50,27 +50,27 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
     public function handle_webhook(WP_REST_Request $request) {
         global $wpdb;
         
-        error_log('=== ConversionIQ: WEBHOOK RECEIVED ===');
-        error_log('ConversionIQ: Request method: ' . $request->get_method());
+        ciq_log('=== ConversionIQ: WEBHOOK RECEIVED ===');
+        ciq_log('ConversionIQ: Request method: ' . $request->get_method());
         
         // Get headers
         $signature = $request->get_header('X-Webhook-Signature');
         $timestamp = $request->get_header('X-Webhook-Timestamp');
         $event_type = $request->get_header('X-Webhook-Event');
         
-        error_log('ConversionIQ: Event type from header: ' . ($event_type ?: 'NOT SET'));
-        error_log('ConversionIQ: Signature present: ' . ($signature ? 'YES' : 'NO'));
-        error_log('ConversionIQ: Timestamp: ' . ($timestamp ?: 'NOT SET'));
+        ciq_log('ConversionIQ: Event type from header: ' . ($event_type ?: 'NOT SET'));
+        ciq_log('ConversionIQ: Signature present: ' . ($signature ? 'YES' : 'NO'));
+        ciq_log('ConversionIQ: Timestamp: ' . ($timestamp ?: 'NOT SET'));
         
         // Get raw body
         $raw_body = $request->get_body();
-        error_log('ConversionIQ: Payload length: ' . strlen($raw_body) . ' bytes');
+        ciq_log('ConversionIQ: Payload length: ' . strlen($raw_body) . ' bytes');
         
         $payload = json_decode($raw_body, true);
         
         if (!$payload) {
-            error_log('ConversionIQ: Invalid JSON payload');
-            error_log('ConversionIQ: Raw body: ' . substr($raw_body, 0, 500));
+            ciq_log('ConversionIQ: Invalid JSON payload');
+            ciq_log('ConversionIQ: Raw body: ' . substr($raw_body, 0, 500));
             return new WP_REST_Response(['error' => 'Invalid JSON payload'], 400);
         }
         
@@ -78,7 +78,7 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         if (empty($event_type)) {
             // Try common payload fields for event type
             $event_type = $payload['event'] ?? $payload['event_type'] ?? $payload['type'] ?? '';
-            error_log('ConversionIQ: Event type from payload: ' . ($event_type ?: 'STILL NOT FOUND'));
+            ciq_log('ConversionIQ: Event type from payload: ' . ($event_type ?: 'STILL NOT FOUND'));
             
             // If still not found, try to infer from structure
             if (empty($event_type) && isset($payload['data'])) {
@@ -87,34 +87,32 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
                 // Infer based on structure
                 if (isset($data['is_conversion']) || isset($data['conversion_type'])) {
                     $event_type = 'new_lead';
-                    error_log('ConversionIQ: Event type INFERRED as new_lead from structure');
+                    ciq_log('ConversionIQ: Event type INFERRED as new_lead from structure');
                 } elseif (isset($data['user_session_id']) || isset($data['user_session'])) {
                     $event_type = 'new_user_identified';
-                    error_log('ConversionIQ: Event type INFERRED as new_user_identified from structure');
+                    ciq_log('ConversionIQ: Event type INFERRED as new_user_identified from structure');
                 }
             }
         }
         
-        error_log('ConversionIQ: Final event type to process: ' . ($event_type ?: 'NONE'));
-        
-        $payload = json_decode($raw_body, true);
+        ciq_log('ConversionIQ: Final event type to process: ' . ($event_type ?: 'NONE'));
         
         if (!$payload) {
-            error_log('ConversionIQ: Invalid JSON payload');
-            error_log('ConversionIQ: Raw body: ' . substr($raw_body, 0, 500));
+            ciq_log('ConversionIQ: Invalid JSON payload');
+            ciq_log('ConversionIQ: Raw body: ' . substr($raw_body, 0, 500));
             return new WP_REST_Response(['error' => 'Invalid JSON payload'], 400);
         }
         
         $company_id = $payload['company_id'] ?? '';
-        error_log("ConversionIQ: Company ID from webhook: {$company_id}");
-        error_log('ConversionIQ: Full payload: ' . json_encode($payload));
+        ciq_log("ConversionIQ: Company ID from webhook: {$company_id}");
+        ciq_log('ConversionIQ: Full payload: ' . json_encode($payload));
         
         // Get webhook secret for this site
         $webhook_secret = get_option('conversioniq_knockknock_webhook_secret');
         $configured_company_id = get_option('conversioniq_knockknock_company_id');
         
-        error_log("ConversionIQ: Configured company ID: {$configured_company_id}");
-        error_log("ConversionIQ: Webhook secret configured: " . ($webhook_secret ? 'YES' : 'NO'));
+        ciq_log("ConversionIQ: Configured company ID: {$configured_company_id}");
+        ciq_log("ConversionIQ: Webhook secret configured: " . ($webhook_secret ? 'YES' : 'NO'));
         
         // Security Strategy:
         // 1. If webhook secret is set -> verify HMAC signature (recommended, secure)
@@ -124,29 +122,29 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         if ($webhook_secret) {
             // SECURE: Verify HMAC signature
             if (!$this->verify_signature($signature, $timestamp, $raw_body, $webhook_secret)) {
-                error_log("ConversionIQ: Invalid webhook signature");
+                ciq_log("ConversionIQ: Invalid webhook signature");
                 return new WP_REST_Response(['error' => 'Invalid signature'], 403);
             }
-            error_log('ConversionIQ: Webhook signature verified successfully (HMAC)');
+            ciq_log('ConversionIQ: Webhook signature verified successfully (HMAC)');
             
             // Company ID is just for reference/logging when using HMAC
             if ($company_id && $configured_company_id && $company_id !== $configured_company_id) {
-                error_log("ConversionIQ: WARNING - Company ID mismatch but allowing due to valid HMAC. Expected: {$configured_company_id}, Got: {$company_id}");
+                ciq_log("ConversionIQ: WARNING - Company ID mismatch but allowing due to valid HMAC. Expected: {$configured_company_id}, Got: {$company_id}");
             }
             
         } else if ($configured_company_id) {
             // BASIC: Fall back to company ID verification if no secret
-            error_log('ConversionIQ: No webhook secret configured, using Company ID verification (less secure)');
+            ciq_log('ConversionIQ: No webhook secret configured, using Company ID verification (less secure)');
             
             if ($company_id !== $configured_company_id) {
-                error_log("ConversionIQ: Company ID mismatch. Expected: {$configured_company_id}, Got: {$company_id}");
+                ciq_log("ConversionIQ: Company ID mismatch. Expected: {$configured_company_id}, Got: {$company_id}");
                 return new WP_REST_Response(['error' => 'Company ID mismatch'], 403);
             }
-            error_log('ConversionIQ: Company ID verified successfully (basic auth)');
+            ciq_log('ConversionIQ: Company ID verified successfully (basic auth)');
             
         } else {
             // REJECTED: Neither authentication method configured
-            error_log('ConversionIQ: REJECTED - No webhook secret or company ID configured');
+            ciq_log('ConversionIQ: REJECTED - No webhook secret or company ID configured');
             return new WP_REST_Response([
                 'error' => 'Authentication not configured',
                 'message' => 'Please configure either a webhook secret (recommended) or company ID in plugin settings'
@@ -155,44 +153,40 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         
         // Log the webhook event
         $log_id = $this->log_webhook_event($payload, $event_type);
-        error_log("ConversionIQ: Webhook logged with ID: {$log_id}");
+        ciq_log("ConversionIQ: Webhook logged with ID: {$log_id}");
         
         // Process based on event type
-        error_log("ConversionIQ: Processing event type: " . var_export($event_type, true));
-        error_log("ConversionIQ: Event type comparison: 'new_lead'=" . ($event_type === 'new_lead' ? 'TRUE' : 'FALSE') . ", 'new_user_identified'=" . ($event_type === 'new_user_identified' ? 'TRUE' : 'FALSE'));
+        ciq_log("ConversionIQ: Processing event type: " . var_export($event_type, true));
+        ciq_log("ConversionIQ: Event type comparison: 'new_lead'=" . ($event_type === 'new_lead' ? 'TRUE' : 'FALSE') . ", 'new_user_identified'=" . ($event_type === 'new_user_identified' ? 'TRUE' : 'FALSE'));
         
         if (empty($event_type)) {
-            error_log("ConversionIQ: ❌ ERROR - No event type could be determined. Webhook will be logged but not processed.");
-            error_log("ConversionIQ: Full payload for debugging: " . json_encode($payload));
+            ciq_log("ConversionIQ: ❌ ERROR - No event type could be determined. Webhook will be logged but not processed.");
+            ciq_log("ConversionIQ: Full payload for debugging: " . json_encode($payload));
         }
         
         switch ($event_type) {
             case 'new_lead':
-                error_log("ConversionIQ: → Calling process_new_lead()");
+                ciq_log("ConversionIQ: → Calling process_new_lead()");
                 $this->process_new_lead($log_id, $payload);
-                error_log("ConversionIQ: ✓ Completed processing new_lead event");
+                ciq_log("ConversionIQ: ✓ Completed processing new_lead event");
                 break;
                 
             case 'new_user_identified':
-                error_log("ConversionIQ: → Calling process_new_user()");
+                ciq_log("ConversionIQ: → Calling process_new_user()");
                 $this->process_new_user($log_id, $payload);
-                error_log("ConversionIQ: ✓ Completed processing new_user_identified event");
+                ciq_log("ConversionIQ: ✓ Completed processing new_user_identified event");
                 break;
                 
             default:
-                error_log("ConversionIQ: ⚠ UNHANDLED EVENT TYPE: '{$event_type}'");
-                error_log("ConversionIQ: Event type is: " . gettype($event_type) . " with length: " . strlen((string)$event_type));
-                error_log("ConversionIQ: Available event types: 'new_lead', 'new_user_identified'");
-                error_log("ConversionIQ: First 500 chars of payload: " . substr(json_encode($payload), 0, 500));
+                ciq_log("ConversionIQ: ⚠ UNHANDLED EVENT TYPE: '{$event_type}'");
+                ciq_log("ConversionIQ: Event type is: " . gettype($event_type) . " with length: " . strlen((string)$event_type));
+                ciq_log("ConversionIQ: Available event types: 'new_lead', 'new_user_identified'");
+                ciq_log("ConversionIQ: First 500 chars of payload: " . substr(json_encode($payload), 0, 500));
         }
         
-        // Verify data was saved
-        $verify_count = $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_leads}");
-        error_log("ConversionIQ: Total leads in database now: {$verify_count}");
+        ciq_log('=== ConversionIQ: WEBHOOK PROCESSING COMPLETE ===');
         
-        error_log('=== ConversionIQ: WEBHOOK PROCESSING COMPLETE ===');
-        
-        return new WP_REST_Response(['success' => true, 'log_id' => $log_id], 200);
+        return new WP_REST_Response(['success' => true], 200);
     }
     
     /**
@@ -201,7 +195,7 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
     public function get_webhook_logs(WP_REST_Request $request) {
         global $wpdb;
         
-        error_log('ConversionIQ: get_webhook_logs called');
+        ciq_log('ConversionIQ: get_webhook_logs called');
         
         $limit = $request->get_param('limit') ?: 50;
         
@@ -225,7 +219,7 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
             $limit
         ), ARRAY_A);
         
-        error_log('ConversionIQ: Found ' . count($leads) . ' leads');
+        ciq_log('ConversionIQ: Found ' . count($leads) . ' leads');
         
         // Get identified visitors (from new_user_identified events)
         $visitors = $wpdb->get_results($wpdb->prepare(
@@ -247,7 +241,7 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
             $limit
         ), ARRAY_A);
         
-        error_log('ConversionIQ: Found ' . count($visitors) . ' identified visitors');
+        ciq_log('ConversionIQ: Found ' . count($visitors) . ' identified visitors');
         
         // Combine and sort by timestamp
         $combined = array_merge($leads, $visitors);
@@ -259,7 +253,7 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         $combined = array_slice($combined, 0, $limit);
         
         $total_count = count($combined);
-        error_log("ConversionIQ: Returning {$total_count} combined records");
+        ciq_log("ConversionIQ: Returning {$total_count} combined records");
         
         return new WP_REST_Response([
             'success' => true,
@@ -278,14 +272,14 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
      */
     private function verify_signature($signature, $timestamp, $raw_body, $secret) {
         if (!$signature || !$timestamp || !$secret) {
-            error_log('ConversionIQ: Missing signature components');
+            ciq_log('ConversionIQ: Missing signature components');
             return false;
         }
         
         // Check timestamp (5-minute tolerance)
         $age = abs(time() - intval($timestamp));
         if ($age > 300) {
-            error_log("ConversionIQ: Webhook timestamp too old: {$age} seconds");
+            ciq_log("ConversionIQ: Webhook timestamp too old: {$age} seconds");
             return false;
         }
         
@@ -322,11 +316,11 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
     private function process_new_lead($log_id, $payload) {
         global $wpdb;
         
-        error_log("ConversionIQ: process_new_lead called - Log ID: {$log_id}");
-        error_log("ConversionIQ: Lead payload structure: " . json_encode(array_keys($payload)));
+        ciq_log("ConversionIQ: process_new_lead called - Log ID: {$log_id}");
+        ciq_log("ConversionIQ: Lead payload structure: " . json_encode(array_keys($payload)));
         
         $data = $payload['data'] ?? [];
-        error_log("ConversionIQ: Data keys: " . json_encode(array_keys($data)));
+        ciq_log("ConversionIQ: Data keys: " . json_encode(array_keys($data)));
         
         // KnockKnock actual structure: data.contact.{firstName, lastName, businessEmail, etc}
         $contact = $data['contact'] ?? [];
@@ -334,7 +328,7 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         $geo = $contact['geo'] ?? [];
         $company = $data['company'] ?? [];
         
-        error_log("ConversionIQ: Contact keys: " . json_encode(array_keys($contact)));
+        ciq_log("ConversionIQ: Contact keys: " . json_encode(array_keys($contact)));
         
         // Extract email (try multiple sources)
         $email = $contact['businessEmail'] ?? $contact['personalEmail'] ?? $contact['email'] ?? $contact_info['email'] ?? '';
@@ -343,8 +337,8 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         $page_url = $data['page_url'] ?? $contact['workspaceName'] ?? '';
         
         if (empty($email)) {
-            error_log('ConversionIQ: ERROR - No email in lead data, cannot save lead');
-            error_log('ConversionIQ: Full payload: ' . json_encode($payload));
+            ciq_log('ConversionIQ: ERROR - No email in lead data, cannot save lead');
+            ciq_log('ConversionIQ: Full payload: ' . json_encode($payload));
             return;
         }
         
@@ -371,18 +365,18 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
             'created_at' => current_time('mysql')
         ];
         
-        error_log("ConversionIQ: Attempting to insert lead: " . json_encode($lead_data));
+        ciq_log("ConversionIQ: Attempting to insert lead: " . json_encode($lead_data));
         
         // Insert lead
         $result = $wpdb->insert($this->table_leads, $lead_data);
         
         if ($result === false) {
-            error_log("ConversionIQ: ERROR - Failed to insert lead into database");
-            error_log("ConversionIQ: wpdb->last_error: " . $wpdb->last_error);
-            error_log("ConversionIQ: wpdb->last_query: " . $wpdb->last_query);
+            ciq_log("ConversionIQ: ERROR - Failed to insert lead into database");
+            ciq_log("ConversionIQ: wpdb->last_error: " . $wpdb->last_error);
+            ciq_log("ConversionIQ: wpdb->last_query: " . $wpdb->last_query);
         } else {
             $insert_id = $wpdb->insert_id;
-            error_log("ConversionIQ: SUCCESS - Lead saved with ID: {$insert_id} - Email: {$email}, Page: {$page_url}");
+            ciq_log("ConversionIQ: SUCCESS - Lead saved with ID: {$insert_id} - Email: {$email}, Page: {$page_url}");
         }
         
         // Update page analytics
@@ -397,10 +391,10 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
     private function process_new_user($log_id, $payload) {
         global $wpdb;
         
-        error_log("ConversionIQ: process_new_user called - Log ID: {$log_id}");
+        ciq_log("ConversionIQ: process_new_user called - Log ID: {$log_id}");
         
         $data = $payload['data'] ?? [];
-        error_log("ConversionIQ: Data keys: " . json_encode(array_keys($data)));
+        ciq_log("ConversionIQ: Data keys: " . json_encode(array_keys($data)));
         
         // KnockKnock actual structure: data.user_session_id at root, data.contact with user info
         $contact = $data['contact'] ?? [];
@@ -409,8 +403,8 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         $user_session_id = $data['user_session_id'] ?? $data['user_session']['_id'] ?? '';
         
         if (empty($user_session_id)) {
-            error_log('ConversionIQ: ERROR - No user_session_id in identified user data');
-            error_log('ConversionIQ: Full payload: ' . json_encode($payload));
+            ciq_log('ConversionIQ: ERROR - No user_session_id in identified user data');
+            ciq_log('ConversionIQ: Full payload: ' . json_encode($payload));
             return;
         }
         
@@ -420,7 +414,7 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
         // Extract page URL
         $page_url = $data['page_url'] ?? $contact['workspaceName'] ?? '';
         
-        error_log("ConversionIQ: User session ID: {$user_session_id}, Email: {$email}, Page: {$page_url}");
+        ciq_log("ConversionIQ: User session ID: {$user_session_id}, Email: {$email}, Page: {$page_url}");
         
         // Prepare session data (handle both camelCase and snake_case)
         $session_data = [
@@ -443,16 +437,16 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
             'created_at' => current_time('mysql')
         ];
         
-        error_log("ConversionIQ: Attempting to save visitor session: " . json_encode($session_data));
+        ciq_log("ConversionIQ: Attempting to save visitor session: " . json_encode($session_data));
         
         // Insert or update visitor session
         $result = $wpdb->replace($this->table_sessions, $session_data);
         
         if ($result === false) {
-            error_log("ConversionIQ: ERROR - Failed to save visitor session");
-            error_log("ConversionIQ: wpdb->last_error: " . $wpdb->last_error);
+            ciq_log("ConversionIQ: ERROR - Failed to save visitor session");
+            ciq_log("ConversionIQ: wpdb->last_error: " . $wpdb->last_error);
         } else {
-            error_log("ConversionIQ: SUCCESS - Visitor identified - Session: {$user_session_id}, Email: {$email}");
+            ciq_log("ConversionIQ: SUCCESS - Visitor identified - Session: {$user_session_id}, Email: {$email}");
         }
         
         // Update page analytics
@@ -518,7 +512,7 @@ class ConversionIQ_KnockKnock_Webhook_Handler {
             ]);
         }
         
-        error_log("ConversionIQ: Analytics updated - Page: {$page_url}, Visitors: {$total_visitors}, Leads: {$total_leads}, Rate: " . round($conversion_rate, 2) . "%");
+        ciq_log("ConversionIQ: Analytics updated - Page: {$page_url}, Visitors: {$total_visitors}, Leads: {$total_leads}, Rate: " . round($conversion_rate, 2) . "%");
     }
     
     /**

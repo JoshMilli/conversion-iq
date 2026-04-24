@@ -23,7 +23,7 @@ class ConversionIQ_AI
             return $opt;
         }
         // No key available — audits will fail until a valid license is activated
-        error_log('❌ ConversionIQ: No API key found (conversioniq_api_key is empty). Re-activate your license to provision a key.');
+        ciq_log('❌ ConversionIQ: No API key found (conversioniq_api_key is empty). Re-activate your license to provision a key.');
         return '';
     }
 
@@ -41,7 +41,7 @@ class ConversionIQ_AI
 
         // Check if content is too long and needs chunking
         if (strlen($page_content) > 8000) {
-            error_log('📚 Long content detected (' . strlen($page_content) . ' chars), using chunked analysis');
+            ciq_log('📚 Long content detected (' . strlen($page_content) . ' chars), using chunked analysis');
             return self::analyze_chunked($payload);
         }
 
@@ -63,18 +63,18 @@ class ConversionIQ_AI
             'has_error_key' => isset($ai_response['error']),
             'error_value' => isset($ai_response['error']) ? $ai_response['error'] : 'none',
         );
-        error_log('🔍 AI Response Debug: ' . json_encode($debug_info));
-        error_log('⏱️ AI call took: ' . $elapsed . ' seconds');
+        ciq_log('🔍 AI Response Debug: ' . json_encode($debug_info));
+        ciq_log('⏱️ AI call took: ' . $elapsed . ' seconds');
 
         if ($ai_response && isset($ai_response['success']) && $ai_response['success']) {
-            error_log('✅ AI analysis successful, returning data');
+            ciq_log('✅ AI analysis successful, returning data');
             $result = $ai_response['data'];
             
             // Attach raw webhook stats to the audit data so reports can show real numbers
             $webhook_stats = self::get_webhook_statistics($page_url);
             if ($webhook_stats) {
                 $result['webhook_stats'] = $webhook_stats;
-                error_log('📊 Attached webhook_stats to audit: ' . $webhook_stats['total_interactions'] . ' interactions');
+                ciq_log('📊 Attached webhook_stats to audit: ' . $webhook_stats['total_interactions'] . ' interactions');
             }
             
             return $result;
@@ -82,8 +82,8 @@ class ConversionIQ_AI
 
         // Log why we're falling back
         $error_reason = isset($ai_response['error']) ? $ai_response['error'] : 'Unknown error - response structure invalid';
-        error_log('⚠️⚠️⚠️ FALLING BACK TO MOCK DATA - Reason: ' . $error_reason);
-        error_log('📋 Full response: ' . json_encode($ai_response));
+        ciq_log('⚠️⚠️⚠️ FALLING BACK TO MOCK DATA - Reason: ' . $error_reason);
+        ciq_log('📋 Full response: ' . json_encode($ai_response));
 
         // Fallback to mock response if AI fails - still attach webhook stats
         $mock = self::mock_response($page_title);
@@ -102,12 +102,12 @@ class ConversionIQ_AI
         $page_title = isset($payload['page']['title']) ? $payload['page']['title'] : 'Unknown Page';
         $content = isset($payload['page']['content']) ? $payload['page']['content'] : '';
 
-        error_log('🔍 Starting chunked analysis for: ' . $page_title);
+        ciq_log('🔍 Starting chunked analysis for: ' . $page_title);
 
         $sections = self::split_into_sections($content);
 
         if (empty($sections)) {
-            error_log('⚠️ Failed to split content into sections, falling back to truncated analysis');
+            ciq_log('⚠️ Failed to split content into sections, falling back to truncated analysis');
             $payload['page']['content'] = substr($content, 0, 8000);
             return self::analyze($payload);
         }
@@ -121,7 +121,7 @@ class ConversionIQ_AI
 
         foreach ($sections as $section_name => $section_content) {
             $current++;
-            error_log("📄 Analyzing section {$current}/{$section_count}: {$section_name} (" . strlen($section_content) . " chars)");
+            ciq_log("📄 Analyzing section {$current}/{$section_count}: {$section_name} (" . strlen($section_content) . " chars)");
 
             // Compress content if still too long
             $compressed = self::compress_content($section_content);
@@ -162,10 +162,10 @@ class ConversionIQ_AI
                     $all_functionality_suggestions = $data['functionality_suggestions'];
                 }
 
-                error_log("✅ Section '{$section_name}' analyzed successfully");
+                ciq_log("✅ Section '{$section_name}' analyzed successfully");
             }
             else {
-                error_log("⚠️ Section '{$section_name}' analysis failed");
+                ciq_log("⚠️ Section '{$section_name}' analysis failed");
             }
 
             // Small delay to avoid rate limiting
@@ -239,7 +239,7 @@ class ConversionIQ_AI
             return strlen(trim($content)) > 100;
         });
 
-        error_log('📑 Split content into ' . count($sections) . ' sections: ' . implode(', ', array_keys($sections)));
+        ciq_log('📑 Split content into ' . count($sections) . ' sections: ' . implode(', ', array_keys($sections)));
 
         return $sections;
     }
@@ -253,7 +253,7 @@ class ConversionIQ_AI
             return $content;
         }
 
-        error_log('🗜️ Compressing content from ' . strlen($content) . ' chars');
+        ciq_log('🗜️ Compressing content from ' . strlen($content) . ' chars');
 
         $key_elements = array();
 
@@ -291,7 +291,7 @@ class ConversionIQ_AI
             $compressed = substr($compressed, 0, 7000) . '... [truncated]';
         }
 
-        error_log('🗜️ Compressed to ' . strlen($compressed) . ' chars');
+        ciq_log('🗜️ Compressed to ' . strlen($compressed) . ' chars');
 
         return $compressed;
     }
@@ -302,11 +302,11 @@ class ConversionIQ_AI
     private static function aggregate_section_results($all_scores, $all_suggestions, $all_functionality_suggestions, $original_payload)
     {
         if (empty($all_scores)) {
-            error_log('⚠️ No scores to aggregate, using mock response');
+            ciq_log('⚠️ No scores to aggregate, using mock response');
             return self::mock_response(isset($original_payload['page']['title']) ? $original_payload['page']['title'] : 'Unknown Page');
         }
 
-        error_log('🔢 Aggregating results from ' . count($all_scores) . ' sections');
+        ciq_log('🔢 Aggregating results from ' . count($all_scores) . ' sections');
 
         // Average all scores
         $averaged = array(
@@ -331,11 +331,11 @@ class ConversionIQ_AI
             $averaged[$key] = round($value / $count);
         }
 
-        error_log('✅ Averaged scores calculated: clarity=' . $averaged['clarity_score'] . ', engagement=' . $averaged['engagement_score']);
+        ciq_log('✅ Averaged scores calculated: clarity=' . $averaged['clarity_score'] . ', engagement=' . $averaged['engagement_score']);
 
         // Combine suggestions (limit to top 15 most impactful)
         $limited_suggestions = array_slice($all_suggestions, 0, 15);
-        error_log('📝 Combined ' . count($all_suggestions) . ' suggestions, limited to ' . count($limited_suggestions));
+        ciq_log('📝 Combined ' . count($all_suggestions) . ' suggestions, limited to ' . count($limited_suggestions));
 
         // Use first section's rewrites and insights (or merge them)
         $first_section = $all_scores[0];
@@ -360,7 +360,7 @@ class ConversionIQ_AI
             ),
         ));
 
-        error_log('✅ Aggregation complete - returning chunked analysis results');
+        ciq_log('✅ Aggregation complete - returning chunked analysis results');
 
         return $result;
     }
@@ -411,9 +411,9 @@ class ConversionIQ_AI
                        $page_url === $site_url || 
                        $page_url === trailingslashit($site_url);
         
-        error_log('🔍 Webhook Stats Query - Page URL: ' . $page_url);
-        error_log('🔍 Is Homepage: ' . ($is_homepage ? 'YES' : 'NO'));
-        error_log('🔍 Homepage variations: ' . implode(', ', $homepage_variations));
+        ciq_log('🔍 Webhook Stats Query - Page URL: ' . $page_url);
+        ciq_log('🔍 Is Homepage: ' . ($is_homepage ? 'YES' : 'NO'));
+        ciq_log('🔍 Homepage variations: ' . implode(', ', $homepage_variations));
         
         // Build SQL condition for homepage matching
         if ($is_homepage) {
@@ -447,7 +447,7 @@ class ConversionIQ_AI
              WHERE $where_clause_leads 
              ORDER BY created_at DESC 
              LIMIT 50";
-        error_log('🔍 Leads SQL: ' . $leads_query);
+        ciq_log('🔍 Leads SQL: ' . $leads_query);
         $leads = $wpdb->get_results($wpdb->prepare($leads_query, ...$sql_params), ARRAY_A);
         
         // Get visitors engaged on this page
@@ -456,10 +456,10 @@ class ConversionIQ_AI
              WHERE $where_clause_visitors 
              ORDER BY created_at DESC 
              LIMIT 50";
-        error_log('🔍 Visitors SQL: ' . $visitors_query);
+        ciq_log('🔍 Visitors SQL: ' . $visitors_query);
         $visitors = $wpdb->get_results($wpdb->prepare($visitors_query, ...$sql_params), ARRAY_A);
         
-        error_log('🔍 Found ' . count($leads) . ' leads, ' . count($visitors) . ' visitors');
+        ciq_log('🔍 Found ' . count($leads) . ' leads, ' . count($visitors) . ' visitors');
         
         // Get total site stats for context
         $total_site_leads = $wpdb->get_var("SELECT COUNT(*) FROM $leads_table");
@@ -471,15 +471,15 @@ class ConversionIQ_AI
         
         // If no page-specific data, fallback to site-wide for contextual sections (domains, recent visitors)
         if (empty($leads) && empty($visitors)) {
-            error_log('🔍 No page-specific webhook data found - trying site-wide fallback');
-            error_log('🔍 Leads table: ' . $leads_table);
-            error_log('🔍 Visitors table: ' . $visitors_table);
-            error_log('🔍 Last DB error: ' . $wpdb->last_error);
+            ciq_log('🔍 No page-specific webhook data found - trying site-wide fallback');
+            ciq_log('🔍 Leads table: ' . $leads_table);
+            ciq_log('🔍 Visitors table: ' . $visitors_table);
+            ciq_log('🔍 Last DB error: ' . $wpdb->last_error);
             
             // Check total table counts first
             $total_all_leads = $wpdb->get_var("SELECT COUNT(*) FROM $leads_table");
             $total_all_visitors = $wpdb->get_var("SELECT COUNT(*) FROM $visitors_table");
-            error_log('🔍 Total records site-wide - leads: ' . $total_all_leads . ', visitors: ' . $total_all_visitors);
+            ciq_log('🔍 Total records site-wide - leads: ' . $total_all_leads . ', visitors: ' . $total_all_visitors);
             
             // Fallback: get ALL site visitor data (useful for domains, recent visitors context)
             $leads = $wpdb->get_results(
@@ -493,14 +493,14 @@ class ConversionIQ_AI
                 ARRAY_A
             );
             
-            error_log('🔍 Site-wide fallback query - leads found: ' . count($leads) . ', visitors found: ' . count($visitors));
+            ciq_log('🔍 Site-wide fallback query - leads found: ' . count($leads) . ', visitors found: ' . count($visitors));
             if (!empty($visitors)) {
                 $sample_urls = array_unique(array_column($visitors, 'page_url'));
-                error_log('🔍 Sample page_url values in DB: ' . json_encode(array_slice($sample_urls, 0, 5)));
+                ciq_log('🔍 Sample page_url values in DB: ' . json_encode(array_slice($sample_urls, 0, 5)));
             }
             
             if (empty($leads) && empty($visitors)) {
-                error_log('❌ No webhook data found site-wide - tables may be empty or missing');
+                ciq_log('❌ No webhook data found site-wide - tables may be empty or missing');
                 return null;
             }
             
@@ -508,7 +508,7 @@ class ConversionIQ_AI
             // Page-specific count stays 0 since we couldn't match this page
             $page_specific_visitors = 0;
             
-            error_log('✅ Site-wide fallback: using ' . count($leads) . ' leads, ' . count($visitors) . ' visitors');
+            ciq_log('✅ Site-wide fallback: using ' . count($leads) . ' leads, ' . count($visitors) . ' visitors');
         }
         
         // Aggregate statistics
@@ -665,7 +665,7 @@ class ConversionIQ_AI
             ? round(($page_specific_visitors / $total_site_all) * 100, 1) 
             : 0;
         
-        error_log('✅ Webhook stats compiled: ' . $total_interactions . ' interactions, page visitors: ' . $page_specific_visitors . ', ' . $site_contribution_pct . '% contribution');
+        ciq_log('✅ Webhook stats compiled: ' . $total_interactions . ' interactions, page visitors: ' . $page_specific_visitors . ', ' . $site_contribution_pct . '% contribution');
         
         return array(
             'total_leads' => $total_leads,
@@ -1031,14 +1031,14 @@ Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact struc
         $page_type = $page_type_info['type'];
         $conversion_goal = $page_type_info['conversion_goal'];
 
-        error_log('🎯 Detected page type: ' . $page_type . ' | Conversion goal: ' . $conversion_goal);
+        ciq_log('🎯 Detected page type: ' . $page_type . ' | Conversion goal: ' . $conversion_goal);
 
         // Get webhook statistics for lead intelligence context
         $webhook_stats = self::get_webhook_statistics($url);
         $leads_context = '';
 
         if ($webhook_stats) {
-            error_log('📊 Webhook stats loaded: ' . $webhook_stats['total_interactions'] . ' interactions, page visitors: ' . $webhook_stats['page_specific_visitors']);
+            ciq_log('📊 Webhook stats loaded: ' . $webhook_stats['total_interactions'] . ' interactions, page visitors: ' . $webhook_stats['page_specific_visitors']);
             
             $page_visitors = $webhook_stats['page_specific_visitors'];
             $site_total = (int)$webhook_stats['total_site_leads'] + (int)$webhook_stats['total_site_visitors'];
@@ -1153,28 +1153,28 @@ Score this page using the rubric from your instructions. Provide all suggestions
             'sslverify' => true,
         );
 
-        error_log('🚀 Calling Abacus.ai route-llm API...');
-        error_log('📏 Prompt length: ' . strlen($prompt) . ' chars');
+        ciq_log('🚀 Calling Abacus.ai route-llm API...');
+        ciq_log('📏 Prompt length: ' . strlen($prompt) . ' chars');
 
         $response = wp_remote_post(self::ABACUS_API_URL, $args);
 
         if (is_wp_error($response)) {
             $error_msg = $response->get_error_message();
             $error_code = $response->get_error_code();
-            error_log('❌ Abacus.ai API WP_Error: ' . $error_msg);
-            error_log('❌ Error code: ' . $error_code);
-            error_log('❌ Error type: Network/Connection issue');
+            ciq_log('❌ Abacus.ai API WP_Error: ' . $error_msg);
+            ciq_log('❌ Error code: ' . $error_code);
+            ciq_log('❌ Error type: Network/Connection issue');
             return array('success' => false, 'error' => 'API connection failed: ' . $error_msg . ' (code: ' . $error_code . ')');
         }
 
         $status_code = wp_remote_retrieve_response_code($response);
-        error_log("📡 Response status: {$status_code}");
+        ciq_log("📡 Response status: {$status_code}");
 
         if ($status_code !== 200) {
             $body = wp_remote_retrieve_body($response);
-            error_log("❌ Abacus.ai API HTTP error: {$status_code}");
-            error_log("❌ Response headers: " . json_encode(wp_remote_retrieve_headers($response)));
-            error_log("❌ Response body: " . substr($body, 0, 500));
+            ciq_log("❌ Abacus.ai API HTTP error: {$status_code}");
+            ciq_log("❌ Response headers: " . json_encode(wp_remote_retrieve_headers($response)));
+            ciq_log("❌ Response body: " . substr($body, 0, 500));
             return array('success' => false, 'error' => "API returned HTTP {$status_code}: " . substr($body, 0, 200));
         }
 
@@ -1182,15 +1182,15 @@ Score this page using the rubric from your instructions. Provide all suggestions
         $data = json_decode($body, true);
 
         if (!isset($data['choices'][0]['message']['content'])) {
-            error_log('⚠️ No content in AI response');
-            error_log('⚠️ Response structure: ' . json_encode(array_keys($data)));
-            error_log('⚠️ Full response body: ' . substr($body, 0, 1000));
+            ciq_log('⚠️ No content in AI response');
+            ciq_log('⚠️ Response structure: ' . json_encode(array_keys($data)));
+            ciq_log('⚠️ Full response body: ' . substr($body, 0, 1000));
             return array('success' => false, 'error' => 'Empty AI response - check logs for details');
         }
 
         $content = $data['choices'][0]['message']['content'];
-        error_log('📄 AI Response length: ' . strlen($content) . ' characters');
-        error_log('📄 First 500 chars of response: ' . substr($content, 0, 500));
+        ciq_log('📄 AI Response length: ' . strlen($content) . ' characters');
+        ciq_log('📄 First 500 chars of response: ' . substr($content, 0, 500));
 
         // Try to parse JSON response
         $content = trim($content);
@@ -1198,20 +1198,20 @@ Score this page using the rubric from your instructions. Provide all suggestions
         // Remove markdown code blocks if present
         if (preg_match('/```json\s*(.*?)\s*```/s', $content, $matches)) {
             $content = $matches[1];
-            error_log('✂️ Removed JSON markdown wrapper');
+            ciq_log('✂️ Removed JSON markdown wrapper');
         }
         elseif (preg_match('/```\s*(.*?)\s*```/s', $content, $matches)) {
             $content = $matches[1];
-            error_log('✂️ Removed generic markdown wrapper');
+            ciq_log('✂️ Removed generic markdown wrapper');
         }
 
-        error_log('🔍 Attempting to parse JSON (length: ' . strlen(trim($content)) . ')');
+        ciq_log('🔍 Attempting to parse JSON (length: ' . strlen(trim($content)) . ')');
         $parsed = json_decode($content, true);
 
         if (!$parsed) {
-            error_log('⚠️ Failed to parse AI response as JSON');
-            error_log('JSON Error: ' . json_last_error_msg());
-            error_log('Raw response (first 1000 chars): ' . substr($content, 0, 1000));
+            ciq_log('⚠️ Failed to parse AI response as JSON');
+            ciq_log('JSON Error: ' . json_last_error_msg());
+            ciq_log('Raw response (first 1000 chars): ' . substr($content, 0, 1000));
             return array('success' => false, 'error' => 'Invalid JSON response: ' . json_last_error_msg());
         }
 
@@ -1225,29 +1225,29 @@ Score this page using the rubric from your instructions. Provide all suggestions
         }
 
         if (!empty($missing_fields)) {
-            error_log('⚠️ AI response missing required fields: ' . implode(', ', $missing_fields));
-            error_log('AI response structure: ' . json_encode(array_keys($parsed)));
+            ciq_log('⚠️ AI response missing required fields: ' . implode(', ', $missing_fields));
+            ciq_log('AI response structure: ' . json_encode(array_keys($parsed)));
             
             // Try to extract trust_score from suggestion text if it's missing
             if (in_array('trust_score', $missing_fields) && isset($parsed['suggestions'])) {
                 $extracted_trust_score = self::extract_trust_score_from_text($parsed);
                 if ($extracted_trust_score !== null) {
                     $parsed['trust_score'] = $extracted_trust_score;
-                    error_log('✅ Trust score extracted from suggestion text: ' . $extracted_trust_score);
+                    ciq_log('✅ Trust score extracted from suggestion text: ' . $extracted_trust_score);
                 }
             }
             
-            error_log('Full AI response: ' . json_encode($parsed));
+            ciq_log('Full AI response: ' . json_encode($parsed));
         // Still continue - these might be optional or have defaults
         }
 
         // Ensure suggestions is an array
         if (isset($parsed['suggestions']) && !is_array($parsed['suggestions'])) {
-            error_log('⚠️ Suggestions is not an array, converting...');
+            ciq_log('⚠️ Suggestions is not an array, converting...');
             $parsed['suggestions'] = array(array('text' => $parsed['suggestions'], 'section' => 'General'));
         }
 
-        error_log('✅ AI response parsed successfully (suggestions: ' . (isset($parsed['suggestions']) ? count($parsed['suggestions']) : 0) . ')');
+        ciq_log('✅ AI response parsed successfully (suggestions: ' . (isset($parsed['suggestions']) ? count($parsed['suggestions']) : 0) . ')');
 
         // Ensure overall_score is computed correctly using the weighted formula
         $parsed['overall_score'] = (int) round(
@@ -1259,7 +1259,7 @@ Score this page using the rubric from your instructions. Provide all suggestions
             ($parsed['trust_score'] ?? 0) * 0.15
         );
 
-        error_log('✅ Returning success=true with data (overall_score: ' . $parsed['overall_score'] . ')');
+        ciq_log('✅ Returning success=true with data (overall_score: ' . $parsed['overall_score'] . ')');
         return array('success' => true, 'data' => $parsed);
     }
 
@@ -1268,7 +1268,7 @@ Score this page using the rubric from your instructions. Provide all suggestions
      */
     private static function mock_response($title)
     {
-        error_log('🔄 Returning fallback mock response for: ' . $title);
+        ciq_log('🔄 Returning fallback mock response for: ' . $title);
         return array(
             'clarity_score' => 70,
             'emotional_score' => 70,
@@ -1407,11 +1407,11 @@ IMPORTANT:
         $response = self::call_abacus_ai($prompt);
 
         if ($response && isset($response['success']) && $response['success'] && isset($response['data'])) {
-            error_log('✅ Industry benchmark research successful for: ' . $industry);
+            ciq_log('✅ Industry benchmark research successful for: ' . $industry);
             return $response['data'];
         }
 
-        error_log('⚠️ Industry benchmark research failed, using fallback');
+        ciq_log('⚠️ Industry benchmark research failed, using fallback');
         return self::get_fallback_benchmarks();
     }
 

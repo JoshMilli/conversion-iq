@@ -46,6 +46,14 @@ $timestamp = wp_next_scheduled('conversioniq_automated_audit');
 if ($timestamp) {
     wp_unschedule_event($timestamp, 'conversioniq_automated_audit');
 }
+$timestamp = wp_next_scheduled('conversioniq_sync_config');
+if ($timestamp) {
+    wp_unschedule_event($timestamp, 'conversioniq_sync_config');
+}
+$timestamp = wp_next_scheduled('conversioniq_prune_db');
+if ($timestamp) {
+    wp_unschedule_event($timestamp, 'conversioniq_prune_db');
+}
 
 // Clean up transients
 $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_ciq_%' OR option_name LIKE '_transient_timeout_ciq_%'");

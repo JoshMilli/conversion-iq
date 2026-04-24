@@ -143,14 +143,14 @@ class ConversionIQ_DB
         $leads_columns = $wpdb->get_col("DESCRIBE $table_leads");
         if (!in_array('initial_page_visit', $leads_columns)) {
             $wpdb->query("ALTER TABLE $table_leads ADD COLUMN initial_page_visit TEXT AFTER page_title");
-            error_log('ConversionIQ: Added initial_page_visit column to leads table');
+            ciq_log('ConversionIQ: Added initial_page_visit column to leads table');
         }
 
         // Add initial_page_visit column to visitor_sessions table if it doesn't exist
         $sessions_columns = $wpdb->get_col("DESCRIBE $table_sessions");
         if (!in_array('initial_page_visit', $sessions_columns)) {
             $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN initial_page_visit TEXT AFTER page_url");
-            error_log('ConversionIQ: Added initial_page_visit column to visitor_sessions table');
+            ciq_log('ConversionIQ: Added initial_page_visit column to visitor_sessions table');
         }
 
         // Add location columns to leads table if they don't exist
@@ -159,7 +159,7 @@ class ConversionIQ_DB
             $wpdb->query("ALTER TABLE $table_leads ADD COLUMN city VARCHAR(100) AFTER phone");
             $wpdb->query("ALTER TABLE $table_leads ADD COLUMN state VARCHAR(100) AFTER city");
             $wpdb->query("ALTER TABLE $table_leads ADD COLUMN country VARCHAR(100) AFTER state");
-            error_log('ConversionIQ: Added city/state/country columns to leads table');
+            ciq_log('ConversionIQ: Added city/state/country columns to leads table');
         }
         if (!in_array('company_name', $leads_columns)) {
             $wpdb->query("ALTER TABLE $table_leads ADD COLUMN company_name VARCHAR(255) AFTER country");
@@ -167,7 +167,7 @@ class ConversionIQ_DB
             $wpdb->query("ALTER TABLE $table_leads ADD COLUMN company_industry VARCHAR(255) AFTER company_domain");
             $wpdb->query("ALTER TABLE $table_leads ADD COLUMN job_title VARCHAR(255) AFTER company_industry");
             $wpdb->query("ALTER TABLE $table_leads ADD COLUMN linkedin_url TEXT AFTER job_title");
-            error_log('ConversionIQ: Added company/job/linkedin columns to leads table');
+            ciq_log('ConversionIQ: Added company/job/linkedin columns to leads table');
         }
 
         // Add location columns to visitor_sessions table if they don't exist
@@ -176,7 +176,7 @@ class ConversionIQ_DB
             $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN city VARCHAR(100) AFTER email");
             $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN state VARCHAR(100) AFTER city");
             $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN country VARCHAR(100) AFTER state");
-            error_log('ConversionIQ: Added city/state/country columns to visitor_sessions table');
+            ciq_log('ConversionIQ: Added city/state/country columns to visitor_sessions table');
         }
         if (!in_array('company_name', $sessions_columns)) {
             $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN company_name VARCHAR(255) AFTER country");
@@ -184,7 +184,7 @@ class ConversionIQ_DB
             $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN company_industry VARCHAR(255) AFTER company_domain");
             $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN job_title VARCHAR(255) AFTER company_industry");
             $wpdb->query("ALTER TABLE $table_sessions ADD COLUMN linkedin_url TEXT AFTER job_title");
-            error_log('ConversionIQ: Added company/job/linkedin columns to visitor_sessions table');
+            ciq_log('ConversionIQ: Added company/job/linkedin columns to visitor_sessions table');
         }
     }
 
@@ -316,5 +316,54 @@ class ConversionIQ_DB
         }
 
         return $current['content_hash'] !== $previous['content_hash'];
+    }
+
+    /**
+     * Prune old records to keep local tables from growing unbounded.
+     * Called by the weekly conversioniq_prune_db cron.
+     *
+     * Retention policy:
+     *  - audits:           keep the 200 most recent rows
+     *  - webhook_logs:     delete rows older than 90 days
+     *  - leads:            delete rows older than 90 days
+     *  - visitor_sessions: delete rows older than 90 days
+     *  - page_analytics:   delete rows older than 90 days
+     */
+    public static function prune_old_records()
+    {
+        global $wpdb;
+        $prefix = $wpdb->prefix . 'conversioniq_';
+
+        // Audits: keep the 200 newest
+        $audit_table = $prefix . 'audits';
+        $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$audit_table} WHERE id NOT IN (
+                SELECT id FROM (SELECT id FROM {$audit_table} ORDER BY created_at DESC LIMIT %d) AS keep
+            )",
+            200
+        ) );
+
+        // Time-bounded cleanup for activity tables (90 days)
+        $cutoff = gmdate( 'Y-m-d H:i:s', strtotime( '-90 days' ) );
+
+        $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$prefix}webhook_logs WHERE received_at < %s",
+            $cutoff
+        ) );
+
+        $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$prefix}leads WHERE converted_at < %s",
+            $cutoff
+        ) );
+
+        $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$prefix}visitor_sessions WHERE identified_at < %s",
+            $cutoff
+        ) );
+
+        $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$prefix}page_analytics WHERE last_seen < %s",
+            $cutoff
+        ) );
     }
 }
