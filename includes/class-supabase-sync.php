@@ -1257,8 +1257,7 @@ class ConversionIQ_Supabase_Sync {
      */
     /**
      * Push tracked pages to Supabase organizations.tracked_pages.
-     * Called whenever the admin saves the tracked pages list.
-     *
+     * Called whenever the admin saves the tracked pages list.     *
      * @param array $page_ids Array of WP post IDs to track
      * @return bool
      */
@@ -1308,6 +1307,62 @@ class ConversionIQ_Supabase_Sync {
         }
 
         ciq_log( 'ConversionIQ: Tracked pages pushed to Supabase (' . count( $pages_data ) . ' pages)' );
+        return true;
+    }
+
+    /**
+     * Push remote audit credentials (secret key + endpoint URL) to Supabase organizations row.
+     * Called automatically on plugin/license activation — no UI needed.
+     *
+     * @return bool
+     */
+    public function push_remote_credentials() {
+        if ( ! $this->supabase_anon_key || ! $this->organization_id ) {
+            ciq_log( 'ConversionIQ: Cannot push remote credentials - missing credentials or org ID' );
+            return false;
+        }
+
+        // Ensure remote secret exists — generate one if not yet set.
+        $secret = get_option( 'conversioniq_remote_secret', '' );
+        if ( empty( $secret ) ) {
+            $secret = 'ciq_' . bin2hex( random_bytes( 24 ) );
+            update_option( 'conversioniq_remote_secret', $secret );
+            ciq_log( 'ConversionIQ: Remote secret generated and stored' );
+        }
+
+        $endpoint = get_site_url() . '/wp-json/conversioniq/v1/remote-audit';
+
+        $response = wp_remote_request(
+            $this->supabase_url . '/rest/v1/organizations?id=eq.' . urlencode( $this->organization_id ),
+            array(
+                'method'  => 'PATCH',
+                'headers' => array(
+                    'apikey'        => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                    'Content-Type'  => 'application/json',
+                    'X-API-Key'     => $this->api_key,
+                    'Prefer'        => 'return=minimal',
+                ),
+                'body'    => json_encode( array(
+                    'remote_secret' => $secret,
+                    'endpoint'      => $endpoint,
+                ) ),
+                'timeout' => 15,
+            )
+        );
+
+        if ( is_wp_error( $response ) ) {
+            ciq_log( 'ConversionIQ: Failed to push remote credentials - ' . $response->get_error_message() );
+            return false;
+        }
+
+        $status = wp_remote_retrieve_response_code( $response );
+        if ( $status !== 200 && $status !== 204 ) {
+            ciq_log( 'ConversionIQ: push_remote_credentials returned HTTP ' . $status );
+            return false;
+        }
+
+        ciq_log( 'ConversionIQ: Remote credentials pushed to Supabase (endpoint: ' . $endpoint . ')' );
         return true;
     }
 

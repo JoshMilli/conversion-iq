@@ -1919,6 +1919,14 @@ function conversioniq_license_activate(WP_REST_Request $request)
         ConversionIQ_Config_Manager::sync_from_saas();
     }
 
+    // Auto-push remote audit credentials to Supabase so the dashboard can reach this site
+    try {
+        $supabase = new ConversionIQ_Supabase_Sync();
+        $supabase->push_remote_credentials();
+    } catch (Exception $e) {
+        ciq_log('ConversionIQ: push_remote_credentials on license activate: ' . $e->getMessage());
+    }
+
     $features = class_exists('ConversionIQ_Config_Manager')
         ? ConversionIQ_Config_Manager::get_feature_flags()
         : array();

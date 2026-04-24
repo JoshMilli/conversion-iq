@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 2.0.60
+ * Version: 2.0.61
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'CONVERSION_IQ_VERSION', '2.0.60' );
+define( 'CONVERSION_IQ_VERSION', '2.0.61' );
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
@@ -148,6 +148,17 @@ function conversioniq_install() {
         if ( ! wp_next_scheduled( 'conversioniq_automated_audit' ) ) {
             $next_run = time() + WEEK_IN_SECONDS;
             wp_schedule_event( $next_run, 'conversioniq_weekly', 'conversioniq_automated_audit' );
+        }
+    }
+
+    // Auto-push remote audit credentials to Supabase if this site is already registered.
+    // (Handles reactivations after plugin deactivation — org ID is already stored.)
+    if ( get_option( 'conversioniq_organization_id', '' ) ) {
+        try {
+            $supabase = new ConversionIQ_Supabase_Sync();
+            $supabase->push_remote_credentials();
+        } catch ( Exception $e ) {
+            ciq_log( 'ConversionIQ: push_remote_credentials on plugin activate: ' . $e->getMessage() );
         }
     }
 }
