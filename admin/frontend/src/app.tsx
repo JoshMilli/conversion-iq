@@ -21,7 +21,7 @@ const windowPlan: string = (window as any).ConversionIQData?.plan || 'free';
 const B = {
   company: branding.company_name || 'Webtec',
   product: branding.product_name || 'Conversion IQ',
-  supportEmail: branding.support_email || 'support@trywebtec.com',
+  supportEmail: branding.support_email || 'support@conversioniq-app.com',
   websiteUrl: branding.website_url || 'https://trywebtec.com',
   contactUrl: branding.contact_url || 'https://trywebtec.com/contact',
   primaryColor: branding.primary_color || '#1e3a5f',
@@ -776,7 +776,7 @@ export default function App() {
           </h1>
           <p style={{ margin: '0 0 32px 0', fontSize: 15, color: '#6b7280', textAlign: 'center', lineHeight: 1.6 }}>
             Enter your license key to unlock AI-powered conversion audits.{' '}
-            <a href={`${B.websiteUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: '#7c3aed', fontWeight: 600, textDecoration: 'none' }}>
+            <a href="https://conversioniq-app.com/pricing" target="_blank" rel="noopener noreferrer" style={{ color: '#7c3aed', fontWeight: 600, textDecoration: 'none' }}>
               Get a key →
             </a>
           </p>
