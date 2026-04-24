@@ -1332,6 +1332,35 @@ class ConversionIQ_Supabase_Sync {
 
         $endpoint = get_site_url() . '/wp-json/conversioniq/v1/remote-audit';
 
+        // Build tracked pages list.
+        // Use the stored list if one exists; otherwise default to all published pages on this site.
+        $tracked_ids = get_option( 'conversioniq_tracked_pages', array() );
+
+        if ( empty( $tracked_ids ) ) {
+            $all_pages = get_posts( array(
+                'post_type'   => array( 'page', 'post' ),
+                'post_status' => 'publish',
+                'numberposts' => -1,
+                'orderby'     => 'post_title',
+                'order'       => 'ASC',
+            ) );
+            $tracked_ids = wp_list_pluck( $all_pages, 'ID' );
+            // Persist so future calls (and the GET /tracked-pages endpoint) stay consistent
+            update_option( 'conversioniq_tracked_pages', $tracked_ids );
+        }
+
+        $pages_data = array();
+        foreach ( $tracked_ids as $pid ) {
+            $post = get_post( absint( $pid ) );
+            if ( $post && $post->post_status === 'publish' ) {
+                $pages_data[] = array(
+                    'id'    => $post->ID,
+                    'title' => $post->post_title,
+                    'url'   => get_permalink( $post ),
+                );
+            }
+        }
+
         $response = wp_remote_request(
             $this->supabase_url . '/rest/v1/organizations?id=eq.' . urlencode( $this->organization_id ),
             array(
@@ -1346,6 +1375,7 @@ class ConversionIQ_Supabase_Sync {
                 'body'    => json_encode( array(
                     'remote_secret' => $secret,
                     'endpoint'      => $endpoint,
+                    'tracked_pages' => $pages_data,
                 ) ),
                 'timeout' => 15,
             )
@@ -1362,7 +1392,7 @@ class ConversionIQ_Supabase_Sync {
             return false;
         }
 
-        ciq_log( 'ConversionIQ: Remote credentials pushed to Supabase (endpoint: ' . $endpoint . ')' );
+        ciq_log( 'ConversionIQ: Remote credentials pushed to Supabase (endpoint: ' . $endpoint . ', pages: ' . count( $pages_data ) . ')' );
         return true;
     }
 
