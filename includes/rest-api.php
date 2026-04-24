@@ -1764,10 +1764,11 @@ function conversioniq_license_refresh()
     $response = wp_remote_post('https://conversioniq-app.com/api/validate-license', array(
         'timeout' => 15,
         'headers' => array('Content-Type' => 'application/json'),
-        'body'    => wp_json_encode(array(
-            'license_key' => $license_key,
-            'site_url'    => get_site_url(),
-        )),
+        'body'    => wp_json_encode(array_filter(array(
+            'license_key'       => $license_key,
+            'site_url'          => get_site_url(),
+            'organization_id'   => get_option('conversioniq_organization_id', '') ?: null,
+        ))),
     ));
 
     if (is_wp_error($response)) {
@@ -1851,10 +1852,11 @@ function conversioniq_license_activate(WP_REST_Request $request)
     $response = wp_remote_post('https://conversioniq-app.com/api/validate-license', array(
         'timeout' => 15,
         'headers' => array('Content-Type' => 'application/json'),
-        'body'    => wp_json_encode(array(
-            'license_key' => $license_key,
-            'site_url'    => get_site_url(),
-        )),
+        'body'    => wp_json_encode(array_filter(array(
+            'license_key'       => $license_key,
+            'site_url'          => get_site_url(),
+            'organization_id'   => get_option('conversioniq_organization_id', '') ?: null,
+        ))),
     ));
 
     if (is_wp_error($response)) {
