@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 2.0.63
+ * Version: 2.0.64
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'CONVERSION_IQ_VERSION', '2.0.63' );
+define( 'CONVERSION_IQ_VERSION', '2.0.64' );
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
@@ -105,6 +105,11 @@ add_action( 'init', function() {
     if ( ! wp_next_scheduled( 'conversioniq_prune_db' ) ) {
         wp_schedule_event( time() + DAY_IN_SECONDS, 'weekly', 'conversioniq_prune_db' );
     }
+
+    // Schedule 2-minute audit-job poller if not already scheduled
+    if ( ! wp_next_scheduled( 'conversioniq_poll_audit_jobs' ) ) {
+        wp_schedule_event( time() + 120, 'conversioniq_twominutes', 'conversioniq_poll_audit_jobs' );
+    }
     
     // Force flush rewrite rules if version changed (for new REST endpoints)
     $stored_version = get_option( 'conversioniq_version', '0' );
@@ -125,6 +130,91 @@ add_action( 'conversioniq_sync_config', function() {
 add_action( 'conversioniq_prune_db', function() {
     ConversionIQ_DB::prune_old_records();
 } );
+
+// ── Audit Jobs Poller ──────────────────────────────────────────────────────
+// Runs every 2 minutes to check Supabase for pending audit jobs queued by
+// the conversioniq-app.com dashboard. This pull model works for any site,
+// including those behind firewalls or on staging domains where inbound
+// connections from the dashboard server would fail.
+
+// Register the 2-minute custom interval
+add_filter( 'cron_schedules', function( $schedules ) {
+    if ( ! isset( $schedules['conversioniq_twominutes'] ) ) {
+        $schedules['conversioniq_twominutes'] = array(
+            'interval' => 120,
+            'display'  => 'Every 2 Minutes (Conversion IQ)',
+        );
+    }
+    return $schedules;
+} );
+
+add_action( 'conversioniq_poll_audit_jobs', 'conversioniq_poll_audit_jobs_handler' );
+
+function conversioniq_poll_audit_jobs_handler() {
+    // Only run if license is active and org is registered
+    if ( get_option( 'conversioniq_license_status', '' ) !== 'active' ) return;
+    if ( ! get_option( 'conversioniq_organization_id', '' ) ) return;
+
+    $supabase = new ConversionIQ_Supabase_Sync();
+    $job      = $supabase->fetch_pending_job();
+
+    if ( ! $job ) return; // Nothing to do
+
+    $job_id = $job['id'];
+    ciq_log( 'ConversionIQ: Picked up audit job ' . $job_id );
+
+    // Claim the job immediately to prevent duplicate execution
+    $supabase->mark_job_running( $job_id );
+
+    try {
+        // Resolve page IDs: job payload → stored tracked pages → homepage fallback
+        $page_ids = array();
+        if ( ! empty( $job['page_ids'] ) ) {
+            $decoded  = is_array( $job['page_ids'] ) ? $job['page_ids'] : json_decode( $job['page_ids'], true );
+            $page_ids = is_array( $decoded ) ? $decoded : array();
+        }
+        if ( empty( $page_ids ) ) {
+            $page_ids = get_option( 'conversioniq_tracked_pages', array() );
+        }
+        if ( empty( $page_ids ) ) {
+            $front_id = (int) get_option( 'page_on_front' );
+            if ( $front_id > 0 ) {
+                $page_ids = array( $front_id );
+            } else {
+                $fallback = get_posts( array( 'post_type' => array( 'page', 'post' ), 'post_status' => 'publish', 'numberposts' => 1 ) );
+                if ( ! empty( $fallback ) ) $page_ids = array( $fallback[0]->ID );
+            }
+        }
+
+        if ( empty( $page_ids ) ) {
+            throw new Exception( 'No pages to audit' );
+        }
+
+        // Set an admin user context so audit rate-limiting transient is deterministic
+        $admins = get_users( array( 'role' => 'administrator', 'number' => 1, 'fields' => 'ids' ) );
+        if ( ! empty( $admins ) ) wp_set_current_user( $admins[0] );
+
+        // Delegate to the standard audit runner
+        $audit_request = new WP_REST_Request( 'POST' );
+        $audit_request->set_body( json_encode( array( 'pages' => $page_ids ) ) );
+        $audit_request->set_header( 'Content-Type', 'application/json' );
+
+        $result = conversioniq_run_audit( $audit_request );
+        $data   = $result->get_data();
+
+        if ( empty( $data['success'] ) ) {
+            throw new Exception( $data['message'] ?? 'Audit runner returned failure' );
+        }
+
+        $supabase->mark_job_complete( $job_id );
+        ciq_log( 'ConversionIQ: Audit job ' . $job_id . ' completed (' . count( $page_ids ) . ' page(s))' );
+
+    } catch ( Exception $e ) {
+        $supabase->mark_job_failed( $job_id, $e->getMessage() );
+        ciq_log( 'ConversionIQ: Audit job ' . $job_id . ' failed - ' . $e->getMessage() );
+    }
+}
+// ── End Audit Jobs Poller ──────────────────────────────────────────────────
 
 // Activation hook
 function conversioniq_install() {
@@ -160,6 +250,11 @@ function conversioniq_install() {
         } catch ( Exception $e ) {
             ciq_log( 'ConversionIQ: push_remote_credentials on plugin activate: ' . $e->getMessage() );
         }
+    }
+
+    // Ensure the 2-minute audit-job poller is scheduled
+    if ( ! wp_next_scheduled( 'conversioniq_poll_audit_jobs' ) ) {
+        wp_schedule_event( time() + 120, 'conversioniq_twominutes', 'conversioniq_poll_audit_jobs' );
     }
 }
 register_activation_hook( __FILE__, 'conversioniq_install' );

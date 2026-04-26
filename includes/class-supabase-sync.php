@@ -1442,4 +1442,114 @@ class ConversionIQ_Supabase_Sync {
         
         return true;
     }
+
+    /**
+     * Fetch the oldest pending audit job for this organization from Supabase.
+     * Returns the job row as an associative array, or null if none pending.
+     *
+     * @return array|null
+     */
+    public function fetch_pending_job() {
+        if ( ! $this->supabase_anon_key || ! $this->organization_id ) {
+            return null;
+        }
+
+        $url = add_query_arg( array(
+            'organization_id' => 'eq.' . $this->organization_id,
+            'status'          => 'eq.pending',
+            'order'           => 'created_at.asc',
+            'limit'           => '1',
+        ), $this->supabase_url . '/rest/v1/audit_jobs' );
+
+        $response = wp_remote_get( $url, array(
+            'headers' => array(
+                'apikey'        => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                'X-API-Key'     => $this->api_key,
+            ),
+            'timeout' => 10,
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            ciq_log( 'ConversionIQ: fetch_pending_job error - ' . $response->get_error_message() );
+            return null;
+        }
+
+        $rows = json_decode( wp_remote_retrieve_body( $response ), true );
+        return ( is_array( $rows ) && ! empty( $rows ) ) ? $rows[0] : null;
+    }
+
+    /**
+     * Update the status of an audit job row.
+     *
+     * @param string $job_id   UUID of the audit_jobs row
+     * @param array  $data     Fields to PATCH
+     * @return bool
+     */
+    private function update_job( $job_id, $data ) {
+        if ( ! $this->supabase_anon_key ) return false;
+
+        $response = wp_remote_request(
+            $this->supabase_url . '/rest/v1/audit_jobs?id=eq.' . urlencode( $job_id ),
+            array(
+                'method'  => 'PATCH',
+                'headers' => array(
+                    'apikey'        => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                    'Content-Type'  => 'application/json',
+                    'X-API-Key'     => $this->api_key,
+                    'Prefer'        => 'return=minimal',
+                ),
+                'body'    => json_encode( $data ),
+                'timeout' => 10,
+            )
+        );
+
+        if ( is_wp_error( $response ) ) {
+            ciq_log( 'ConversionIQ: update_job error - ' . $response->get_error_message() );
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Mark an audit job as running (claim it so no other instance picks it up).
+     *
+     * @param string $job_id
+     * @return bool
+     */
+    public function mark_job_running( $job_id ) {
+        return $this->update_job( $job_id, array(
+            'status'     => 'running',
+            'started_at' => gmdate( 'c' ),
+        ) );
+    }
+
+    /**
+     * Mark an audit job as successfully completed.
+     *
+     * @param string $job_id
+     * @return bool
+     */
+    public function mark_job_complete( $job_id ) {
+        return $this->update_job( $job_id, array(
+            'status'       => 'complete',
+            'completed_at' => gmdate( 'c' ),
+        ) );
+    }
+
+    /**
+     * Mark an audit job as failed with an error message.
+     *
+     * @param string $job_id
+     * @param string $error_message
+     * @return bool
+     */
+    public function mark_job_failed( $job_id, $error_message = '' ) {
+        return $this->update_job( $job_id, array(
+            'status'        => 'failed',
+            'completed_at'  => gmdate( 'c' ),
+            'error_message' => $error_message,
+        ) );
+    }
 }

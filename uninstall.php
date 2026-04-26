@@ -54,6 +54,10 @@ $timestamp = wp_next_scheduled('conversioniq_prune_db');
 if ($timestamp) {
     wp_unschedule_event($timestamp, 'conversioniq_prune_db');
 }
+$timestamp = wp_next_scheduled('conversioniq_poll_audit_jobs');
+if ($timestamp) {
+    wp_unschedule_event($timestamp, 'conversioniq_poll_audit_jobs');
+}
 
 // Clean up transients
 $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_ciq_%' OR option_name LIKE '_transient_timeout_ciq_%'");
