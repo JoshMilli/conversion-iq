@@ -646,6 +646,23 @@ add_action('rest_api_init', function () {
             'callback'            => 'conversioniq_remote_audit',
             'permission_callback' => '__return_true',
         ));
+
+        // Wake endpoint — dashboard calls this immediately after queuing an audit job so the
+        // plugin doesn't have to wait up to 2 minutes for the next scheduled cron tick.
+        register_rest_route('conversioniq/v1', '/wake', array(
+            'methods'             => 'POST',
+            'permission_callback' => '__return_true',
+            'callback'            => function( WP_REST_Request $req ) {
+                $stored_key = get_option( 'conversioniq_remote_secret', '' );
+                if ( empty( $stored_key ) || $req->get_header( 'X-CIQ-API-Key' ) !== $stored_key ) {
+                    return new WP_REST_Response( array( 'ok' => false, 'error' => 'unauthorized' ), 401 );
+                }
+                // Schedule a one-off poll to run right now, then kick the cron runner
+                wp_schedule_single_event( time(), 'conversioniq_poll_audit_jobs' );
+                if ( function_exists( 'spawn_cron' ) ) spawn_cron();
+                return new WP_REST_Response( array( 'ok' => true ), 200 );
+            },
+        ));
     });
 
 
@@ -986,21 +1003,13 @@ function conversioniq_run_audit(WP_REST_Request $request)
         catch (Exception $e) {
             $audit_time = round((microtime(true) - $audit_start), 2);
             ciq_log('Audit EXCEPTION for ' . $post->post_title . ': ' . $e->getMessage());
-            // Add fallback result
+            // AI analysis failed — do not save a report of any kind
             $results[] = array(
-                'page_id' => $post->ID,
+                'page_id'    => $post->ID,
                 'page_title' => $post->post_title,
-                'page_url' => $page_url,
-                'clarity_score' => 70,
-                'emotional_score' => 70,
-                'cta_strength' => 70,
-                'readability_score' => 70,
-                'engagement_score' => 70,
-                'trust_score' => 70,
-                'suggestions' => array(
-                        array('text' => 'Audit failed: ' . $e->getMessage(), 'target' => '')
-                ),
-                'ai_used' => false,
+                'page_url'   => $page_url,
+                'failed'     => true,
+                'error'      => 'AI analysis unavailable — audit could not be completed.',
                 'created_at' => current_time('mysql'),
             );
         }

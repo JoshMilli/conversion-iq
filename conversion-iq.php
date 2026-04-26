@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 2.0.64
+ * Version: 2.0.65
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'CONVERSION_IQ_VERSION', '2.0.64' );
+define( 'CONVERSION_IQ_VERSION', '2.0.65' );
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
@@ -151,20 +151,35 @@ add_filter( 'cron_schedules', function( $schedules ) {
 add_action( 'conversioniq_poll_audit_jobs', 'conversioniq_poll_audit_jobs_handler' );
 
 function conversioniq_poll_audit_jobs_handler() {
-    // Only run if license is active and org is registered
-    if ( get_option( 'conversioniq_license_status', '' ) !== 'active' ) return;
-    if ( ! get_option( 'conversioniq_organization_id', '' ) ) return;
+    $org_id     = get_option( 'conversioniq_organization_id', '' );
+    $remote_key = get_option( 'conversioniq_remote_secret', '' );
 
-    $supabase = new ConversionIQ_Supabase_Sync();
-    $job      = $supabase->fetch_pending_job();
+    if ( empty( $org_id ) || empty( $remote_key ) ) return;
 
-    if ( ! $job ) return; // Nothing to do
+    $saas_base = 'https://conversioniq-app.com/api';
+    $headers   = array(
+        'X-CIQ-API-Key' => $remote_key,
+        'Content-Type'  => 'application/json',
+    );
 
+    // Ask the cloud for the next pending job for this site
+    $poll_resp = wp_remote_post( $saas_base . '/audit-jobs/poll', array(
+        'headers' => $headers,
+        'body'    => wp_json_encode( array( 'organization_id' => $org_id ) ),
+        'timeout' => 15,
+    ) );
+
+    if ( is_wp_error( $poll_resp ) ) {
+        ciq_log( 'ConversionIQ: audit-jobs/poll failed - ' . $poll_resp->get_error_message() );
+        return;
+    }
+
+    $poll_body = json_decode( wp_remote_retrieve_body( $poll_resp ), true );
+    if ( empty( $poll_body['ok'] ) || empty( $poll_body['job'] ) ) return; // Nothing to do
+
+    $job    = $poll_body['job'];
     $job_id = $job['id'];
-    ciq_log( 'ConversionIQ: Picked up audit job ' . $job_id );
-
-    // Claim the job immediately to prevent duplicate execution
-    $supabase->mark_job_running( $job_id );
+    ciq_log( 'ConversionIQ: Claimed audit job ' . $job_id );
 
     try {
         // Resolve page IDs: job payload → stored tracked pages → homepage fallback
@@ -196,7 +211,7 @@ function conversioniq_poll_audit_jobs_handler() {
 
         // Delegate to the standard audit runner
         $audit_request = new WP_REST_Request( 'POST' );
-        $audit_request->set_body( json_encode( array( 'pages' => $page_ids ) ) );
+        $audit_request->set_body( wp_json_encode( array( 'pages' => $page_ids ) ) );
         $audit_request->set_header( 'Content-Type', 'application/json' );
 
         $result = conversioniq_run_audit( $audit_request );
@@ -206,11 +221,26 @@ function conversioniq_poll_audit_jobs_handler() {
             throw new Exception( $data['message'] ?? 'Audit runner returned failure' );
         }
 
-        $supabase->mark_job_complete( $job_id );
-        ciq_log( 'ConversionIQ: Audit job ' . $job_id . ' completed (' . count( $page_ids ) . ' page(s))' );
+        // Count successful page audits to report back
+        $successful = count( array_filter(
+            $data['results'] ?? array(),
+            function( $r ) { return empty( $r['failed'] ); }
+        ) );
+
+        wp_remote_post( $saas_base . '/audit-jobs/' . rawurlencode( $job_id ) . '/complete', array(
+            'headers' => $headers,
+            'body'    => wp_json_encode( array( 'audits_created' => $successful ) ),
+            'timeout' => 15,
+        ) );
+
+        ciq_log( 'ConversionIQ: Audit job ' . $job_id . ' completed (' . $successful . '/' . count( $page_ids ) . ' page(s))' );
 
     } catch ( Exception $e ) {
-        $supabase->mark_job_failed( $job_id, $e->getMessage() );
+        wp_remote_post( $saas_base . '/audit-jobs/' . rawurlencode( $job_id ) . '/fail', array(
+            'headers' => $headers,
+            'body'    => wp_json_encode( array( 'error_message' => $e->getMessage() ) ),
+            'timeout' => 15,
+        ) );
         ciq_log( 'ConversionIQ: Audit job ' . $job_id . ' failed - ' . $e->getMessage() );
     }
 }
