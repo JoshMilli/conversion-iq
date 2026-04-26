@@ -1526,9 +1526,6 @@ class ConversionIQ_Supabase_Sync {
 
         return true;
     }
-        }
-        return true;
-    }
 
     /**
      * Mark an audit job as running (claim it so no other instance picks it up).
