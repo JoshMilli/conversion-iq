@@ -1451,6 +1451,7 @@ class ConversionIQ_Supabase_Sync {
      */
     public function fetch_pending_job() {
         if ( ! $this->supabase_anon_key || ! $this->organization_id ) {
+            error_log( '[CIQ] fetch_pending_job: missing supabase_anon_key or organization_id — aborting' );
             return null;
         }
 
@@ -1460,6 +1461,8 @@ class ConversionIQ_Supabase_Sync {
             'order'           => 'created_at.asc',
             'limit'           => '1',
         ), $this->supabase_url . '/rest/v1/audit_jobs' );
+
+        error_log( '[CIQ] fetch_pending_job: GET ' . $url );
 
         $response = wp_remote_get( $url, array(
             'headers' => array(
@@ -1471,11 +1474,15 @@ class ConversionIQ_Supabase_Sync {
         ) );
 
         if ( is_wp_error( $response ) ) {
-            ciq_log( 'ConversionIQ: fetch_pending_job error - ' . $response->get_error_message() );
+            error_log( '[CIQ] fetch_pending_job: wp_error - ' . $response->get_error_message() );
             return null;
         }
 
-        $rows = json_decode( wp_remote_retrieve_body( $response ), true );
+        $code = wp_remote_retrieve_response_code( $response );
+        $body = wp_remote_retrieve_body( $response );
+        error_log( '[CIQ] fetch_pending_job: HTTP ' . $code . ' — ' . $body );
+
+        $rows = json_decode( $body, true );
         return ( is_array( $rows ) && ! empty( $rows ) ) ? $rows[0] : null;
     }
 
@@ -1489,8 +1496,11 @@ class ConversionIQ_Supabase_Sync {
     private function update_job( $job_id, $data ) {
         if ( ! $this->supabase_anon_key ) return false;
 
+        $patch_url = $this->supabase_url . '/rest/v1/audit_jobs?id=eq.' . urlencode( $job_id );
+        error_log( '[CIQ] update_job: PATCH ' . $patch_url . ' — ' . json_encode( $data ) );
+
         $response = wp_remote_request(
-            $this->supabase_url . '/rest/v1/audit_jobs?id=eq.' . urlencode( $job_id ),
+            $patch_url,
             array(
                 'method'  => 'PATCH',
                 'headers' => array(
@@ -1506,8 +1516,16 @@ class ConversionIQ_Supabase_Sync {
         );
 
         if ( is_wp_error( $response ) ) {
-            ciq_log( 'ConversionIQ: update_job error - ' . $response->get_error_message() );
+            error_log( '[CIQ] update_job: wp_error - ' . $response->get_error_message() );
             return false;
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        $body = wp_remote_retrieve_body( $response );
+        error_log( '[CIQ] update_job: HTTP ' . $code . ' — ' . ( $body ?: '(empty)' ) );
+
+        return true;
+    }
         }
         return true;
     }

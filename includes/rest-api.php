@@ -663,6 +663,46 @@ add_action('rest_api_init', function () {
                 return new WP_REST_Response( array( 'ok' => true ), 200 );
             },
         ));
+
+        // Debug/diagnostic endpoint — WP admin only. Runs the full poll handler inline
+        // and returns a detailed report. Use this to verify the cron pipeline works
+        // without waiting for WP-Cron to fire naturally.
+        register_rest_route('conversioniq/v1', '/debug-poll', array(
+            'methods'             => 'POST',
+            'permission_callback' => function() { return current_user_can( 'manage_options' ); },
+            'callback'            => function( WP_REST_Request $req ) {
+                $org_id     = get_option( 'conversioniq_organization_id', '' );
+                $has_secret = ! empty( get_option( 'conversioniq_remote_secret', '' ) );
+                $cron_next  = wp_next_scheduled( 'conversioniq_poll_audit_jobs' );
+
+                $debug = array(
+                    'org_id'             => $org_id ?: '(not set)',
+                    'has_remote_secret'  => $has_secret,
+                    'cron_next_ts'       => $cron_next,
+                    'cron_next_human'    => $cron_next ? gmdate( 'Y-m-d H:i:s', $cron_next ) . ' UTC' : 'not scheduled',
+                    'cron_schedules'     => array_keys( wp_get_schedules() ),
+                    'disable_wp_cron'    => defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON,
+                    'plugin_version'     => CONVERSION_IQ_VERSION,
+                    'fetch_result'       => null,
+                    'poll_handler_ran'   => false,
+                );
+
+                // Test the Supabase fetch directly and capture the raw job
+                if ( $org_id ) {
+                    $supabase            = new ConversionIQ_Supabase_Sync();
+                    $job                 = $supabase->fetch_pending_job();
+                    $debug['fetch_result'] = $job ? $job : '(no pending jobs returned)';
+
+                    if ( $job ) {
+                        // Run the full handler
+                        conversioniq_poll_audit_jobs_handler();
+                        $debug['poll_handler_ran'] = true;
+                    }
+                }
+
+                return new WP_REST_Response( array( 'ok' => true, 'debug' => $debug ), 200 );
+            },
+        ));
     });
 
 

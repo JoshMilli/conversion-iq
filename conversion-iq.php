@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 2.0.66
+ * Version: 2.0.67
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'CONVERSION_IQ_VERSION', '2.0.66' );
+define( 'CONVERSION_IQ_VERSION', '2.0.67' );
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
@@ -71,12 +71,10 @@ if ( file_exists( CONVERSION_IQ_DIR . 'vendor/autoload.php' ) ) {
     require_once CONVERSION_IQ_DIR . 'vendor/autoload.php';
 }
 
-// Debug logging helper — only writes when WP_DEBUG is enabled
+// Debug logging helper — always writes to PHP error log
 if (!function_exists('ciq_log')) {
     function ciq_log($message) {
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log($message);
-        }
+        error_log('[CIQ] ' . $message);
     }
 }
 
@@ -151,12 +149,22 @@ add_filter( 'cron_schedules', function( $schedules ) {
 add_action( 'conversioniq_poll_audit_jobs', 'conversioniq_poll_audit_jobs_handler' );
 
 function conversioniq_poll_audit_jobs_handler() {
-    if ( ! get_option( 'conversioniq_organization_id', '' ) ) return;
+    ciq_log( 'poll_audit_jobs: handler fired at ' . gmdate( 'Y-m-d H:i:s' ) . ' UTC' );
+
+    $org_id = get_option( 'conversioniq_organization_id', '' );
+    if ( ! $org_id ) {
+        ciq_log( 'poll_audit_jobs: no organization_id set — skipping' );
+        return;
+    }
+    ciq_log( 'poll_audit_jobs: org=' . $org_id );
 
     $supabase = new ConversionIQ_Supabase_Sync();
     $job      = $supabase->fetch_pending_job();
 
-    if ( ! $job ) return; // Nothing queued
+    if ( ! $job ) {
+        ciq_log( 'poll_audit_jobs: no pending jobs found' );
+        return;
+    }
 
     $job_id = $job['id'];
     ciq_log( 'ConversionIQ: Claimed audit job ' . $job_id );
