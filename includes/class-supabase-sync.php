@@ -1520,8 +1520,7 @@ class ConversionIQ_Supabase_Sync {
      */
     public function mark_job_running( $job_id ) {
         return $this->update_job( $job_id, array(
-            'status'     => 'running',
-            'started_at' => gmdate( 'c' ),
+            'status' => 'running',
         ) );
     }
 
@@ -1547,9 +1546,8 @@ class ConversionIQ_Supabase_Sync {
      */
     public function mark_job_failed( $job_id, $error_message = '' ) {
         return $this->update_job( $job_id, array(
-            'status'        => 'failed',
-            'completed_at'  => gmdate( 'c' ),
-            'error_message' => $error_message,
+            'status'       => 'failed',
+            'completed_at' => gmdate( 'c' ),
         ) );
     }
 }
