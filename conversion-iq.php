@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 2.0.68
+ * Version: 2.0.69
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'CONVERSION_IQ_VERSION', '2.0.68' );
+define( 'CONVERSION_IQ_VERSION', '2.0.69' );
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
@@ -130,10 +130,6 @@ add_action( 'conversioniq_prune_db', function() {
 } );
 
 // ── Audit Jobs Poller ──────────────────────────────────────────────────────
-// Runs every 2 minutes to check Supabase for pending audit jobs queued by
-// the conversioniq-app.com dashboard. This pull model works for any site,
-// including those behind firewalls or on staging domains where inbound
-// connections from the dashboard server would fail.
 
 // Register the 2-minute custom interval
 add_filter( 'cron_schedules', function( $schedules ) {
@@ -147,6 +143,15 @@ add_filter( 'cron_schedules', function( $schedules ) {
 } );
 
 add_action( 'conversioniq_poll_audit_jobs', 'conversioniq_poll_audit_jobs_handler' );
+
+// Fallback: also run on every admin page load, throttled to once per 2 minutes
+// via a transient. This guarantees the poll fires even on low-traffic sites
+// where WP-Cron never gets a chance to tick.
+add_action( 'admin_init', function() {
+    if ( get_transient( 'ciq_poll_throttle' ) ) return;
+    set_transient( 'ciq_poll_throttle', 1, 120 );
+    conversioniq_poll_audit_jobs_handler();
+} );
 
 function conversioniq_poll_audit_jobs_handler() {
     ciq_log( 'poll_audit_jobs: handler fired at ' . gmdate( 'Y-m-d H:i:s' ) . ' UTC' );
