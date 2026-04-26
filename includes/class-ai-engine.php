@@ -80,18 +80,12 @@ class ConversionIQ_AI
             return $result;
         }
 
-        // Log why we're falling back
+        // Log the failure — do NOT return fallback/mock data
         $error_reason = isset($ai_response['error']) ? $ai_response['error'] : 'Unknown error - response structure invalid';
-        ciq_log('⚠️⚠️⚠️ FALLING BACK TO MOCK DATA - Reason: ' . $error_reason);
+        ciq_log('❌ AI analysis failed — audit will not be saved. Reason: ' . $error_reason);
         ciq_log('📋 Full response: ' . json_encode($ai_response));
 
-        // Fallback to mock response if AI fails - still attach webhook stats
-        $mock = self::mock_response($page_title);
-        $webhook_stats = self::get_webhook_statistics($page_url);
-        if ($webhook_stats) {
-            $mock['webhook_stats'] = $webhook_stats;
-        }
-        return $mock;
+        return null;
     }
 
     /**
@@ -302,8 +296,8 @@ class ConversionIQ_AI
     private static function aggregate_section_results($all_scores, $all_suggestions, $all_functionality_suggestions, $original_payload)
     {
         if (empty($all_scores)) {
-            ciq_log('⚠️ No scores to aggregate, using mock response');
-            return self::mock_response(isset($original_payload['page']['title']) ? $original_payload['page']['title'] : 'Unknown Page');
+            ciq_log('❌ No sections could be analyzed — AI analysis failed for all sections. Audit will not be saved.');
+            return null;
         }
 
         ciq_log('🔢 Aggregating results from ' . count($all_scores) . ' sections');

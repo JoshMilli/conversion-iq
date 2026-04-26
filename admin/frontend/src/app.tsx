@@ -631,9 +631,13 @@ export default function App() {
       if (response.data.success && response.data.results) {
         console.log('✅ Audit completed successfully');
         const results = response.data.results;
+
+        // Separate successful audits from failed ones
+        const successfulResults = results.filter((r: any) => !r.failed);
+        const failedResults = results.filter((r: any) => r.failed);
         
-        // Log detailed debug info for each result
-        results.forEach((result: any, index: number) => {
+        // Log detailed debug info for each successful result
+        successfulResults.forEach((result: any, index: number) => {
           console.group(`📊 Audit Result ${index + 1}: ${result.page_title || 'Unknown'}`);
           console.log('Page ID:', result.page_id);
           console.log('AI Used:', result.ai_used !== false ? '✅ YES' : '❌ NO (Fallback)');
@@ -669,45 +673,68 @@ export default function App() {
           console.log('%c✅ Check WordPress debug.log for webhook response details', 'color: #10b981; font-style: italic');
           console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #10b981');
           
-          // Warn if using fallback
-          if (result.ai_used === false) {
-            console.warn('⚠️ This audit used FALLBACK data - AI analysis failed!');
-            console.log('%c💡 Check WordPress debug.log for detailed API response', 'color: #f59e0b; font-weight: bold');
-          }
-          
           console.groupEnd();
+        });
+
+        // Log failed audits
+        failedResults.forEach((result: any) => {
+          console.warn(`❌ Audit failed for "${result.page_title}": AI analysis unavailable`);
         });
         
         setProgress(75);
-        setNotice('✨ Finalizing audit results...');
         setAuditProgress(prev => ({
           ...prev,
           message: '✨ Finalizing audit results...'
         }));
         
-        setAudits(audits => [...results, ...audits]);
+        if (successfulResults.length > 0) {
+          setAudits(audits => [...successfulResults, ...audits]);
+        }
+
         setProgress(100);
-        setNotice('🎉 Audit complete!');
-        
-        // Update to completed state
-        setAuditProgress(prev => ({
-          ...prev,
-          currentIndex: prev.totalPages,
-          message: '🎉 Audit complete!'
-        }));
-        
-        // Clear notice and modal after 2 seconds
-        setTimeout(() => {
-          setNotice(null);
-          setProgress(0);
-          setAuditProgress({
-            isRunning: false,
-            currentPage: '',
-            currentIndex: 0,
-            totalPages: 0,
-            message: ''
-          });
-        }, 2000);
+
+        if (failedResults.length > 0 && successfulResults.length === 0) {
+          // All pages failed
+          const failedNames = failedResults.map((r: any) => r.page_title).join(', ');
+          setNotice(`❌ Audit failed — AI analysis is currently unavailable. No report was created for: ${failedNames}. Check WordPress debug.log for details.`);
+          setAuditProgress(prev => ({
+            ...prev,
+            currentIndex: prev.totalPages,
+            message: '❌ AI analysis unavailable — no report created.'
+          }));
+          setTimeout(() => {
+            setNotice(null);
+            setProgress(0);
+            setAuditProgress({ isRunning: false, currentPage: '', currentIndex: 0, totalPages: 0, message: '' });
+          }, 7000);
+        } else if (failedResults.length > 0) {
+          // Mixed: some succeeded, some failed
+          const failedNames = failedResults.map((r: any) => r.page_title).join(', ');
+          setNotice(`⚠️ ${successfulResults.length} audit(s) completed. AI analysis unavailable for: ${failedNames} — no report created for those pages.`);
+          setAuditProgress(prev => ({
+            ...prev,
+            currentIndex: prev.totalPages,
+            message: `⚠️ ${successfulResults.length} completed, ${failedResults.length} failed.`
+          }));
+          setTimeout(() => {
+            setNotice(null);
+            setProgress(0);
+            setAuditProgress({ isRunning: false, currentPage: '', currentIndex: 0, totalPages: 0, message: '' });
+          }, 7000);
+        } else {
+          // All succeeded
+          setNotice('🎉 Audit complete!');
+          setAuditProgress(prev => ({
+            ...prev,
+            currentIndex: prev.totalPages,
+            message: '🎉 Audit complete!'
+          }));
+          setTimeout(() => {
+            setNotice(null);
+            setProgress(0);
+            setAuditProgress({ isRunning: false, currentPage: '', currentIndex: 0, totalPages: 0, message: '' });
+          }, 2000);
+        }
         
         setSelectedPages([]); // Clear selected pages after audit completes
       } else {
