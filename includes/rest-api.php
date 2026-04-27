@@ -1845,6 +1845,11 @@ function conversioniq_license_refresh()
         update_option('conversioniq_api_key', sanitize_text_field($body['api_key']));
     }
 
+    // Persist organization_id if the server returns one (may be missing on older activations)
+    if (!empty($body['organization_id'])) {
+        update_option('conversioniq_organization_id', sanitize_text_field($body['organization_id']));
+    }
+
     $customer = null;
     if (!empty($body['customer']) && is_array($body['customer'])) {
         $customer = array(
@@ -1862,6 +1867,15 @@ function conversioniq_license_refresh()
     // Also re-sync branding / feature flags
     if (class_exists('ConversionIQ_Config_Manager')) {
         ConversionIQ_Config_Manager::sync_from_saas();
+    }
+
+    // Re-push endpoint + remote secret to Supabase so the dashboard can reach this site
+    try {
+        $supabase = new ConversionIQ_Supabase_Sync();
+        $supabase->push_remote_credentials();
+        ciq_log('ConversionIQ: push_remote_credentials on license refresh: success');
+    } catch ( Exception $e ) {
+        ciq_log('ConversionIQ: push_remote_credentials on license refresh: ' . $e->getMessage());
     }
 
     // Return fresh feature flags so the frontend can update without a page reload
