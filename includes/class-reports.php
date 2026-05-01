@@ -1229,26 +1229,32 @@ class ConversionIQ_Reports
                 <h5 style="color: #0891b2; font-size: 15px; margin: 0 0 12px 0; font-weight: 700;">Competitive Landscape</h5>
                 <p style="font-size: 14px; color: #1e293b; line-height: 1.7; margin-bottom: 0;">' . nl2br(esc_html($competitive_context)) . '</p>';
 
-                    // Add industry-specific context if available - integrated naturally
-                    if (!empty($business['industry'])) {
-                        $html .= '<p style="font-size: 14px; color: #1e293b; line-height: 1.7; margin: 14px 0 0 0;">
-                    In the ' . esc_html($business['industry']) . ' sector, leading websites distinguish themselves through exceptional trust-building elements, compelling value propositions, and frictionless conversion pathways. With your score of <strong>' . $overall_score . '</strong> compared to the industry average of <strong>' . $industry_avg . '</strong>, you are ' . ($overall_score >= $industry_avg ? 'demonstrating strong competitive positioning' : 'well-positioned to capture significant market share through strategic optimization') . '. The performance gap between average competitors (' . $industry_avg . ') and top-tier performers (' . $top_performers . '+) represents a measurable opportunity for differentiation in your market.
-                </p>';
+                    $html .= '</div>';
+
+                    // Render key competitive factors if present
+                    if (!empty($competitive_factors)) {
+                        $html .= '<div style="background: #f8faff; padding: 20px; border-radius: 10px; border: 1px solid #dbeafe; border-top: 3px solid #3b82f6; margin-bottom: 20px;">
+                        <h5 style="color: #1e40af; font-size: 15px; margin: 0 0 12px 0; font-weight: 700;">&#127942; Key Competitive Factors in ' . esc_html(!empty($business['industry']) ? $business['industry'] : 'Your Industry') . '</h5>
+                        <ul style="margin: 0; padding-left: 18px; list-style: disc;">';
+                        foreach ($competitive_factors as $factor) {
+                            $html .= '<li style="font-size: 13px; color: #1e293b; line-height: 1.7; margin-bottom: 6px;">' . esc_html($factor) . '</li>';
+                        }
+                        $html .= '</ul></div>';
                     }
 
-                    $html .= '</div>';
+                    // Render industry challenges if present
+                    if (!empty($industry_challenges)) {
+                        $html .= '<div style="background: #fff7ed; padding: 20px; border-radius: 10px; border: 1px solid #fed7aa; border-top: 3px solid #f59e0b; margin-bottom: 20px;">
+                        <h5 style="color: #92400e; font-size: 15px; margin: 0 0 12px 0; font-weight: 700;">&#128161; Industry Conversion Challenges</h5>
+                        <ul style="margin: 0; padding-left: 18px; list-style: disc;">';
+                        foreach ($industry_challenges as $challenge) {
+                            $html .= '<li style="font-size: 13px; color: #1e293b; line-height: 1.7; margin-bottom: 6px;">' . esc_html($challenge) . '</li>';
+                        }
+                        $html .= '</ul></div>';
+                    }
                 }
                 elseif (!empty($business['industry'])) {
-                    // Fallback competitive landscape if AI didn't provide one
-                    $html .= '<div style="background: #f0f9ff; padding: 20px; border-radius: 10px; border: 1px solid #bae6fd; border-top: 3px solid #0891b2; margin-bottom: 20px;">
-                <h5 style="color: #0891b2; font-size: 15px; margin: 0 0 12px 0; font-weight: 700;">Competitive Landscape</h5>
-                <p style="font-size: 14px; color: #1e293b; line-height: 1.7; margin-bottom: 14px;">
-                    The <strong>' . esc_html($business['industry']) . ' industry</strong> is characterized by intense competition for visitor attention and trust. Research across competitive websites in this sector reveals that market leaders consistently prioritize three core elements: immediate credibility establishment, crystal-clear value communication, and streamlined user journeys that minimize conversion friction.
-                </p>
-                <p style="font-size: 14px; color: #1e293b; line-height: 1.7; margin: 0;">
-                    Your current score of <strong>' . $overall_score . '</strong> positions you ' . ($overall_score >= $industry_avg ? 'above the industry benchmark of ' . $industry_avg . ', placing you in the upper tier of ' . esc_html($business['industry']) . ' competitors' : 'below the industry benchmark of ' . $industry_avg . ', indicating significant headroom for competitive gains') . '. Analysis shows that businesses scoring in the ' . $top_performers . '+ range typically capture disproportionate market share through compound advantages in credibility, clarity, and conversion effectiveness. The ' . abs($top_performers - $overall_score) . '-point gap to top-performer status represents your most direct path to measurable competitive advantage.
-                </p>
-            </div>';
+                    // No competitive_context from AI — show score comparison only; no generic filler text
                 }
 
                 $html .= '</div>

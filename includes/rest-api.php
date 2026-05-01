@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 if (!defined('ABSPATH')) {
     exit;
 }
@@ -875,16 +875,7 @@ function conversioniq_run_audit(WP_REST_Request $request)
 
     $business = json_decode(get_option('conversion_iq_settings', '{}'), true);
 
-    // Research industry benchmarks once at start of audit
-    ciq_log('Ã°Å¸â€Â¬ Researching industry benchmarks...');
-    $benchmark_research = ConversionIQ_AI::research_industry_benchmarks(
-        isset($business['industry']) ? $business['industry'] : '',
-        isset($business['audience']) ? $business['audience'] : '',
-        isset($business['goal']) ? $business['goal'] : ''
-    );
-    ciq_log('Ã°Å¸â€œÅ  Benchmark research complete: avg=' . ($benchmark_research['industry_average'] ?? 'N/A') . ', top=' . ($benchmark_research['top_performers_threshold'] ?? 'N/A'));
-
-    $results = array();
+$results = array();
 
     foreach ($pages as $page_id) {
         $post = get_post(intval($page_id));
@@ -950,9 +941,6 @@ function conversioniq_run_audit(WP_REST_Request $request)
             if (!is_array($ai)) {
                 throw new Exception('AI returned invalid response type: ' . gettype($ai));
             }
-
-            // Add benchmark research to audit results
-            $ai['benchmark_research'] = $benchmark_research;
 
             // Generate a unique token for the public report URL
             $ai['report_token'] = bin2hex(random_bytes(16));

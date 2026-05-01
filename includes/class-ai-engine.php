@@ -872,7 +872,12 @@ Use these as anchors. A page similar to Example A should score similarly. Do not
 3. If page content is unchanged between audits, scores should vary by no more than ±3 points.
 4. The overall_score is the weighted average: clarity(20%) + emotional(15%) + cta(20%) + readability(15%) + engagement(15%) + trust(15%).
 5. Always compute overall_score yourself using the weights above. Never estimate it.
-6. For benchmark_research, estimate industry_average and top_performers_threshold based on the business's industry. industry_average reflects a typical website in that sector; top_performers_threshold is the score the top 10% achieve. competitive_context should compare the page's overall score to these benchmarks with specific, grounded reasoning.
+6. For benchmark_research, use the business INDUSTRY and this page's actual scores to produce specific, grounded competitive intelligence:
+   - industry_average: realistic integer (62–72) for typical websites in this exact industry — vary by sector maturity (e.g., SaaS/fintech score higher ~70, trades/local services lower ~64)
+   - top_performers_threshold: integer (85–93) for the top 10% in this industry
+   - competitive_context: EXACTLY 3 sentences, each grounded in THIS industry and THIS page's scores. Sentence 1: name 2-3 specific tactics that top-converting [industry] websites actually use (e.g., for legal: named case outcomes and bar certifications; for SaaS: live demo links and logo bars; for e-commerce: star ratings inline with product images). Sentence 2: reference the page's actual weakest score by name and number, and explain what it signals competitively in this sector. Sentence 3: state the single most impactful change the business can make to close the gap to top performers, based on the industry pattern. NEVER use phrases like "top-performing websites prioritize" or "crystal-clear value communication" — those are generic filler. Every sentence must be specific to the industry.
+   - key_competitive_factors: EXACTLY 3 bullet points, each naming a specific conversion element that separates winners from losers in THIS industry (e.g., not "trust signals" but "BBB rating + named attorney photos" for law firms, or "free trial CTA above fold" for SaaS)
+   - industry_challenges: EXACTLY 2 bullet points naming the specific obstacles this industry faces in converting visitors (e.g., "high-consideration purchase cycle requires multiple touchpoints" for B2B, not just "building trust")
 
 ─── FUNCTIONALITY SUGGESTIONS ───
 
@@ -1001,9 +1006,18 @@ Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact struc
     }
   },
   \"benchmark_research\": {
-    \"industry_average\": 55,
-    \"top_performers_threshold\": 80,
-    \"competitive_context\": \"2-3 sentences comparing this page's performance to typical sites in the same industry. Reference the business's industry and explain what top performers in that space typically score and why.\"
+    \"industry_average\": 68,
+    \"top_performers_threshold\": 88,
+    \"competitive_context\": \"Sentence 1: name 2-3 specific tactics top [industry] competitors use. Sentence 2: reference this page's actual weakest score by name and number and what that signals competitively. Sentence 3: single most impactful change to close the gap, specific to this industry.\",
+    \"key_competitive_factors\": [
+      \"Industry-specific factor 1 \u2014 name the actual element (e.g., for legal: named attorney bios with bar certifications)\",
+      \"Industry-specific factor 2 \u2014 name the actual element (e.g., for SaaS: free trial CTA above fold)\",
+      \"Industry-specific factor 3 \u2014 name the actual element (e.g., for e-commerce: inline star ratings on product images)\"
+    ],
+    \"industry_challenges\": [
+      \"Specific challenge 1 for converting visitors in this industry (e.g., for B2B: long decision cycle requires multiple nurture touchpoints)\",
+      \"Specific challenge 2 for converting visitors in this industry\"
+    ]
   },
   \"ai_used\": true
 }";
