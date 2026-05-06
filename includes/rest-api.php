@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 if (!defined('ABSPATH')) {
     exit;
 }
@@ -703,6 +703,36 @@ add_action('rest_api_init', function () {
                 return new WP_REST_Response( array( 'ok' => true, 'debug' => $debug ), 200 );
             },
         ));
+
+        // ── Heatmap Routes ────────────────────────────────────────────────────
+
+        // Public endpoint — receives batched click/scroll events from the tracker
+        register_rest_route('conversioniq/v1', '/heatmap/record', array(
+            'methods'             => 'POST',
+            'callback'            => 'conversioniq_heatmap_record',
+            'permission_callback' => '__return_true',
+        ));
+
+        // Admin endpoint — returns aggregated click data for a given page URL
+        register_rest_route('conversioniq/v1', '/heatmap/data', array(
+            'methods'             => 'GET',
+            'callback'            => 'conversioniq_heatmap_data',
+            'permission_callback' => function () { return current_user_can('manage_options'); },
+        ));
+
+        // Admin endpoint — lists pages that have recorded heatmap events
+        register_rest_route('conversioniq/v1', '/heatmap/pages', array(
+            'methods'             => 'GET',
+            'callback'            => 'conversioniq_heatmap_pages',
+            'permission_callback' => function () { return current_user_can('manage_options'); },
+        ));
+
+        // Admin endpoint — proxies screenshot request to conversioniq-app.com
+        register_rest_route('conversioniq/v1', '/heatmap/screenshot', array(
+            'methods'             => 'POST',
+            'callback'            => 'conversioniq_heatmap_screenshot',
+            'permission_callback' => function () { return current_user_can('manage_options'); },
+        ));
     });
 
 
@@ -915,6 +945,38 @@ $results = array();
             ciq_log('CPT reviews appended to trust signal context');
         }
 
+        // Calculate content hash for change detection (done here so we can use it
+        // to decide whether to force a fresh screenshot before the AI call).
+        $content_hash = hash('sha256', $content . $html_structure);
+
+        // Determine whether the page content has changed since the last audit.
+        // If it has (or there is no previous audit), force a fresh screenshot so
+        // GPT-4o sees the updated page — not a cached image of the old version.
+        // If the content is identical, the cached screenshot is still accurate and
+        // we reuse it to avoid an unnecessary Playwright call.
+        $previous_hash = $wpdb->get_var( $wpdb->prepare(
+            "SELECT content_hash FROM {$wpdb->prefix}conversioniq_audits
+             WHERE page_id = %d AND content_hash IS NOT NULL
+             ORDER BY created_at DESC LIMIT 1",
+            $post->ID
+        ) );
+        $content_changed = ( $previous_hash === null || $previous_hash !== $content_hash );
+        $force_screenshot = $content_changed;
+
+        if ( $content_changed ) {
+            ciq_log( 'CIQ Audit: content changed (or first audit) — forcing fresh screenshot for ' . $page_url );
+        } else {
+            ciq_log( 'CIQ Audit: content unchanged — reusing cached screenshot for ' . $page_url );
+        }
+
+        // Capture a screenshot of this page for visual AI analysis.
+        $screenshot_url = conversioniq_capture_audit_screenshot( $page_url, $force_screenshot );
+        if ( $screenshot_url ) {
+            ciq_log( 'CIQ Audit: screenshot ready for GPT-4o visual analysis — ' . $page_url );
+        } else {
+            ciq_log( 'CIQ Audit: no screenshot available, proceeding with text-only analysis' );
+        }
+
         $payload = array(
             'business' => $business,
             'page' => array(
@@ -923,14 +985,12 @@ $results = array();
                 'url' => $page_url,
                 'word_count' => str_word_count($content),
                 'html_structure' => $html_structure,
+                'screenshot_url' => $screenshot_url,
             ),
         );
 
-        // Calculate content hash for change detection
-        $content_hash = hash('sha256', $content . $html_structure);
-
         ciq_log('Running audit for: ' . $post->post_title);
-                ciq_log('Content hash: ' . $content_hash);
+        ciq_log('Content hash: ' . $content_hash);
 
         $audit_start = microtime(true);
         try {
@@ -1871,6 +1931,9 @@ function conversioniq_license_refresh()
         ? ConversionIQ_Config_Manager::get_feature_flags()
         : array();
 
+    // Pre-fetch screenshots for all tracked pages in the background
+    conversioniq_heatmap_prefetch_screenshots();
+
     return rest_ensure_response(array(
         'success'  => true,
         'message'  => 'Plan refreshed successfully.',
@@ -1983,6 +2046,9 @@ function conversioniq_license_activate(WP_REST_Request $request)
     $features = class_exists('ConversionIQ_Config_Manager')
         ? ConversionIQ_Config_Manager::get_feature_flags()
         : array();
+
+    // Pre-fetch screenshots for all tracked pages in the background
+    conversioniq_heatmap_prefetch_screenshots();
 
     return rest_ensure_response(array(
         'success'  => true,
@@ -2714,4 +2780,533 @@ function conversioniq_remote_audit(WP_REST_Request $request)
         'pages_audited' => count($page_ids),
         'message'       => $data['message'] ?? null,
     ));
+}
+
+// ── Heatmap Callbacks ──────────────────────────────────────────────────────
+
+/**
+ * POST /heatmap/record
+ * Public endpoint — receives batched events from the frontend tracker.
+ * Rate-limited to 60 inserts per IP per minute to prevent abuse.
+ */
+function conversioniq_heatmap_record( WP_REST_Request $request ) {
+    global $wpdb;
+
+    // Rate limit: 60 batches per IP per minute
+    $ip_hash  = md5( $_SERVER['REMOTE_ADDR'] ?? 'unknown' );
+    $rate_key = 'ciq_hm_rate_' . $ip_hash;
+    $count    = (int) get_transient( $rate_key );
+    if ( $count >= 60 ) {
+        return new WP_REST_Response( array( 'success' => false ), 429 );
+    }
+    set_transient( $rate_key, $count + 1, 60 );
+
+    $body   = $request->get_json_params();
+    $raw_url = isset( $body['page_url'] ) ? esc_url_raw( $body['page_url'] ) : '';
+    $events  = isset( $body['events'] ) && is_array( $body['events'] ) ? $body['events'] : array();
+
+    // Validate URL — must be a valid http/https URL
+    if ( ! $raw_url || ! preg_match( '/^https?:\/\//i', $raw_url ) ) {
+        return new WP_REST_Response( array( 'success' => false, 'message' => 'Invalid page_url' ), 400 );
+    }
+
+    // Reject private/internal IPs in the URL (SSRF guard)
+    $host = wp_parse_url( $raw_url, PHP_URL_HOST );
+    if ( $host && filter_var( $host, FILTER_VALIDATE_IP ) ) {
+        if ( filter_var( $host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) === false ) {
+            return new WP_REST_Response( array( 'success' => false ), 400 );
+        }
+    }
+
+    // Limit to 50 events per batch
+    $events = array_slice( $events, 0, 50 );
+
+    $table = $wpdb->prefix . 'conversioniq_heatmap_events';
+    $inserted = 0;
+
+    foreach ( $events as $evt ) {
+        $event_type  = in_array( $evt['type'] ?? '', array( 'click', 'scroll', 'move' ), true )
+                       ? $evt['type'] : 'click';
+        $x_pct       = isset( $evt['x_pct'] ) ? round( (float) $evt['x_pct'], 3 ) : null;
+        $y_pct       = isset( $evt['y_pct'] ) ? round( (float) $evt['y_pct'], 3 ) : null;
+        $element_tag = isset( $evt['element_tag'] ) ? sanitize_key( substr( $evt['element_tag'], 0, 50 ) ) : null;
+        $element_txt = isset( $evt['element_text'] ) ? sanitize_text_field( substr( $evt['element_text'], 0, 255 ) ) : null;
+        $session_id  = isset( $evt['session_id'] ) ? preg_replace( '/[^a-z0-9]/i', '', substr( $evt['session_id'], 0, 100 ) ) : null;
+        $viewport_w  = isset( $evt['viewport_w'] ) ? absint( $evt['viewport_w'] ) : null;
+        $viewport_h  = isset( $evt['viewport_h'] ) ? absint( $evt['viewport_h'] ) : null;
+
+        // Sanity-check coordinate range (0–100%)
+        if ( $x_pct !== null && ( $x_pct < 0 || $x_pct > 100 ) ) continue;
+        if ( $y_pct !== null && ( $y_pct < 0 || $y_pct > 100 ) ) continue;
+
+        $wpdb->insert( $table, array(
+            'page_url'     => $raw_url,
+            'event_type'   => $event_type,
+            'x_pct'        => $x_pct,
+            'y_pct'        => $y_pct,
+            'element_tag'  => $element_tag,
+            'element_text' => $element_txt,
+            'session_id'   => $session_id,
+            'viewport_w'   => $viewport_w,
+            'viewport_h'   => $viewport_h,
+            'recorded_at'  => current_time( 'mysql', 1 ),
+        ), array( '%s', '%s', '%f', '%f', '%s', '%s', '%s', '%d', '%d', '%s' ) );
+        $inserted++;
+    }
+
+    return new WP_REST_Response( array( 'success' => true, 'inserted' => $inserted ), 200 );
+}
+
+/**
+ * GET /heatmap/data?page_url=X&days=30&event_type=click
+ * Admin only — returns aggregated heatmap points for a page.
+ */
+function conversioniq_heatmap_data( WP_REST_Request $request ) {
+    global $wpdb;
+
+    $page_url   = esc_url_raw( $request->get_param( 'page_url' ) ?? '' );
+    $days       = max( 1, min( 365, (int) ( $request->get_param( 'days' ) ?? 30 ) ) );
+    $event_type = $request->get_param( 'event_type' ) ?? 'click';
+    $event_type = in_array( $event_type, array( 'click', 'scroll', 'move' ), true ) ? $event_type : 'click';
+
+    if ( ! $page_url ) {
+        return new WP_REST_Response( array( 'success' => false, 'message' => 'page_url required' ), 400 );
+    }
+
+    $table   = $wpdb->prefix . 'conversioniq_heatmap_events';
+    $cutoff  = gmdate( 'Y-m-d H:i:s', strtotime( "-{$days} days" ) );
+
+    // Raw points: each click as an individual coordinate
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT x_pct, y_pct, element_tag, element_text
+         FROM $table
+         WHERE page_url = %s
+           AND event_type = %s
+           AND recorded_at >= %s
+           AND x_pct IS NOT NULL
+           AND y_pct IS NOT NULL
+         ORDER BY recorded_at DESC
+         LIMIT 2000",
+        $page_url,
+        $event_type,
+        $cutoff
+    ), ARRAY_A );
+
+    // Stats
+    $total_clicks = $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM $table WHERE page_url = %s AND event_type = %s AND recorded_at >= %s",
+        $page_url, $event_type, $cutoff
+    ) );
+
+    $total_sessions = $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(DISTINCT session_id) FROM $table WHERE page_url = %s AND recorded_at >= %s AND session_id IS NOT NULL",
+        $page_url, $cutoff
+    ) );
+
+    // Top clicked elements
+    $top_elements = $wpdb->get_results( $wpdb->prepare(
+        "SELECT element_tag, element_text, COUNT(*) as clicks
+         FROM $table
+         WHERE page_url = %s AND event_type = %s AND recorded_at >= %s
+           AND element_tag IS NOT NULL
+         GROUP BY element_tag, element_text
+         ORDER BY clicks DESC
+         LIMIT 10",
+        $page_url, $event_type, $cutoff
+    ), ARRAY_A );
+
+    return new WP_REST_Response( array(
+        'success'        => true,
+        'page_url'       => $page_url,
+        'points'         => $rows,
+        'total_events'   => (int) $total_clicks,
+        'total_sessions' => (int) $total_sessions,
+        'top_elements'   => $top_elements,
+        'days'           => $days,
+    ), 200 );
+}
+
+/**
+ * GET /heatmap/pages
+ * Admin only — returns distinct page URLs that have recorded events.
+ */
+function conversioniq_heatmap_pages( WP_REST_Request $request ) {
+    global $wpdb;
+
+    $table = $wpdb->prefix . 'conversioniq_heatmap_events';
+    $rows  = $wpdb->get_results(
+        "SELECT page_url, COUNT(*) as total_events,
+                COUNT(DISTINCT session_id) as total_sessions,
+                MAX(recorded_at) as last_event
+         FROM $table
+         GROUP BY page_url
+         ORDER BY total_events DESC
+         LIMIT 100",
+        ARRAY_A
+    );
+
+    return new WP_REST_Response( array(
+        'success' => true,
+        'pages'   => $rows ?: array(),
+    ), 200 );
+}
+
+/**
+ * Capture a screenshot of a page URL via the SaaS screenshot service.
+ * Called during each audit run so GPT-4o can use visual evidence alongside HTML text.
+ *
+ * @param string $page_url     The public URL of the page to screenshot.
+ * @param bool   $force_refresh True to bypass cache and capture a fresh screenshot
+ *                              (used when page content has changed since last audit).
+ *                              False to return a cached screenshot if one exists.
+ * @return string|null          The public screenshot URL, or null if capture failed.
+ */
+function conversioniq_capture_audit_screenshot( $page_url, $force_refresh = false ) {
+    $license_key = get_option( 'conversioniq_license_key', '' );
+    $api_key     = get_option( 'conversioniq_api_key', '' );
+    $org_id      = get_option( 'conversioniq_organization_id', '' );
+
+    if ( ! $license_key || ! $api_key ) {
+        ciq_log( 'CIQ screenshot: skipped — no license/api_key configured.' );
+        return null;
+    }
+
+    $response = wp_remote_post( 'https://conversioniq-app.com/api/heatmap/screenshot', array(
+        'headers' => array(
+            'Content-Type'  => 'application/json',
+            'Authorization' => 'Bearer ' . $api_key,
+        ),
+        'body'    => wp_json_encode( array(
+            'page_url'        => $page_url,
+            'license_key'     => $license_key,
+            'site_url'        => get_site_url(),
+            'organization_id' => $org_id,
+            'force_refresh'   => $force_refresh,
+        ) ),
+        'timeout' => 60,
+    ) );
+
+    if ( is_wp_error( $response ) ) {
+        ciq_log( 'CIQ screenshot error: ' . $response->get_error_message() );
+        return null;
+    }
+
+    $code = wp_remote_retrieve_response_code( $response );
+    $data = json_decode( wp_remote_retrieve_body( $response ), true );
+
+    if ( $code === 200 && ! empty( $data['success'] ) && ! empty( $data['screenshot_url'] ) ) {
+        $source = ! empty( $data['from_cache'] ) ? 'cached' : 'new capture';
+        ciq_log( 'CIQ screenshot [' . $source . ']: ' . $data['screenshot_url'] );
+        return $data['screenshot_url'];
+    }
+
+    ciq_log( 'CIQ screenshot unavailable (HTTP ' . $code . '): ' . wp_json_encode( $data ) );
+    return null;
+}
+
+/**
+/**
+ * Pre-fetch screenshots for all pages that already have heatmap click data.
+ * Called automatically on license activation and refresh.
+ * Uses force_refresh=false so it only requests a new screenshot when one
+ * does not already exist on the server (cache-first).
+ * Fires via wp_schedule_single_event so the HTTP response is not delayed.
+ */
+function conversioniq_heatmap_prefetch_screenshots() {
+    $api_key = get_option( 'conversioniq_api_key', '' );
+    $org_id  = get_option( 'conversioniq_organization_id', '' );
+
+    if ( ! $api_key || ! $org_id ) {
+        return; // License not fully activated yet — nothing to do.
+    }
+
+    // Schedule the actual work to run after the current request completes
+    // so the license activate/refresh response is returned immediately.
+    if ( ! wp_next_scheduled( 'conversioniq_heatmap_prefetch_event' ) ) {
+        wp_schedule_single_event( time() + 5, 'conversioniq_heatmap_prefetch_event' );
+    }
+}
+add_action( 'conversioniq_heatmap_prefetch_event', 'conversioniq_heatmap_do_prefetch' );
+
+function conversioniq_heatmap_do_prefetch() {
+    global $wpdb;
+
+    $license_key = get_option( 'conversioniq_license_key', '' );
+    $api_key     = get_option( 'conversioniq_api_key', '' );
+    $org_id      = get_option( 'conversioniq_organization_id', '' );
+
+    if ( ! $license_key || ! $api_key ) {
+        return;
+    }
+
+    $table = $wpdb->prefix . 'conversioniq_heatmap_events';
+
+    // Get all distinct pages that have at least 1 click event in the last 90 days
+    $pages = $wpdb->get_col( $wpdb->prepare(
+        "SELECT DISTINCT page_url FROM {$table}
+         WHERE recorded_at >= %s
+         ORDER BY MAX(recorded_at) DESC
+         LIMIT 20",
+        gmdate( 'Y-m-d H:i:s', strtotime( '-90 days' ) )
+    ) );
+
+    if ( empty( $pages ) ) {
+        ciq_log( 'ConversionIQ Heatmap: No tracked pages found for screenshot pre-fetch.' );
+        return;
+    }
+
+    $remote_url = 'https://conversioniq-app.com/api/heatmap/screenshot';
+    $fetched    = 0;
+    $skipped    = 0;
+
+    foreach ( $pages as $page_url ) {
+        if ( ! filter_var( $page_url, FILTER_VALIDATE_URL ) ) {
+            continue;
+        }
+
+        $response = wp_remote_post( $remote_url, array(
+            'headers' => array(
+                'Content-Type'  => 'application/json',
+                'Authorization' => 'Bearer ' . $api_key,
+            ),
+            'body'    => wp_json_encode( array(
+                'page_url'        => $page_url,
+                'license_key'     => $license_key,
+                'site_url'        => get_site_url(),
+                'organization_id' => $org_id,
+                'force_refresh'   => false,
+            ) ),
+            'timeout' => 60,
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            ciq_log( 'ConversionIQ Heatmap prefetch error for ' . $page_url . ': ' . $response->get_error_message() );
+            continue;
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        $data = json_decode( wp_remote_retrieve_body( $response ), true );
+
+        if ( $code === 200 && ! empty( $data['success'] ) ) {
+            $source = ! empty( $data['from_cache'] ) ? 'cached' : 'new';
+            ciq_log( "ConversionIQ Heatmap prefetch [{$source}]: {$page_url}" );
+            $fetched++;
+        } else {
+            ciq_log( "ConversionIQ Heatmap prefetch skipped ({$code}): {$page_url}" );
+            $skipped++;
+        }
+    }
+
+    ciq_log( "ConversionIQ Heatmap prefetch complete — {$fetched} fetched, {$skipped} skipped." );
+}
+
+/**
+ * POST /heatmap/screenshot
+ * Admin only — proxies screenshot request to conversioniq-app.com.
+ * Uses the stored api_key and organization_id.
+ */
+function conversioniq_heatmap_screenshot( WP_REST_Request $request ) {    $body          = $request->get_json_params();
+    $page_url      = isset( $body['page_url'] ) ? esc_url_raw( $body['page_url'] ) : '';
+    $force_refresh = ! empty( $body['force_refresh'] );
+
+    if ( ! $page_url || ! preg_match( '/^https?:\/\//i', $page_url ) ) {
+        return new WP_REST_Response( array( 'success' => false, 'message' => 'Invalid or missing page_url' ), 400 );
+    }
+
+    $api_key     = get_option( 'conversioniq_api_key', '' );
+    $org_id      = get_option( 'conversioniq_organization_id', '' );
+    $license_key = get_option( 'conversioniq_license_key', '' );
+
+    if ( ! $license_key ) {
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => 'License not activated. Please activate your license to use heatmaps.',
+        ), 403 );
+    }
+
+    $remote_url = 'https://conversioniq-app.com/api/heatmap/screenshot';
+    $payload    = array(
+        'page_url'        => $page_url,
+        'license_key'     => $license_key,
+        'site_url'        => get_site_url(),
+        'organization_id' => $org_id,
+        'force_refresh'   => $force_refresh,
+    );
+
+    $response = wp_remote_post( $remote_url, array(
+        'headers' => array(
+            'Content-Type'  => 'application/json',
+            'Authorization' => 'Bearer ' . $api_key,
+        ),
+        'body'    => wp_json_encode( $payload ),
+        'timeout' => 60,
+    ) );
+
+    if ( is_wp_error( $response ) ) {
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => 'Could not reach screenshot service: ' . $response->get_error_message(),
+        ), 500 );
+    }
+
+    $code = wp_remote_retrieve_response_code( $response );
+    $data = json_decode( wp_remote_retrieve_body( $response ), true );
+
+    if ( $code === 422 ) {
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => 'Bot challenge detected on the target page — screenshot unavailable.',
+        ), 422 );
+    }
+
+    if ( $code !== 200 || empty( $data['success'] ) ) {
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => $data['message'] ?? 'Screenshot capture failed.',
+        ), $code >= 400 ? $code : 500 );
+    }
+
+    return new WP_REST_Response( array(
+        'success'        => true,
+        'screenshot_url' => $data['screenshot_url'],
+        'page_width'     => $data['page_width'] ?? 1440,
+        'page_height'    => $data['page_height'] ?? null,
+        'captured_at'    => $data['captured_at'] ?? null,
+        'from_cache'     => $data['from_cache'] ?? false,
+    ), 200 );
+}
+
+/**
+ * Heatmap daily summary sync
+ *
+ * Runs once per day via WP-Cron. Aggregates yesterday's heatmap events per page
+ * into a single summary row and pushes it to the conversioniq-app.com platform
+ * so cross-site analytics are available without storing raw coordinates remotely.
+ *
+ * Summary row shape (mirrors the Supabase heatmap_summaries table):
+ *   organization_id, site_url, page_url, date,
+ *   total_clicks, total_sessions,
+ *   scroll_25, scroll_50, scroll_75, scroll_90, scroll_100
+ */
+function conversioniq_heatmap_sync_daily() {
+    global $wpdb;
+
+    $api_key  = get_option( 'conversioniq_api_key', '' );
+    $org_id   = get_option( 'conversioniq_organization_id', '' );
+    $site_url = get_site_url();
+
+    // Nothing to sync without a license
+    if ( ! $api_key || ! $org_id ) {
+        return;
+    }
+
+    $table     = $wpdb->prefix . 'conversioniq_heatmap_events';
+    $yesterday = gmdate( 'Y-m-d', strtotime( '-1 day' ) );
+    $day_start = $yesterday . ' 00:00:00';
+    $day_end   = $yesterday . ' 23:59:59';
+
+    // All distinct pages that had any event yesterday
+    $pages = $wpdb->get_col( $wpdb->prepare(
+        "SELECT DISTINCT page_url FROM {$table}
+         WHERE recorded_at BETWEEN %s AND %s
+         LIMIT 100",
+        $day_start,
+        $day_end
+    ) );
+
+    if ( empty( $pages ) ) {
+        return; // Nothing to sync for yesterday
+    }
+
+    $summaries = array();
+
+    foreach ( $pages as $page_url ) {
+
+        // Total clicks and unique sessions for this page/day
+        $click_row = $wpdb->get_row( $wpdb->prepare(
+            "SELECT COUNT(*) AS clicks, COUNT(DISTINCT session_id) AS sessions
+             FROM {$table}
+             WHERE page_url = %s AND event_type = 'click'
+               AND recorded_at BETWEEN %s AND %s",
+            $page_url, $day_start, $day_end
+        ), ARRAY_A );
+
+        // Scroll milestone counts — each represents sessions that reached that depth
+        $scroll_counts = array();
+        foreach ( array( 25, 50, 75, 90, 100 ) as $m ) {
+            $scroll_counts[ $m ] = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(DISTINCT session_id) FROM {$table}
+                 WHERE page_url = %s AND event_type = 'scroll'
+                   AND element_text = %s
+                   AND recorded_at BETWEEN %s AND %s",
+                $page_url, $m . '%', $day_start, $day_end
+            ) );
+        }
+
+        // Top clicked elements — tag + text + count, stored as JSONB on the remote side
+        $top_element_rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT element_tag, element_text, COUNT(*) AS clicks
+             FROM {$table}
+             WHERE page_url = %s AND event_type = 'click'
+               AND recorded_at BETWEEN %s AND %s
+               AND element_tag IS NOT NULL
+             GROUP BY element_tag, element_text
+             ORDER BY clicks DESC
+             LIMIT 10",
+            $page_url, $day_start, $day_end
+        ), ARRAY_A );
+
+        $top_elements = array_map( function( $row ) {
+            return array(
+                'tag'    => $row['element_tag'],
+                'text'   => $row['element_text'],
+                'clicks' => (int) $row['clicks'],
+            );
+        }, $top_element_rows ?: array() );
+
+        $summaries[] = array(
+            'organization_id' => $org_id,
+            'site_url'        => $site_url,
+            'page_url'        => $page_url,
+            'date'            => $yesterday,
+            'total_clicks'    => (int) ( $click_row['clicks'] ?? 0 ),
+            'total_sessions'  => (int) ( $click_row['sessions'] ?? 0 ),
+            'scroll_25'       => $scroll_counts[25],
+            'scroll_50'       => $scroll_counts[50],
+            'scroll_75'       => $scroll_counts[75],
+            'scroll_90'       => $scroll_counts[90],
+            'scroll_100'      => $scroll_counts[100],
+            'top_elements'    => $top_elements,
+        );
+    }
+
+    if ( empty( $summaries ) ) {
+        return;
+    }
+
+    $response = wp_remote_post( 'https://conversioniq-app.com/api/heatmap/sync-summary', array(
+        'headers' => array(
+            'Content-Type'  => 'application/json',
+            'Authorization' => 'Bearer ' . $api_key,
+        ),
+        'body'    => wp_json_encode( array(
+            'organization_id' => $org_id,
+            'site_url'        => $site_url,
+            'date'            => $yesterday,
+            'summaries'       => $summaries,
+        ) ),
+        'timeout' => 30,
+    ) );
+
+    if ( is_wp_error( $response ) ) {
+        ciq_log( 'ConversionIQ Heatmap sync error: ' . $response->get_error_message() );
+        return;
+    }
+
+    $code = wp_remote_retrieve_response_code( $response );
+    if ( $code === 200 ) {
+        ciq_log( 'ConversionIQ Heatmap sync: pushed ' . count( $summaries ) . ' page summary(s) for ' . $yesterday );
+    } else {
+        ciq_log( 'ConversionIQ Heatmap sync: HTTP ' . $code . ' — ' . wp_remote_retrieve_body( $response ) );
+    }
 }

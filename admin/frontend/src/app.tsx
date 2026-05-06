@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import type { Suggestion, Audit, Page, Branding } from './types';
 import OverviewTab from './OverviewTab';
-import FaqTab from './FaqTab';
+import HeatmapTab from './HeatmapTab';
 
 type Page = { id: number; title: string; permalink: string };
 
@@ -65,7 +65,7 @@ export default function App() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingAutomated, setSavingAutomated] = useState(false);
   const [auditRunning, setAuditRunning] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'automated' | 'audits' | 'knockknock' | 'license' | 'faq'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'automated' | 'audits' | 'knockknock' | 'heatmap' | 'license'>('overview');
   const [automatedReporting, setAutomatedReporting] = useState({
     enabled: false,
     frequency: 'weekly',
@@ -1023,6 +1023,23 @@ export default function App() {
               </span>
             </button>
             <button
+              onClick={() => setActiveTab('heatmap')}
+              style={{
+                flex: 1,
+                padding: '16px 24px',
+                background: activeTab === 'heatmap' ? '#7c3aed' : '#fff',
+                color: activeTab === 'heatmap' ? '#fff' : '#6b7280',
+                border: 'none',
+                borderBottom: activeTab === 'heatmap' ? '3px solid #5b21b6' : '3px solid transparent',
+                cursor: 'pointer',
+                fontSize: 16,
+                fontWeight: 600,
+                transition: 'all 0.2s'
+              }}
+            >
+              Heatmap
+            </button>
+            <button
               onClick={() => setActiveTab('license')}
               style={{
                 flex: 1,
@@ -1038,23 +1055,6 @@ export default function App() {
               }}
             >
               License
-            </button>
-            <button
-              onClick={() => setActiveTab('faq')}
-              style={{
-                flex: 1,
-                padding: '16px 24px',
-                background: activeTab === 'faq' ? '#7c3aed' : '#fff',
-                color: activeTab === 'faq' ? '#fff' : '#6b7280',
-                border: 'none',
-                borderBottom: activeTab === 'faq' ? '3px solid #5b21b6' : '3px solid transparent',
-                cursor: 'pointer',
-                fontSize: 16,
-                fontWeight: 600,
-                transition: 'all 0.2s'
-              }}
-            >
-              FAQ
             </button>
           </div>
         </div>
@@ -2432,6 +2432,14 @@ export default function App() {
           </section>
         )}
 
+        {/* Heatmap Tab */}
+        {activeTab === 'heatmap' && (
+          <HeatmapTab
+            nonce={nonce}
+            apiBase={(window as any).ConversionIQData?.restUrl || '/wp-json/conversioniq/v1/'}
+          />
+        )}
+
         {/* License Tab */}
         {activeTab === 'license' && (
           <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
@@ -2800,10 +2808,6 @@ export default function App() {
           </section>
         )}
 
-        {/* FAQ Tab */}
-        {activeTab === 'faq' && (
-          <FaqTab B={B} />
-        )}
       </main>
 
       {/* Audit Progress Modal */}

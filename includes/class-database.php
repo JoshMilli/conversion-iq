@@ -52,6 +52,9 @@ class ConversionIQ_DB
 
         // Create KnockKnock tables
         self::create_knockknock_tables();
+
+        // Create Heatmap tables
+        self::create_heatmap_tables();
     }
 
     /**
@@ -365,5 +368,44 @@ class ConversionIQ_DB
             "DELETE FROM {$prefix}page_analytics WHERE last_seen < %s",
             $cutoff
         ) );
+
+        // Heatmap events: delete rows older than 90 days
+        $heatmap_table = $prefix . 'heatmap_events';
+        if ( $wpdb->get_var( "SHOW TABLES LIKE '{$heatmap_table}'" ) ) {
+            $wpdb->query( $wpdb->prepare(
+                "DELETE FROM {$heatmap_table} WHERE recorded_at < %s",
+                $cutoff
+            ) );
+        }
+    }
+
+    /**
+     * Create heatmap events table
+     */
+    public static function create_heatmap_tables()
+    {
+        global $wpdb;
+        $charset_collate = $wpdb->get_charset_collate();
+
+        $table = $wpdb->prefix . 'conversioniq_heatmap_events';
+        $sql = "CREATE TABLE IF NOT EXISTS $table (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            page_url TEXT NOT NULL,
+            event_type VARCHAR(20) DEFAULT 'click',
+            x_pct DECIMAL(6,3) DEFAULT NULL,
+            y_pct DECIMAL(6,3) DEFAULT NULL,
+            element_tag VARCHAR(50) DEFAULT NULL,
+            element_text VARCHAR(255) DEFAULT NULL,
+            session_id VARCHAR(100) DEFAULT NULL,
+            viewport_w SMALLINT DEFAULT NULL,
+            viewport_h SMALLINT DEFAULT NULL,
+            recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY page_url (page_url(255)),
+            KEY recorded_at (recorded_at)
+        ) $charset_collate;";
+
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        dbDelta( $sql );
     }
 }

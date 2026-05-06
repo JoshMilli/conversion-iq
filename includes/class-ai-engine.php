@@ -38,6 +38,7 @@ class ConversionIQ_AI
         $word_count = isset($payload['page']['word_count']) ? $payload['page']['word_count'] : 0;
         $html_structure = isset($payload['page']['html_structure']) ? $payload['page']['html_structure'] : '';
         $business = isset($payload['business']) ? $payload['business'] : array();
+        $screenshot_url = isset($payload['page']['screenshot_url']) ? $payload['page']['screenshot_url'] : null;
 
         // Check if content is too long and needs chunking
         if (strlen($page_content) > 8000) {
@@ -51,7 +52,7 @@ class ConversionIQ_AI
 
         // Call Abacus.ai API
         $start_time = microtime(true);
-        $ai_response = self::call_abacus_ai($user_prompt, $system_prompt);
+        $ai_response = self::call_abacus_ai($user_prompt, $system_prompt, $screenshot_url);
         $elapsed = round((microtime(true) - $start_time), 2);
 
         $debug_info = array(
@@ -95,6 +96,9 @@ class ConversionIQ_AI
     {
         $page_title = isset($payload['page']['title']) ? $payload['page']['title'] : 'Unknown Page';
         $content = isset($payload['page']['content']) ? $payload['page']['content'] : '';
+        // Screenshot is only used on the first chunk — it gives overall visual context
+        // for the hero/above-the-fold area, which is where visual scoring matters most.
+        $screenshot_url = isset($payload['page']['screenshot_url']) ? $payload['page']['screenshot_url'] : null;
 
         ciq_log('🔍 Starting chunked analysis for: ' . $page_title);
 
@@ -135,7 +139,9 @@ class ConversionIQ_AI
                 isset($payload['business']) ? $payload['business'] : array()
             );
 
-            $response = self::call_abacus_ai($user_prompt, $system_prompt);
+            // Pass screenshot only on the first chunk (hero section / above-the-fold context)
+            $chunk_screenshot = ( $current === 1 ) ? $screenshot_url : null;
+            $response = self::call_abacus_ai($user_prompt, $system_prompt, $chunk_screenshot);
 
             if ($response && isset($response['success']) && $response['success']) {
                 $data = $response['data'];
@@ -875,9 +881,10 @@ Use these as anchors. A page similar to Example A should score similarly. Do not
 6. For benchmark_research, use the business INDUSTRY and this page's actual scores to produce specific, grounded competitive intelligence:
    - industry_average: realistic integer (62–72) for typical websites in this exact industry — vary by sector maturity (e.g., SaaS/fintech score higher ~70, trades/local services lower ~64)
    - top_performers_threshold: integer (85–93) for the top 10% in this industry
-   - competitive_context: EXACTLY 3 sentences, each grounded in THIS industry and THIS page's scores. Sentence 1: name 2-3 specific tactics that top-converting [industry] websites actually use (e.g., for legal: named case outcomes and bar certifications; for SaaS: live demo links and logo bars; for e-commerce: star ratings inline with product images). Sentence 2: reference the page's actual weakest score by name and number, and explain what it signals competitively in this sector. Sentence 3: state the single most impactful change the business can make to close the gap to top performers, based on the industry pattern. NEVER use phrases like "top-performing websites prioritize" or "crystal-clear value communication" — those are generic filler. Every sentence must be specific to the industry.
-   - key_competitive_factors: EXACTLY 3 bullet points, each naming a specific conversion element that separates winners from losers in THIS industry (e.g., not "trust signals" but "BBB rating + named attorney photos" for law firms, or "free trial CTA above fold" for SaaS)
-   - industry_challenges: EXACTLY 2 bullet points naming the specific obstacles this industry faces in converting visitors (e.g., "high-consideration purchase cycle requires multiple touchpoints" for B2B, not just "building trust")
+   - competitive_context: EXACTLY 3 sentences, each grounded in THIS industry and THIS page's scores. Sentence 1: name 2-3 specific tactics that top-converting [industry] websites actually use (e.g., for legal: named case outcomes and bar certifications; for SaaS: live demo links and logo bars; for e-commerce: star ratings inline with product images). Sentence 2: reference the page's actual weakest score by name and number, and explain what it signals competitively in this sector. Sentence 3: state the single most impactful change the business can make to close the gap to top performers, based on the industry pattern. NEVER use phrases like \"top-performing websites prioritize\" or \"crystal-clear value communication\" — those are generic filler. Every sentence must be specific to the industry.
+   - key_competitive_factors: EXACTLY 3 bullet points, each naming a specific conversion element that separates winners from losers in THIS industry (e.g., not \"trust signals\" but \"BBB rating + named attorney photos\" for law firms, or \"free trial CTA above fold\" for SaaS)
+   - industry_challenges: EXACTLY 2 bullet points naming the specific obstacles this industry faces in converting visitors (e.g., \"high-consideration purchase cycle requires multiple touchpoints\" for B2B, not just \"building trust\")
+7. When a full-page screenshot is provided with this message, treat it as primary visual evidence for calibrating scores — it shows the real rendered page, not just the source text. Use it to: verify whether the primary CTA is visible above the fold and assess its visual contrast and button size (informs cta_strength); assess actual layout density, whitespace, and typography legibility as a real visitor would see them (informs readability_score); identify visible trust signals — badge images, founder/team photos, star-rating widgets — that may not appear in the extracted HTML text (informs trust_score); gauge visual richness from images, banners, video thumbnails, and interactive element placeholders (informs engagement_score). In suggestions and insights, cite specific visual observations from the screenshot (e.g. \"The screenshot shows the primary CTA is not visible without scrolling\", \"No trust badge images are visible in the screenshot despite claims in the copy\"). Do not invent visual details not visible in the image. If no screenshot is present, score based on HTML and text alone.
 
 ─── FUNCTIONALITY SUGGESTIONS ───
 
@@ -893,22 +900,28 @@ Rules: trust<60 → include Trust feature. engagement<50 → include Engagement 
 
 ─── CRO & UX CHECKLIST ───
 
-The HTML STRUCTURE section of the page data includes pre-extracted \"CRO Structural Signals\" derived directly from the page markup. Use these signals as your PRIMARY EVIDENCE when setting \"present\" true/false for each checklist item — they are more reliable than inferring from copy alone. If a signal says \"YES\", set present=true. If it says \"NOT DETECTED\", set present=false unless the page text contains unmistakable evidence. If it says \"POSSIBLE\", use your judgement based on surrounding copy. Write one specific sentence in \"explanation\" referencing actual page content or the detected signal — do NOT write generic definitions.
+The HTML STRUCTURE section of the page data includes pre-extracted \"CRO Structural Signals\" derived directly from the page markup. Use the evidence hierarchy below for each item — do NOT write generic definitions in \"explanation\", always reference actual page content or a direct visual observation.
+
+EVIDENCE HIERARCHY (apply per item):
+- Items 1, 2, 3, 5, 7, 11, 13 are VISUAL items. When a screenshot is present, the screenshot is your PRIMARY evidence and overrides HTML signals. These items ask about what a visitor actually sees — rendered badge images, a button visible in the first viewport, a sticky nav bar, a pricing table layout, a progress step indicator — none of which are reliably detectable from source HTML alone. Set present=true only if you can directly observe the element in the screenshot. If the screenshot is absent, fall back to HTML signals. When a signal says \"YES\" in the HTML data, treat it as supporting evidence only — verify against the screenshot.
+- Items 4, 6, 8, 9, 10, 12 are COPY / BEHAVIOUR items. For these, the HTML Structural Signals and page text are your PRIMARY evidence. The screenshot may provide supporting context but these items do not require visual confirmation.
+
+For ALL items: if a screenshot is present, your \"explanation\" sentence MUST include a direct visual observation (e.g. \"The screenshot shows the primary CTA button is below the first viewport on desktop\" or \"A sticky purple button is visible in the navigation bar in the screenshot\"). If no screenshot is present, reference the HTML signal or page copy as before.
 
 Elements to evaluate:
-1. CTA Above the Fold — Is there a call-to-action visible without scrolling?
-2. Trust Signals (Certs, Awards) — Are there visible certifications, awards, or credentials?
-3. Inline Social Proof — Are there testimonials, reviews, or social proof within the body content?
-4. Urgency / Scarcity Elements — Is there any urgency or scarcity language (limited time, limited spots, etc.)?
-5. Sticky CTA in Nav — Does the navigation contain a persistent CTA button?
-6. Reassurance Micro-copy — Are there trust-reducing friction phrases near CTAs (\"No credit card required\", \"Cancel anytime\", etc.)?
-7. Clear Visual Hierarchy — Is content structured with clear headings, subheadings, and visual priority?
-8. Mobile-First UX — Does the page layout and copy suggest mobile-optimised design?
-9. Speed / Ease Cues — Are there phrases emphasising ease, speed, or simplicity?
-10. Risk Reversal (Guarantee) — Is there a money-back guarantee, free trial, or similar risk-removal offer?
-11. Anchor Pricing — Is there a higher-priced option shown to make the target offer look comparative value?
-12. Exit Intent Suggestion — Is there an exit intent offer, popup trigger, or retention element mentioned?
-13. Progress Indicators — Are there step indicators, progress bars, or multi-step flow cues on the page?
+1. CTA Above the Fold — Is there a call-to-action button visible without scrolling? [VISUAL — use screenshot]
+2. Trust Signals (Certs, Awards) — Are there visible certification badges, award images, or credential logos? [VISUAL — image-only badges are invisible in HTML text; use screenshot]
+3. Inline Social Proof — Are there testimonials, review widgets, star ratings, or headshot photos within the body? [VISUAL — rendered star-rating widgets may not appear in HTML; use screenshot]
+4. Urgency / Scarcity Elements — Is there urgency or scarcity language (limited time, limited spots, countdown)? [COPY — use HTML/text]
+5. Sticky CTA in Nav — Is there a persistent CTA button visible in the navigation bar? [VISUAL — use screenshot]
+6. Reassurance Micro-copy — Are there friction-reducing phrases near CTAs (\"No credit card required\", \"Cancel anytime\")? [COPY — use HTML/text]
+7. Clear Visual Hierarchy — Does the rendered page show clear heading sizes, whitespace, and layout weight? [VISUAL — heading tags alone do not confirm visual weight; use screenshot]
+8. Mobile-First UX — Does the page layout and copy suggest mobile-optimised design? [COPY/STRUCTURE — use HTML]
+9. Speed / Ease Cues — Are there phrases emphasising ease, speed, or simplicity? [COPY — use HTML/text]
+10. Risk Reversal (Guarantee) — Is there a money-back guarantee, free trial, or risk-removal offer? [COPY — use HTML/text]
+11. Anchor Pricing — Is there a visible pricing table with a higher-priced option to make the target offer look like value? [VISUAL — use screenshot]
+12. Exit Intent Suggestion — Is there an exit intent offer, popup trigger, or retention element mentioned? [COPY/BEHAVIOUR — use HTML]
+13. Progress Indicators — Are there visible step indicators, progress bars, or multi-step flow cues? [VISUAL — use screenshot]
 
 Priority rules:
 - Mark priority \"high\" when: present=false AND the missing element directly relates to a score below 60
@@ -916,13 +929,13 @@ Priority rules:
 - Mark priority \"low\" when: present=true OR element is a nice-to-have for this page type
 
 You MUST produce the following exact counts. Fewer items will be treated as an incomplete response:
-- suggestions: minimum 6 items, each referencing a specific page element
+- suggestions: minimum 6 items, each referencing a specific page element; when a screenshot is present, at least 2 suggestions must cite a direct visual observation from it (e.g. \"The screenshot shows...\")
 - functionality_suggestions: 3–5 items (apply catalog rules above)
-- cro_checklist: EXACTLY 13 items — one per element listed above, in order
-- recommendations.quick_wins: EXACTLY 5 items, ordered easiest/highest-impact first
+- cro_checklist: EXACTLY 13 items — one per element listed above, in order; visual items (1,2,3,5,7,11,13) must be grounded in screenshot evidence when available
+- recommendations.quick_wins: EXACTLY 5 items, ordered easiest/highest-impact first; when a screenshot is present, any quick win that addresses a visual issue (CTA position, button contrast, trust badge placement) must reference what the screenshot shows as justification
 - recommendations.long_term: EXACTLY 5 items, ordered by strategic priority
-- insights.strengths: EXACTLY 3 items, each citing a specific score or page element
-- insights.weaknesses: EXACTLY 3 items, each citing the specific score it relates to
+- insights.strengths: EXACTLY 3 items, each citing a specific score or page element; when a screenshot is present, at least 1 strength must reference a positive visual observation
+- insights.weaknesses: EXACTLY 3 items, each citing the specific score it relates to; when a screenshot is present, at least 1 weakness must reference a visual finding from the screenshot
 - insights.opportunities: EXACTLY 3 items with expected outcomes
 - rewrites: ALL 16 keys populated (headline, subheadline, primary_cta, secondary_cta, value_proposition, social_proof_intro, feature_1 through feature_5, faq_answer_1 through faq_answer_3, closing_statement)
 
@@ -1135,13 +1148,39 @@ Score this page using the rubric from your instructions. Provide all suggestions
     /**
      * Call Abacus.ai route-llm API
      */
-    private static function call_abacus_ai($prompt, $system_prompt = null)
+    private static function call_abacus_ai($prompt, $system_prompt = null, $screenshot_url = null)
     {
         $messages = array();
         if ($system_prompt) {
             $messages[] = array('role' => 'system', 'content' => $system_prompt);
         }
-        $messages[] = array('role' => 'user', 'content' => $prompt);
+
+        if ($screenshot_url) {
+            // Multi-modal message: existing text analysis prompt + explicit visual instructions + screenshot.
+            // The visual instruction block sits between the text and the image so the model reads
+            // the scoring context immediately before looking at the image.
+            $visual_instruction = "A full-page screenshot of this page is attached below. Use it as primary visual evidence:\n"
+                . "- Above-the-fold: note exactly what a visitor sees before scrolling — headline, CTA button, hero image. "
+                .   "If the primary CTA button is not visible in the first viewport, lower cta_strength accordingly.\n"
+                . "- CTA visual prominence: assess the button's colour contrast, size, and spacing relative to surrounding elements.\n"
+                . "- Layout density & whitespace: judge readability_score from actual typography, line-height, and paragraph spacing visible in the screenshot, not just the extracted text.\n"
+                . "- Trust signals: look for badge images, star-rating widgets, team/founder photos, or certification logos that may not appear in the HTML text — credit them in trust_score if present.\n"
+                . "- Visual richness: identify images, graphics, video thumbnails, or interactive widget placeholders that inform engagement_score.\n"
+                . "In your insights and suggestions, cite specific visual observations (e.g. ‘The screenshot shows the CTA button is below the fold on desktop’, "
+                .   "‘No trust badge images are visible in the screenshot despite claims in the copy’). "
+                . "Do not invent visual details not visible in the screenshot.";
+
+            $messages[] = array('role' => 'user', 'content' => array(
+                array('type' => 'text', 'text' => $prompt),
+                array('type' => 'text', 'text' => $visual_instruction),
+                array('type' => 'image_url', 'image_url' => array(
+                    'url'    => $screenshot_url,
+                    'detail' => 'high',
+                )),
+            ));
+        } else {
+            $messages[] = array('role' => 'user', 'content' => $prompt);
+        }
 
         $body = array(
             'model' => 'gpt-4o',

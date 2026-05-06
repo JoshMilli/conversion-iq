@@ -104,6 +104,12 @@ add_action( 'init', function() {
         wp_schedule_event( time() + DAY_IN_SECONDS, 'weekly', 'conversioniq_prune_db' );
     }
 
+    // Schedule nightly heatmap summary sync to Supabase (only if licensed)
+    if ( get_option( 'conversioniq_api_key' ) && ! wp_next_scheduled( 'conversioniq_heatmap_sync' ) ) {
+        // Offset by 3h so it runs in low-traffic hours rather than exactly at midnight
+        wp_schedule_event( strtotime( 'tomorrow 03:00:00' ), 'daily', 'conversioniq_heatmap_sync' );
+    }
+
     // Schedule 2-minute audit-job poller if not already scheduled
     if ( ! wp_next_scheduled( 'conversioniq_poll_audit_jobs' ) ) {
         wp_schedule_event( time() + 120, 'conversioniq_twominutes', 'conversioniq_poll_audit_jobs' );
@@ -128,6 +134,9 @@ add_action( 'conversioniq_sync_config', function() {
 add_action( 'conversioniq_prune_db', function() {
     ConversionIQ_DB::prune_old_records();
 } );
+
+// Nightly heatmap summary sync
+add_action( 'conversioniq_heatmap_sync', 'conversioniq_heatmap_sync_daily' );
 
 // ── Audit Jobs Poller ──────────────────────────────────────────────────────
 
@@ -414,6 +423,32 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
 // Load textdomain for translations
 add_action( 'plugins_loaded', function() {
     load_plugin_textdomain( 'conversion-iq', false, dirname( plugin_basename( __FILE__ ) ) . '/languages/' );
+} );
+
+// Enqueue heatmap tracker on public-facing pages when license is active
+add_action( 'wp_enqueue_scripts', function() {
+    // Only track front-end pages, not admin
+    if ( is_admin() ) {
+        return;
+    }
+
+    // Only track when license is active (api_key is present)
+    $api_key = get_option( 'conversioniq_api_key', '' );
+    if ( empty( $api_key ) ) {
+        return;
+    }
+
+    wp_enqueue_script(
+        'ciq-heatmap-tracker',
+        CONVERSION_IQ_URL . 'assets/js/ciq-heatmap-tracker.js',
+        array(),
+        CONVERSION_IQ_VERSION,
+        true // load in footer
+    );
+
+    wp_localize_script( 'ciq-heatmap-tracker', 'ciqTrackerConfig', array(
+        'endpoint' => esc_url_raw( rest_url( 'conversioniq/v1/heatmap/record' ) ),
+    ) );
 } );
 
 // AJAX handler to check plugin status
