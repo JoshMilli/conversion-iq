@@ -96,6 +96,9 @@ class ConversionIQ_Config_Manager
                 'hide_powered_by'        => false,
                 'client_management'      => false,
                 'sub_license_distribution' => false,
+                'heatmap'                => true,
+                'heatmap_scroll'         => false,
+                'heatmap_history_days'   => 7,
             ),
             'starter' => array(
                 'max_sites'              => 1,
@@ -115,6 +118,9 @@ class ConversionIQ_Config_Manager
                 'hide_powered_by'        => false,
                 'client_management'      => false,
                 'sub_license_distribution' => false,
+                'heatmap'                => true,
+                'heatmap_scroll'         => false,
+                'heatmap_history_days'   => 7,
             ),
             'professional' => array(
                 'max_sites'              => 1,
@@ -134,6 +140,9 @@ class ConversionIQ_Config_Manager
                 'hide_powered_by'        => false,
                 'client_management'      => false,
                 'sub_license_distribution' => false,
+                'heatmap'                => true,
+                'heatmap_scroll'         => true,
+                'heatmap_history_days'   => 30,
             ),
             'business' => array(
                 'max_sites'              => 1,
@@ -153,6 +162,9 @@ class ConversionIQ_Config_Manager
                 'hide_powered_by'        => false,
                 'client_management'      => false,
                 'sub_license_distribution' => false,
+                'heatmap'                => true,
+                'heatmap_scroll'         => true,
+                'heatmap_history_days'   => 90,
             ),
             'agency' => array(
                 'max_sites'              => 100,
@@ -172,6 +184,9 @@ class ConversionIQ_Config_Manager
                 'hide_powered_by'        => true,
                 'client_management'      => true,
                 'sub_license_distribution' => true,
+                'heatmap'                => true,
+                'heatmap_scroll'         => true,
+                'heatmap_history_days'   => 90,
             ),
         );
 

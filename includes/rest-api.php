@@ -733,6 +733,13 @@ add_action('rest_api_init', function () {
             'callback'            => 'conversioniq_heatmap_screenshot',
             'permission_callback' => function () { return current_user_can('manage_options'); },
         ));
+
+        // Admin endpoint — manually trigger the nightly heatmap sync (for testing/debugging)
+        register_rest_route('conversioniq/v1', '/heatmap/trigger-sync', array(
+            'methods'             => 'POST',
+            'callback'            => 'conversioniq_heatmap_trigger_sync',
+            'permission_callback' => function () { return current_user_can('manage_options'); },
+        ));
     });
 
 
@@ -3188,6 +3195,69 @@ function conversioniq_heatmap_screenshot( WP_REST_Request $request ) {    $body 
  *   total_clicks, total_sessions,
  *   scroll_25, scroll_50, scroll_75, scroll_90, scroll_100
  */
+// ── Heatmap: manual sync trigger (admin debug) ──────────────────────────────
+
+function conversioniq_heatmap_trigger_sync() {
+    global $wpdb;
+
+    $api_key = get_option( 'conversioniq_api_key', '' );
+    $org_id  = get_option( 'conversioniq_organization_id', '' );
+
+    $diagnostics = array(
+        'api_key_set'      => ! empty( $api_key ),
+        'org_id_set'       => ! empty( $org_id ),
+        'cron_scheduled'   => (bool) wp_next_scheduled( 'conversioniq_heatmap_sync' ),
+        'cron_next_utc'    => wp_next_scheduled( 'conversioniq_heatmap_sync' )
+                                ? gmdate( 'Y-m-d H:i:s', wp_next_scheduled( 'conversioniq_heatmap_sync' ) ) . ' UTC'
+                                : 'not scheduled',
+    );
+
+    if ( ! $api_key || ! $org_id ) {
+        return new WP_REST_Response( array(
+            'success'     => false,
+            'message'     => 'No API key or organization ID — activate your license first.',
+            'diagnostics' => $diagnostics,
+        ), 400 );
+    }
+
+    $table     = $wpdb->prefix . 'conversioniq_heatmap_events';
+    $yesterday = gmdate( 'Y-m-d', strtotime( '-1 day' ) );
+    $day_start = $yesterday . ' 00:00:00';
+    $day_end   = $yesterday . ' 23:59:59';
+
+    $event_count = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$table} WHERE recorded_at BETWEEN %s AND %s",
+        $day_start, $day_end
+    ) );
+
+    $total_events = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
+
+    $diagnostics['events_yesterday'] = $event_count;
+    $diagnostics['total_events_all_time'] = $total_events;
+    $diagnostics['syncing_date'] = $yesterday;
+
+    if ( $event_count === 0 ) {
+        return new WP_REST_Response( array(
+            'success'     => false,
+            'message'     => "No heatmap events recorded for {$yesterday}. Nothing to sync.",
+            'diagnostics' => $diagnostics,
+        ), 200 );
+    }
+
+    // Run the actual sync and capture the HTTP result
+    ob_start();
+    conversioniq_heatmap_sync_daily();
+    ob_end_clean();
+
+    return new WP_REST_Response( array(
+        'success'     => true,
+        'message'     => "Sync triggered for {$yesterday} ({$event_count} events). Check debug logs for HTTP result.",
+        'diagnostics' => $diagnostics,
+    ), 200 );
+}
+
+// ── Heatmap: nightly summary sync to Supabase ───────────────────────────────
+
 function conversioniq_heatmap_sync_daily() {
     global $wpdb;
 

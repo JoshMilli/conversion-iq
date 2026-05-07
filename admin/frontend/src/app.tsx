@@ -2437,6 +2437,7 @@ export default function App() {
           <HeatmapTab
             nonce={nonce}
             apiBase={(window as any).ConversionIQData?.restUrl || '/wp-json/conversioniq/v1/'}
+            features={liveFeatures}
           />
         )}
 

@@ -34,6 +34,7 @@ interface ScreenshotData {
 interface HeatmapTabProps {
   nonce: string;
   apiBase: string;
+  features?: Record<string, any>;
 }
 
 // ── Canvas heatmap renderer ────────────────────────────────────────────────
@@ -105,15 +106,20 @@ function renderHeatmap(
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-export default function HeatmapTab({ nonce, apiBase }: HeatmapTabProps) {
+export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTabProps) {
   const api = (path: string) => apiBase + path;
   const headers = { 'X-WP-Nonce': nonce };
+
+  // ── Plan-gated heatmap capabilities ──────────────────────────────────────
+  const hasScrollMap    = !!features.heatmap_scroll;
+  const maxHistoryDays  = (features.heatmap_history_days as number) || 7;
+  const allDayOptions   = [7, 30, 90].filter(d => d <= maxHistoryDays);
 
   const [pages, setPages]             = useState<HeatmapPage[]>([]);
   const [pagesLoading, setPagesLoading] = useState(false);
 
   const [selectedUrl, setSelectedUrl] = useState('');
-  const [days, setDays]               = useState(30);
+  const [days, setDays]               = useState<number>(() => Math.min(30, maxHistoryDays));
 
   const [points, setPoints]           = useState<HeatmapPoint[]>([]);
   const [topElements, setTopElements] = useState<TopElement[]>([]);
@@ -283,9 +289,12 @@ export default function HeatmapTab({ nonce, apiBase }: HeatmapTabProps) {
           <div>
             <label style={S.label}>Date range</label>
             <select style={S.select} value={days} onChange={e => setDays(Number(e.target.value))}>
-              <option value={7}>Last 7 days</option>
-              <option value={30}>Last 30 days</option>
-              <option value={90}>Last 90 days</option>
+              {allDayOptions.map(d => (
+                <option key={d} value={d}>Last {d} days</option>
+              ))}
+              {[30, 90].filter(d => d > maxHistoryDays).map(d => (
+                <option key={d} value={d} disabled>Last {d} days (upgrade required)</option>
+              ))}
             </select>
           </div>
           {selectedUrl && (
@@ -311,26 +320,47 @@ export default function HeatmapTab({ nonce, apiBase }: HeatmapTabProps) {
 
         {/* Map type sub-tabs */}
         {selectedUrl && (
-          <div style={{ display: 'flex', gap: 8, marginTop: 16, borderTop: '1px solid #f3f4f6', paddingTop: 16 }}>
-            {(['click', 'scroll'] as const).map(view => (
+          <div style={{ display: 'flex', gap: 8, marginTop: 16, borderTop: '1px solid #f3f4f6', paddingTop: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setMapView('click')}
+              style={{
+                padding: '8px 20px',
+                background: mapView === 'click' ? '#7c3aed' : '#f3f4f6',
+                color: mapView === 'click' ? '#fff' : '#6b7280',
+                border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600,
+                cursor: 'pointer', transition: 'all 0.15s',
+              }}
+            >
+              🖱️ Click Map
+            </button>
+            {hasScrollMap ? (
               <button
-                key={view}
-                onClick={() => setMapView(view)}
+                onClick={() => setMapView('scroll')}
                 style={{
                   padding: '8px 20px',
-                  background: mapView === view ? '#7c3aed' : '#f3f4f6',
-                  color: mapView === view ? '#fff' : '#6b7280',
-                  border: 'none',
-                  borderRadius: 8,
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
+                  background: mapView === 'scroll' ? '#7c3aed' : '#f3f4f6',
+                  color: mapView === 'scroll' ? '#fff' : '#6b7280',
+                  border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600,
+                  cursor: 'pointer', transition: 'all 0.15s',
                 }}
               >
-                {view === 'click' ? '🖱️ Click Map' : '📜 Scroll Map'}
+                📜 Scroll Map
               </button>
-            ))}
+            ) : (
+              <span
+                title="Upgrade to Professional to unlock Scroll Map"
+                style={{
+                  padding: '8px 20px',
+                  background: '#f9fafb',
+                  color: '#d1d5db',
+                  border: '1px dashed #d1d5db',
+                  borderRadius: 8, fontSize: 14, fontWeight: 600,
+                  cursor: 'not-allowed',
+                }}
+              >
+                📜 Scroll Map <span style={{ fontSize: 11, marginLeft: 4, background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 4 }}>Pro</span>
+              </span>
+            )}
           </div>
         )}
 
