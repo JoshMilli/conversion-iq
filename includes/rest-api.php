@@ -2837,7 +2837,7 @@ function conversioniq_heatmap_record( WP_REST_Request $request ) {
         $x_pct       = isset( $evt['x_pct'] ) ? round( (float) $evt['x_pct'], 3 ) : null;
         $y_pct       = isset( $evt['y_pct'] ) ? round( (float) $evt['y_pct'], 3 ) : null;
         $element_tag = isset( $evt['element_tag'] ) ? sanitize_key( substr( $evt['element_tag'], 0, 50 ) ) : null;
-        $element_txt = isset( $evt['element_text'] ) ? sanitize_text_field( substr( $evt['element_text'], 0, 255 ) ) : null;
+        $element_txt = isset( $evt['element_text'] ) ? sanitize_text_field( substr( $evt['element_text'], 0, 100 ) ) : null;
         $session_id  = isset( $evt['session_id'] ) ? preg_replace( '/[^a-z0-9]/i', '', substr( $evt['session_id'], 0, 100 ) ) : null;
         $viewport_w  = isset( $evt['viewport_w'] ) ? absint( $evt['viewport_w'] ) : null;
         $viewport_h  = isset( $evt['viewport_h'] ) ? absint( $evt['viewport_h'] ) : null;

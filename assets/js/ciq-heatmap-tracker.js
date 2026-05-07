@@ -73,6 +73,80 @@
 
     // ── Click tracking ────────────────────────────────────────────────────
 
+    /**
+     * Walk up from the clicked element to find the nearest "meaningful" ancestor
+     * so we record the button/link/heading that was actually intended, not a
+     * giant wrapper div whose textContent spans the whole section.
+     *
+     * Priority:
+     *   1. Interactive: a, button, input, select, textarea, label, summary
+     *   2. Semantic:    h1-h6, p, li, td, th, figcaption, span (with text)
+     *   3. Any element with role="button" or role="link"
+     * Stops after 5 levels to avoid climbing to <body>.
+     */
+    function getClickTarget(el) {
+        var interactive = { a:1, button:1, input:1, select:1, textarea:1, label:1, summary:1 };
+        var semantic    = { h1:1, h2:1, h3:1, h4:1, h5:1, h6:1, p:1, li:1, td:1, th:1, span:1, figcaption:1 };
+        var current = el;
+        var levels  = 0;
+
+        while (current && current.tagName && current !== document.body && levels < 5) {
+            var t = (current.tagName || '').toLowerCase();
+            if (interactive[t]) { break; }
+            if (semantic[t])    { break; }
+            var role = current.getAttribute ? current.getAttribute('role') : '';
+            if (role === 'button' || role === 'link' || role === 'menuitem') { break; }
+            current = current.parentElement;
+            levels++;
+        }
+
+        if (!current || !current.tagName || current === document.body) { current = el; }
+
+        var tag = (current.tagName || '').toLowerCase().slice(0, 50);
+        var t   = tag;
+        var text = '';
+
+        // For form inputs: use value / placeholder / aria-label
+        if (t === 'input' || t === 'textarea') {
+            text = current.value || current.getAttribute('placeholder') || current.getAttribute('aria-label') || '';
+        }
+        // For select: use selected option label, not the full options list
+        else if (t === 'select') {
+            var sel = current.options && current.selectedIndex >= 0
+                ? current.options[current.selectedIndex].text : '';
+            text = sel || current.getAttribute('aria-label') || current.getAttribute('name') || 'select';
+        }
+        // For images: use alt text
+        else if (t === 'img') {
+            text = current.alt || current.getAttribute('title') || '';
+        }
+        // For everything else: prefer aria-label/title, then direct text nodes only
+        else {
+            text = current.getAttribute('aria-label') ||
+                   current.getAttribute('title') || '';
+
+            if (!text) {
+                // Only collect direct TEXT_NODE children — avoids including
+                // the full subtree text of container elements like div/section
+                var directText = '';
+                for (var i = 0; i < current.childNodes.length; i++) {
+                    if (current.childNodes[i].nodeType === 3) {
+                        directText += current.childNodes[i].textContent || '';
+                    }
+                }
+                text = directText.replace(/\s+/g, ' ').trim();
+            }
+
+            // Last resort for leaf elements: use textContent (still capped tightly)
+            if (!text && !current.children.length) {
+                text = (current.textContent || '').replace(/\s+/g, ' ').trim();
+            }
+        }
+
+        // Enforce a tight 100-char cap — long text rarely groups usefully
+        return { tag: tag, text: text.slice(0, 100) };
+    }
+
     document.addEventListener('click', function (e) {
         var dims = getPageDimensions();
         if (!dims.w || !dims.h) { return; }
@@ -86,17 +160,14 @@
 
         if (xPct < 0 || xPct > 100 || yPct < 0 || yPct > 100) { return; }
 
-        var target = e.target || {};
-        var tag    = (target.tagName || '').toLowerCase().slice(0, 50);
-        var text   = ((target.textContent || target.value || target.alt || '') + '')
-                         .replace(/\s+/g, ' ').trim().slice(0, 255);
+        var info = getClickTarget(e.target);
 
         queue.push({
             type:         'click',
             x_pct:        xPct,
             y_pct:        yPct,
-            element_tag:  tag,
-            element_text: text,
+            element_tag:  info.tag,
+            element_text: info.text,
             session_id:   sessionId,
             viewport_w:   window.innerWidth,
             viewport_h:   window.innerHeight
