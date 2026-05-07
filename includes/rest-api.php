@@ -3200,19 +3200,27 @@ function conversioniq_heatmap_screenshot( WP_REST_Request $request ) {    $body 
 function conversioniq_heatmap_trigger_sync() {
     global $wpdb;
 
+    ciq_log( '🔧 Heatmap trigger-sync: endpoint called by admin.' );
+
     $api_key = get_option( 'conversioniq_api_key', '' );
     $org_id  = get_option( 'conversioniq_organization_id', '' );
 
+    $cron_ts  = wp_next_scheduled( 'conversioniq_heatmap_sync' );
     $diagnostics = array(
         'api_key_set'      => ! empty( $api_key ),
         'org_id_set'       => ! empty( $org_id ),
-        'cron_scheduled'   => (bool) wp_next_scheduled( 'conversioniq_heatmap_sync' ),
-        'cron_next_utc'    => wp_next_scheduled( 'conversioniq_heatmap_sync' )
-                                ? gmdate( 'Y-m-d H:i:s', wp_next_scheduled( 'conversioniq_heatmap_sync' ) ) . ' UTC'
+        'cron_scheduled'   => (bool) $cron_ts,
+        'cron_next_utc'    => $cron_ts
+                                ? gmdate( 'Y-m-d H:i:s', $cron_ts ) . ' UTC'
                                 : 'not scheduled',
     );
 
+    ciq_log( '🔧 Heatmap trigger-sync diagnostics: api_key_set=' . ( $diagnostics['api_key_set'] ? 'yes' : 'NO' )
+        . ' org_id_set=' . ( $diagnostics['org_id_set'] ? 'yes' : 'NO' )
+        . ' cron=' . $diagnostics['cron_next_utc'] );
+
     if ( ! $api_key || ! $org_id ) {
+        ciq_log( '🔧 Heatmap trigger-sync: aborting — missing api_key or org_id.' );
         return new WP_REST_Response( array(
             'success'     => false,
             'message'     => 'No API key or organization ID — activate your license first.',
@@ -3225,18 +3233,20 @@ function conversioniq_heatmap_trigger_sync() {
     $day_start = $yesterday . ' 00:00:00';
     $day_end   = $yesterday . ' 23:59:59';
 
-    $event_count = (int) $wpdb->get_var( $wpdb->prepare(
+    $event_count  = (int) $wpdb->get_var( $wpdb->prepare(
         "SELECT COUNT(*) FROM {$table} WHERE recorded_at BETWEEN %s AND %s",
         $day_start, $day_end
     ) );
-
     $total_events = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
 
-    $diagnostics['events_yesterday'] = $event_count;
+    $diagnostics['events_yesterday']      = $event_count;
     $diagnostics['total_events_all_time'] = $total_events;
-    $diagnostics['syncing_date'] = $yesterday;
+    $diagnostics['syncing_date']          = $yesterday;
+
+    ciq_log( '🔧 Heatmap trigger-sync: events_yesterday=' . $event_count . ' total_all_time=' . $total_events . ' date=' . $yesterday );
 
     if ( $event_count === 0 ) {
+        ciq_log( '🔧 Heatmap trigger-sync: no events for ' . $yesterday . ' — nothing to sync.' );
         return new WP_REST_Response( array(
             'success'     => false,
             'message'     => "No heatmap events recorded for {$yesterday}. Nothing to sync.",
@@ -3244,14 +3254,13 @@ function conversioniq_heatmap_trigger_sync() {
         ), 200 );
     }
 
-    // Run the actual sync and capture the HTTP result
-    ob_start();
+    ciq_log( '🔧 Heatmap trigger-sync: calling conversioniq_heatmap_sync_daily() now...' );
     conversioniq_heatmap_sync_daily();
-    ob_end_clean();
+    ciq_log( '🔧 Heatmap trigger-sync: conversioniq_heatmap_sync_daily() returned.' );
 
     return new WP_REST_Response( array(
         'success'     => true,
-        'message'     => "Sync triggered for {$yesterday} ({$event_count} events). Check debug logs for HTTP result.",
+        'message'     => "Sync triggered for {$yesterday} ({$event_count} events). Check debug logs for the HTTP result.",
         'diagnostics' => $diagnostics,
     ), 200 );
 }

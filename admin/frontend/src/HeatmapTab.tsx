@@ -137,6 +137,9 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
   const [scrollMilestones, setScrollMilestones]     = useState<{ milestone: number; sessions: number }[]>([]);
   const [scrollLoading, setScrollLoading]           = useState(false);
 
+  const [syncLoading, setSyncLoading]               = useState(false);
+  const [syncResult, setSyncResult]                 = useState<{ success: boolean; message: string; diagnostics?: Record<string, any> } | null>(null);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef    = useRef<HTMLImageElement>(null);
 
@@ -215,6 +218,20 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
         setSsError(msg);
       })
       .finally(() => setSsLoading(false));
+  };
+
+  // ── Trigger manual Supabase sync ──────────────────────────────────────────
+  const triggerSync = () => {
+    setSyncLoading(true);
+    setSyncResult(null);
+    axios.post(api('heatmap/trigger-sync'), {}, { headers })
+      .then(r => setSyncResult(r.data))
+      .catch(err => setSyncResult({
+        success: false,
+        message: err.response?.data?.message || `HTTP ${err.response?.status || '?'}: ${JSON.stringify(err.response?.data || err.message)}`,
+        diagnostics: err.response?.data?.diagnostics,
+      }))
+      .finally(() => setSyncLoading(false));
   };
 
   // ── Draw heatmap on canvas when points or screenshot change ───────────────
@@ -646,6 +663,55 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
           })()}
         </section>
       )}
+
+      {/* Supabase sync debug panel */}
+      <section style={{ ...S.card, borderTop: '3px solid #f3f4f6' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: '#374151' }}>Supabase Sync</h3>
+            <p style={{ margin: 0, fontSize: 13, color: '#9ca3af' }}>
+              Syncs yesterday's heatmap summaries to your SaaS dashboard. Runs automatically at 03:00 UTC daily.
+            </p>
+          </div>
+          <button
+            style={S.btn('#1e3a5f', syncLoading)}
+            onClick={triggerSync}
+            disabled={syncLoading}
+          >
+            {syncLoading ? 'Running sync…' : '▶ Test Sync Now'}
+          </button>
+        </div>
+
+        {syncResult && (
+          <div style={{
+            marginTop: 16,
+            padding: '14px 18px',
+            background: syncResult.success ? '#f0fdf4' : '#fef9c3',
+            border: `1px solid ${syncResult.success ? '#bbf7d0' : '#fde047'}`,
+            borderRadius: 8,
+          }}>
+            <p style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 600, color: syncResult.success ? '#15803d' : '#92400e' }}>
+              {syncResult.success ? '✅' : '⚠️'} {syncResult.message}
+            </p>
+            {syncResult.diagnostics && (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <tbody>
+                  {Object.entries(syncResult.diagnostics).map(([k, v]) => (
+                    <tr key={k} style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+                      <td style={{ padding: '4px 8px 4px 0', color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap', width: 200 }}>
+                        {k.replace(/_/g, ' ')}
+                      </td>
+                      <td style={{ padding: '4px 0', color: '#111827', fontFamily: 'monospace' }}>
+                        {String(v)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* Empty state — license active, no pages tracked yet */}
       {!pagesLoading && pages.length === 0 && !error && (
