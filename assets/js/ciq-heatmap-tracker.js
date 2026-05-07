@@ -14,12 +14,18 @@
     var cfg = window.ciqTrackerConfig || {};
     var endpoint = cfg.endpoint || '';
 
-    // Don't track inside the Elementor editor / preview iframe
+    // Don't track inside page builders, admin, or any iframe
     if (
-        typeof window.elementor !== 'undefined' ||
+        typeof window.elementor !== 'undefined' ||           // Elementor editor global
+        window.self !== window.top ||                        // inside any iframe (cross-origin safe)
+        window.location.pathname.indexOf('/wp-admin') !== -1 ||
+        window.location.pathname.indexOf('/wp-login.php') !== -1 ||
         window.location.search.indexOf('elementor-preview') !== -1 ||
-        window.location.search.indexOf('et_fb=') !== -1 ||  // Divi front-end builder
-        window.frameElement !== null                         // any nested iframe
+        window.location.search.indexOf('preview_id=') !== -1 ||
+        window.location.search.indexOf('fl_builder') !== -1 ||
+        window.location.search.indexOf('et_fb=') !== -1 ||
+        window.location.search.indexOf('et_pb_preview') !== -1 ||
+        window.location.search.indexOf('preview=true') !== -1
     ) { return; }
 
     // Normalise page URL — strip volatile/private query params so visits

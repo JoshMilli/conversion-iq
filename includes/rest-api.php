@@ -2792,6 +2792,46 @@ function conversioniq_remote_audit(WP_REST_Request $request)
 // ── Heatmap Callbacks ──────────────────────────────────────────────────────
 
 /**
+/**
+ * Return true if a URL should never be recorded as a heatmap page.
+ * Covers: WP admin/system paths, page-builder previews, draft previews.
+ */
+function ciq_is_internal_url( $url ) {
+    if ( ! $url ) { return true; }
+
+    $parsed = wp_parse_url( $url );
+    if ( ! $parsed ) { return true; }
+
+    // Block well-known WP admin / system paths
+    $path = $parsed['path'] ?? '';
+    $blocked_paths = array(
+        '/wp-admin', '/wp-login.php', '/wp-cron.php',
+        '/wp-json/',  '/xmlrpc.php',   '/feed',
+    );
+    foreach ( $blocked_paths as $bp ) {
+        if ( strpos( $path, $bp ) !== false ) { return true; }
+    }
+
+    // Block builder / preview query-string params
+    $qs_arr = array();
+    if ( ! empty( $parsed['query'] ) ) {
+        wp_parse_str( $parsed['query'], $qs_arr );
+    }
+    $blocked_params = array(
+        'elementor-preview', 'elementor_library',
+        'preview_id', 'preview_nonce',
+        'et_pb_preview', 'fl_builder',
+    );
+    foreach ( $blocked_params as $bp ) {
+        if ( isset( $qs_arr[ $bp ] ) ) { return true; }
+    }
+    // WP draft preview
+    if ( isset( $qs_arr['preview'] ) && $qs_arr['preview'] === 'true' ) { return true; }
+
+    return false;
+}
+
+/**
  * POST /heatmap/record
  * Public endpoint — receives batched events from the frontend tracker.
  * Rate-limited to 60 inserts per IP per minute to prevent abuse.
@@ -2825,14 +2865,9 @@ function conversioniq_heatmap_record( WP_REST_Request $request ) {
         }
     }
 
-    // Hard-reject Elementor / builder preview URLs that should never be tracked
-    $blocked_params = array( 'elementor-preview', 'elementor_library', 'et_pb_preview', 'fl_builder', 'preview_id' );
-    $parsed_qs      = array();
-    wp_parse_str( wp_parse_url( $raw_url, PHP_URL_QUERY ) ?? '', $parsed_qs );
-    foreach ( $blocked_params as $bp ) {
-        if ( isset( $parsed_qs[ $bp ] ) ) {
-            return new WP_REST_Response( array( 'success' => false, 'message' => 'Preview URL not tracked' ), 400 );
-        }
+    // Reject any URL that looks like an admin/builder/preview page
+    if ( ciq_is_internal_url( $raw_url ) ) {
+        return new WP_REST_Response( array( 'success' => false, 'message' => 'Internal URL not tracked' ), 400 );
     }
 
     // Strip volatile params so the same page always maps to a single URL
@@ -2969,6 +3004,14 @@ function conversioniq_heatmap_pages( WP_REST_Request $request ) {
                 COUNT(DISTINCT session_id) as total_sessions,
                 MAX(recorded_at) as last_event
          FROM $table
+         WHERE page_url NOT LIKE '%/wp-admin%'
+           AND page_url NOT LIKE '%/wp-login.php%'
+           AND page_url NOT LIKE '%/wp-json/%'
+           AND page_url NOT LIKE '%elementor-preview=%'
+           AND page_url NOT LIKE '%preview_id=%'
+           AND page_url NOT LIKE '%fl_builder=%'
+           AND page_url NOT LIKE '%et_pb_preview=%'
+           AND page_url NOT LIKE '%preview=true%'
          GROUP BY page_url
          ORDER BY total_events DESC
          LIMIT 100",
@@ -3315,10 +3358,18 @@ function conversioniq_heatmap_sync_daily() {
 
     ciq_log( '🔄 Heatmap sync_daily: syncing date=' . $yesterday );
 
-    // All distinct pages that had any event yesterday
+    // All distinct pages that had any event yesterday — excluding internal/builder URLs
     $pages = $wpdb->get_col( $wpdb->prepare(
         "SELECT DISTINCT page_url FROM {$table}
          WHERE recorded_at BETWEEN %s AND %s
+           AND page_url NOT LIKE '%/wp-admin%'
+           AND page_url NOT LIKE '%/wp-login.php%'
+           AND page_url NOT LIKE '%/wp-json/%'
+           AND page_url NOT LIKE '%elementor-preview=%'
+           AND page_url NOT LIKE '%preview_id=%'
+           AND page_url NOT LIKE '%fl_builder=%'
+           AND page_url NOT LIKE '%et_pb_preview=%'
+           AND page_url NOT LIKE '%preview=true%'
          LIMIT 100",
         $day_start,
         $day_end
