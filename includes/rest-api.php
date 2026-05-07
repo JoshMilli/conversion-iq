@@ -2825,6 +2825,29 @@ function conversioniq_heatmap_record( WP_REST_Request $request ) {
         }
     }
 
+    // Hard-reject Elementor / builder preview URLs that should never be tracked
+    $blocked_params = array( 'elementor-preview', 'elementor_library', 'et_pb_preview', 'fl_builder', 'preview_id' );
+    $parsed_qs      = array();
+    wp_parse_str( wp_parse_url( $raw_url, PHP_URL_QUERY ) ?? '', $parsed_qs );
+    foreach ( $blocked_params as $bp ) {
+        if ( isset( $parsed_qs[ $bp ] ) ) {
+            return new WP_REST_Response( array( 'success' => false, 'message' => 'Preview URL not tracked' ), 400 );
+        }
+    }
+
+    // Strip volatile params so the same page always maps to a single URL
+    $strip_params = array( 'ver', 'preview_nonce', 'reauth', 'redirect_to', '_wpnonce' );
+    $parts        = wp_parse_url( $raw_url );
+    if ( ! empty( $parts['query'] ) ) {
+        wp_parse_str( $parts['query'], $qs_arr );
+        foreach ( $strip_params as $sp ) { unset( $qs_arr[ $sp ] ); }
+        $new_qs  = ! empty( $qs_arr ) ? '?' . http_build_query( $qs_arr ) : '';
+        $raw_url = ( $parts['scheme'] ?? 'https' ) . '://' . ( $parts['host'] ?? '' )
+                   . ( isset( $parts['port'] ) ? ':' . $parts['port'] : '' )
+                   . ( $parts['path'] ?? '/' )
+                   . $new_qs;
+    }
+
     // Limit to 50 events per batch
     $events = array_slice( $events, 0, 50 );
 

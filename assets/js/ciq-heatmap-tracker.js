@@ -13,7 +13,33 @@
 
     var cfg = window.ciqTrackerConfig || {};
     var endpoint = cfg.endpoint || '';
-    var pageUrl  = window.location.href;
+
+    // Don't track inside the Elementor editor / preview iframe
+    if (
+        typeof window.elementor !== 'undefined' ||
+        window.location.search.indexOf('elementor-preview') !== -1 ||
+        window.location.search.indexOf('et_fb=') !== -1 ||  // Divi front-end builder
+        window.frameElement !== null                         // any nested iframe
+    ) { return; }
+
+    // Normalise page URL — strip volatile/private query params so visits
+    // to the same page always produce a single record.
+    // Kept: UTM params (useful for segmentation), page / p / cat etc.
+    // Stripped: Elementor versioning, WP nonces, preview ids, Beaver Builder.
+    var _stripParams = ['ver', 'elementor-preview', 'elementor_library',
+        'preview_id', 'preview_nonce', 'preview', 'et_pb_preview',
+        'fl_builder', 'reauth', 'redirect_to', '_wpnonce'];
+    var pageUrl = (function () {
+        try {
+            var u = new URL(window.location.href);
+            _stripParams.forEach(function (k) { u.searchParams.delete(k); });
+            // Remove empty query string
+            var qs = u.searchParams.toString();
+            return u.origin + u.pathname + (qs ? '?' + qs : '') + (u.hash || '');
+        } catch (e) {
+            return window.location.href;
+        }
+    }());
 
     if (!endpoint || !pageUrl) { return; }
 
