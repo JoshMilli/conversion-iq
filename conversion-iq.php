@@ -104,10 +104,10 @@ add_action( 'init', function() {
         wp_schedule_event( time() + DAY_IN_SECONDS, 'weekly', 'conversioniq_prune_db' );
     }
 
-    // Schedule nightly heatmap summary sync to Supabase (only if licensed)
-    if ( get_option( 'conversioniq_api_key' ) && ! wp_next_scheduled( 'conversioniq_heatmap_sync' ) ) {
-        // Offset by 3h so it runs in low-traffic hours rather than exactly at midnight
-        wp_schedule_event( strtotime( 'tomorrow 03:00:00' ), 'daily', 'conversioniq_heatmap_sync' );
+    // Heatmap sync: remove old-style scheduled event if it exists (replaced by admin_init fallback)
+    $heatmap_cron = wp_next_scheduled( 'conversioniq_heatmap_sync' );
+    if ( $heatmap_cron ) {
+        wp_unschedule_event( $heatmap_cron, 'conversioniq_heatmap_sync' );
     }
 
     // Schedule 2-minute audit-job poller if not already scheduled
@@ -135,8 +135,39 @@ add_action( 'conversioniq_prune_db', function() {
     ConversionIQ_DB::prune_old_records();
 } );
 
-// Nightly heatmap summary sync
+// Nightly heatmap summary sync (legacy cron hook — kept in case someone re-schedules it)
 add_action( 'conversioniq_heatmap_sync', 'conversioniq_heatmap_sync_daily' );
+
+// ── Heatmap daily sync fallback — fires on admin_init, once per UTC day ──────
+// More reliable than WP-Cron alone: runs the first time any admin visits the
+// dashboard after midnight UTC, guaranteeing yesterday's data gets synced even
+// on low-traffic sites where no page load happens at the scheduled 3am time.
+add_action( 'admin_init', function() {
+    // Only sync when a license is active
+    if ( ! get_option( 'conversioniq_api_key' ) ) {
+        return;
+    }
+
+    $today_utc = gmdate( 'Y-m-d' );
+    $last_sync = get_option( 'conversioniq_heatmap_last_sync_date', '' );
+
+    // Already synced today — nothing to do
+    if ( $last_sync === $today_utc ) {
+        return;
+    }
+
+    // Prevent concurrent runs (e.g. two admin tabs open at once)
+    if ( get_transient( 'ciq_heatmap_sync_lock' ) ) {
+        return;
+    }
+    set_transient( 'ciq_heatmap_sync_lock', 1, 300 ); // 5-minute lock
+
+    // Mark as run for today before the sync so a page reload doesn\'t double-run
+    update_option( 'conversioniq_heatmap_last_sync_date', $today_utc );
+
+    ciq_log( '🔄 Heatmap admin_init sync: running for ' . $today_utc );
+    conversioniq_heatmap_sync_daily();
+} );
 
 // ── Audit Jobs Poller ──────────────────────────────────────────────────────
 

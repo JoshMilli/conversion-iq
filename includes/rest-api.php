@@ -3207,12 +3207,14 @@ function conversioniq_heatmap_trigger_sync() {
 
     $cron_ts  = wp_next_scheduled( 'conversioniq_heatmap_sync' );
     $diagnostics = array(
-        'api_key_set'      => ! empty( $api_key ),
-        'org_id_set'       => ! empty( $org_id ),
-        'cron_scheduled'   => (bool) $cron_ts,
-        'cron_next_utc'    => $cron_ts
-                                ? gmdate( 'Y-m-d H:i:s', $cron_ts ) . ' UTC'
-                                : 'not scheduled',
+        'api_key_set'          => ! empty( $api_key ),
+        'org_id_set'           => ! empty( $org_id ),
+        'cron_scheduled'       => (bool) $cron_ts,
+        'cron_next_utc'        => $cron_ts
+                                    ? gmdate( 'Y-m-d H:i:s', $cron_ts ) . ' UTC'
+                                    : 'not scheduled (admin_init fallback is active)',
+        'last_sync_date'       => get_option( 'conversioniq_heatmap_last_sync_date', 'never' ),
+        'today_utc'            => gmdate( 'Y-m-d' ),
     );
 
     ciq_log( '🔧 Heatmap trigger-sync diagnostics: api_key_set=' . ( $diagnostics['api_key_set'] ? 'yes' : 'NO' )
@@ -3274,8 +3276,12 @@ function conversioniq_heatmap_sync_daily() {
     $org_id   = get_option( 'conversioniq_organization_id', '' );
     $site_url = get_site_url();
 
+    // Record that the sync ran today regardless of whether there\'s data
+    update_option( 'conversioniq_heatmap_last_sync_date', gmdate( 'Y-m-d' ) );
+
     // Nothing to sync without a license
     if ( ! $api_key || ! $org_id ) {
+        ciq_log( '🔄 Heatmap sync_daily: aborting — no api_key or org_id.' );
         return;
     }
 
@@ -3283,6 +3289,8 @@ function conversioniq_heatmap_sync_daily() {
     $yesterday = gmdate( 'Y-m-d', strtotime( '-1 day' ) );
     $day_start = $yesterday . ' 00:00:00';
     $day_end   = $yesterday . ' 23:59:59';
+
+    ciq_log( '🔄 Heatmap sync_daily: syncing date=' . $yesterday );
 
     // All distinct pages that had any event yesterday
     $pages = $wpdb->get_col( $wpdb->prepare(
@@ -3294,8 +3302,11 @@ function conversioniq_heatmap_sync_daily() {
     ) );
 
     if ( empty( $pages ) ) {
-        return; // Nothing to sync for yesterday
+        ciq_log( '🔄 Heatmap sync_daily: no events for ' . $yesterday . ' — nothing to push.' );
+        return;
     }
+
+    ciq_log( '🔄 Heatmap sync_daily: found ' . count( $pages ) . ' distinct page(s) to sync.' );
 
     $summaries = array();
 
@@ -3310,7 +3321,11 @@ function conversioniq_heatmap_sync_daily() {
             $page_url, $day_start, $day_end
         ), ARRAY_A );
 
-        // Scroll milestone counts — each represents sessions that reached that depth
+        // Scroll milestone counts
+        // Count distinct sessions that fired a scroll event at each milestone.
+        // The tracker stores element_text = '25%', '50%', '75%', '90%', '100%'.
+        // Use LIKE 'XX%' to be safe against any whitespace/encoding variation,
+        // but anchor to a digit boundary so '100%' doesn\'t match '10%'.
         $scroll_counts = array();
         foreach ( array( 25, 50, 75, 90, 100 ) as $m ) {
             $scroll_counts[ $m ] = (int) $wpdb->get_var( $wpdb->prepare(
@@ -3318,7 +3333,10 @@ function conversioniq_heatmap_sync_daily() {
                  WHERE page_url = %s AND event_type = 'scroll'
                    AND element_text = %s
                    AND recorded_at BETWEEN %s AND %s",
-                $page_url, $m . '%', $day_start, $day_end
+                $page_url,
+                (string) $m . '%',
+                $day_start,
+                $day_end
             ) );
         }
 
@@ -3362,6 +3380,8 @@ function conversioniq_heatmap_sync_daily() {
     if ( empty( $summaries ) ) {
         return;
     }
+
+    ciq_log( '🔄 Heatmap sync_daily: built ' . count( $summaries ) . ' summary record(s). POSTing to SaaS...' );
 
     $response = wp_remote_post( 'https://conversioniq-app.com/api/heatmap/sync-summary', array(
         'headers' => array(
