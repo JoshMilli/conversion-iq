@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 2.0.70
+ * Version: 2.0.82
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,10 +15,16 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'CONVERSION_IQ_VERSION', '2.0.70' );
+define( 'CONVERSION_IQ_VERSION', '2.0.82' );
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
+
+// Google PageSpeed Insights API key — used by conversioniq_fetch_core_web_vitals().
+// Can be overridden per-environment by defining CONVERSIONIQ_PAGESPEED_KEY in wp-config.php.
+if ( ! defined( 'CONVERSIONIQ_PAGESPEED_KEY' ) ) {
+    define( 'CONVERSIONIQ_PAGESPEED_KEY', 'AIzaSyAtH41-fIhW2ywWvS1RsC3Yg_Vton6TyhM' );
+}
 
 // Initialize Plugin Update Checker
 require CONVERSION_IQ_DIR . 'lib/plugin-update-checker-5.6/plugin-update-checker.php';
@@ -83,6 +89,7 @@ require_once CONVERSION_IQ_DIR . 'includes/class-config-manager.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-database.php';
 require_once CONVERSION_IQ_DIR . 'includes/rest-api.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-ai-engine.php';
+require_once CONVERSION_IQ_DIR . 'includes/class-seo-analyzer.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-reports.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-automated-reports.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-supabase-sync.php';
@@ -114,6 +121,11 @@ add_action( 'init', function() {
     if ( ! wp_next_scheduled( 'conversioniq_poll_audit_jobs' ) ) {
         wp_schedule_event( time() + 120, 'conversioniq_twominutes', 'conversioniq_poll_audit_jobs' );
     }
+
+    // Schedule weekly SEO full-site sweep if not already scheduled
+    if ( ! wp_next_scheduled( 'conversioniq_seo_sweep' ) ) {
+        wp_schedule_event( time() + 2 * DAY_IN_SECONDS, 'weekly', 'conversioniq_seo_sweep' );
+    }
     
     // Force flush rewrite rules if version changed (for new REST endpoints)
     $stored_version = get_option( 'conversioniq_version', '0' );
@@ -133,6 +145,112 @@ add_action( 'conversioniq_sync_config', function() {
 // Weekly DB pruning cron — keep tables from growing unbounded across 300+ sites
 add_action( 'conversioniq_prune_db', function() {
     ConversionIQ_DB::prune_old_records();
+} );
+
+// ── SEO Audit: auto-trigger on save_post ──────────────────────────────────
+// When a page or post is published/updated, schedule a deferred SEO audit so
+// the SaaS dashboard always has fresh scores without blocking the save response.
+add_action( 'save_post', function( $post_id, $post, $update ) {
+    // Only licensed installs
+    if ( ! get_option( 'conversioniq_api_key' ) ) {
+        return;
+    }
+    // Only pages and posts
+    if ( ! in_array( $post->post_type, array( 'page', 'post' ), true ) ) {
+        return;
+    }
+    // Only published content
+    if ( $post->post_status !== 'publish' ) {
+        return;
+    }
+    // Skip autosaves and revisions
+    if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+        return;
+    }
+    if ( wp_is_post_revision( $post_id ) ) {
+        return;
+    }
+    // Throttle: no more than one auto-audit per post per 60 seconds
+    if ( get_transient( 'ciq_seo_autosave_' . $post_id ) ) {
+        return;
+    }
+    set_transient( 'ciq_seo_autosave_' . $post_id, 1, 60 );
+
+    // Defer by 30 s so all postmeta (Yoast/RankMath) is flushed before we read it
+    wp_schedule_single_event( time() + 30, 'conversioniq_seo_audit_single', array( $post_id ) );
+    ciq_log( 'SEO auto-audit: scheduled for post_id=' . $post_id . ' ("' . $post->post_title . '") in 30s' );
+}, 10, 3 );
+
+// Handler for deferred single-page SEO audit
+add_action( 'conversioniq_seo_audit_single', function( $post_id ) {
+    $post = get_post( $post_id );
+    if ( ! $post || $post->post_status !== 'publish' ) {
+        return;
+    }
+    ciq_log( 'SEO auto-audit: running for post_id=' . $post_id . ' ("' . $post->post_title . '")' );
+
+    $result = ConversionIQ_SEO_Analyzer::analyze( $post_id );
+    if ( is_wp_error( $result ) ) {
+        ciq_log( 'SEO auto-audit: error — ' . $result->get_error_message() );
+        return;
+    }
+
+    $supabase = new ConversionIQ_Supabase_Sync();
+    $supabase->send_seo_audit( $result );
+    ciq_log( 'SEO auto-audit: synced — score=' . $result['overall_score'] . ' for post_id=' . $post_id );
+} );
+
+// ── SEO Audit: weekly full-site sweep ────────────────────────────────────
+add_action( 'conversioniq_seo_sweep', function() {
+    if ( ! get_option( 'conversioniq_api_key' ) ) {
+        return;
+    }
+
+    ciq_log( 'SEO sweep: starting weekly full-site audit' );
+
+    // Load the last-audited map: post_id => unix timestamp
+    $last_audited = get_option( 'conversioniq_seo_last_audited', array() );
+    $cutoff       = time() - 7 * DAY_IN_SECONDS;
+
+    // Get all published pages + posts ordered by ID so we page through consistently
+    $candidates = get_posts( array(
+        'post_type'      => array( 'page', 'post' ),
+        'post_status'    => 'publish',
+        'posts_per_page' => -1,
+        'fields'         => 'ids',
+        'orderby'        => 'ID',
+        'order'          => 'ASC',
+    ) );
+
+    // Filter to those not audited in the last 7 days
+    $due = array_filter( $candidates, function( $id ) use ( $last_audited, $cutoff ) {
+        return empty( $last_audited[ $id ] ) || $last_audited[ $id ] < $cutoff;
+    } );
+
+    // Sort oldest-audited first so we always make progress
+    usort( $due, function( $a, $b ) use ( $last_audited ) {
+        return ( $last_audited[ $a ] ?? 0 ) - ( $last_audited[ $b ] ?? 0 );
+    } );
+
+    // Process up to 5 per cron run to stay well within execution limits
+    $batch   = array_slice( $due, 0, 5 );
+    $synced  = 0;
+    $supabase = new ConversionIQ_Supabase_Sync();
+
+    foreach ( $batch as $post_id ) {
+        $result = ConversionIQ_SEO_Analyzer::analyze( $post_id );
+        if ( is_wp_error( $result ) ) {
+            ciq_log( 'SEO sweep: error for post_id=' . $post_id . ' — ' . $result->get_error_message() );
+            continue;
+        }
+        $supabase->send_seo_audit( $result );
+        $last_audited[ $post_id ] = time();
+        $synced++;
+        ciq_log( 'SEO sweep: audited post_id=' . $post_id . ' score=' . $result['overall_score'] );
+    }
+
+    update_option( 'conversioniq_seo_last_audited', $last_audited );
+    ciq_log( 'SEO sweep: done — audited ' . $synced . ' of ' . count( $due ) . ' due pages (' . count( $candidates ) . ' total)' );
 } );
 
 // Nightly heatmap summary sync (legacy cron hook — kept in case someone re-schedules it)

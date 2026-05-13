@@ -740,6 +740,34 @@ add_action('rest_api_init', function () {
             'callback'            => 'conversioniq_heatmap_trigger_sync',
             'permission_callback' => function () { return current_user_can('manage_options'); },
         ));
+
+        // SEO audit — on-page analysis for a specific page (Tier 1 + Tier 2 RUM CWV)
+        register_rest_route('conversioniq/v1', '/seo-audit', array(
+            'methods'             => 'GET',
+            'callback'            => 'conversioniq_run_seo_audit',
+            'permission_callback' => function () { return current_user_can('manage_options'); },
+            'args'                => array(
+                'page_id' => array(
+                    'required'          => true,
+                    'validate_callback' => function( $v ) { return is_numeric( $v ) && $v > 0; },
+                    'sanitize_callback' => 'absint',
+                ),
+            ),
+        ));
+
+        // SEO last result — returns the cached result from the most recent audit, no new analysis
+        register_rest_route('conversioniq/v1', '/seo-last', array(
+            'methods'             => 'GET',
+            'callback'            => 'conversioniq_get_last_seo_audit',
+            'permission_callback' => function () { return current_user_can('manage_options'); },
+            'args'                => array(
+                'page_id' => array(
+                    'required'          => true,
+                    'validate_callback' => function( $v ) { return is_numeric( $v ) && $v > 0; },
+                    'sanitize_callback' => 'absint',
+                ),
+            ),
+        ));
     });
 
 
@@ -850,6 +878,67 @@ function conversioniq_save_automated_settings(WP_REST_Request $request)
     ));
 }
 
+/**
+ * Aggregate Real User Metrics CWV from heatmap session rows for a given page.
+ * Returns the same shape as conversioniq_fetch_core_web_vitals() so callers
+ * can use either data source interchangeably.  Returns null if no RUM data.
+ */
+function conversioniq_get_rum_cwv( $page_url ) {
+    global $wpdb;
+    $sessions_table = $wpdb->prefix . 'conversioniq_heatmap_sessions';
+    $cutoff         = gmdate( 'Y-m-d H:i:s', strtotime( '-30 days' ) );
+
+    $row = $wpdb->get_row( $wpdb->prepare(
+        "SELECT
+            ROUND(AVG(lcp_ms))    AS lcp_ms,
+            ROUND(AVG(cls), 3)    AS cls,
+            ROUND(AVG(fcp_ms))    AS fcp_ms,
+            ROUND(AVG(ttfb_ms))   AS ttfb_ms,
+            ROUND(AVG(inp_ms))    AS inp_ms,
+            COUNT(*)              AS sample_size
+         FROM {$sessions_table}
+         WHERE page_url = %s
+           AND lcp_ms IS NOT NULL
+           AND recorded_at >= %s",
+        $page_url, $cutoff
+    ), ARRAY_A );
+
+    if ( ! $row || (int) $row['sample_size'] < 1 ) { return null; }
+
+    return array(
+        'lcp_ms'         => $row['lcp_ms']  ? (int) $row['lcp_ms']  : null,
+        'cls'            => $row['cls']     !== null ? (float) $row['cls'] : null,
+        'inp_ms'         => $row['inp_ms']  ? (int) $row['inp_ms']  : null,
+        'fcp_ms'         => $row['fcp_ms']  ? (int) $row['fcp_ms']  : null,
+        'ttfb_ms'        => $row['ttfb_ms'] ? (int) $row['ttfb_ms'] : null,
+        'page_weight_kb' => null,
+        'dom_elements'   => null,
+        'perf_score'     => null,
+        'strategy'       => 'rum',
+        'sample_size'    => (int) $row['sample_size'],
+        'measured_at'    => gmdate( 'Y-m-d H:i:s' ),
+    );
+}
+
+/**
+ * Fetch Core Web Vitals for a public URL via Google PageSpeed Insights API.
+ *
+ * Returns an array with lcp_ms, cls, inp_ms, ttfb_ms, page_weight_kb,
+ * dom_elements, and perf_score, or null if the API call fails.
+ *
+ * Optionally uses the constant CONVERSIONIQ_PAGESPEED_KEY (or the
+ * option conversioniq_pagespeed_key) to authenticate the request and
+ * avoid anonymous rate-limits.
+ */
+/**
+ * CWV is now fetched by the SaaS backend after audit sync.
+ * This function is kept only to serve the RUM data path (heatmap sessions).
+ * Returns aggregated Real User Metrics, or null if no data available.
+ */
+function conversioniq_fetch_core_web_vitals( $page_url ) {
+    return conversioniq_get_rum_cwv( $page_url );
+}
+
 function conversioniq_run_audit(WP_REST_Request $request)
 {
     // Rate limiting: one audit request per 30 seconds per user
@@ -952,6 +1041,9 @@ $results = array();
             ciq_log('CPT reviews appended to trust signal context');
         }
 
+        // CWV is now fetched by the SaaS backend after sync — no client-side call needed.
+        $core_web_vitals = null;
+
         // Calculate content hash for change detection (done here so we can use it
         // to decide whether to force a fresh screenshot before the AI call).
         $content_hash = hash('sha256', $content . $html_structure);
@@ -993,6 +1085,7 @@ $results = array();
                 'word_count' => str_word_count($content),
                 'html_structure' => $html_structure,
                 'screenshot_url' => $screenshot_url,
+                'core_web_vitals' => $core_web_vitals,
             ),
         );
 
@@ -1011,6 +1104,14 @@ $results = array();
 
             // Generate a unique token for the public report URL
             $ai['report_token'] = bin2hex(random_bytes(16));
+
+            // Attach Core Web Vitals to the audit record so it syncs to Supabase
+            if ( $core_web_vitals ) {
+                $ai['core_web_vitals'] = $core_web_vitals;
+                ciq_log( 'CWV: attached to audit payload for Supabase sync (token will be set after report_token generation)' );
+            } else {
+                ciq_log( 'CWV: ⚠️ not attached — audit will sync without core_web_vitals' );
+            }
 
             // Check for required fields and log diagnostic info
             $has_clarity = isset($ai['clarity_score']);
@@ -1085,8 +1186,39 @@ $results = array();
                 // Track usage for analytics
                 $supabase_sync->track_usage('analyze_page');
 
-                if (!$sync_success) {
-                    ciq_log('Failed to sync audit to Supabase cloud');
+                if ($sync_success) {
+                    $report_token = is_string( $sync_success ) ? $sync_success : ( $ai['report_token'] ?? '' );
+                    ciq_log( 'Supabase sync: ✅ audit synced (token=' . substr( $report_token, 0, 8 ) . '… score=' . ( $ai['overall_score'] ?? '?' ) . ')' );
+
+                    // Fire-and-forget: ask the SaaS backend to run PageSpeed and
+                    // patch core_web_vitals on the audit row it just received.
+                    $license_key = get_option( 'conversioniq_license_key', '' );
+
+                    ciq_log( 'CWV trigger: checking prerequisites — license_key=' . ( $license_key ? 'present (' . strlen( $license_key ) . ' chars)' : 'MISSING ❌' ) . ' report_token=' . ( $report_token ? substr( $report_token, 0, 8 ) . '…' : 'MISSING ❌' ) );
+
+                    if ( $license_key && $report_token ) {
+                        $trigger_payload = array(
+                            'url'          => $page_url,
+                            'license_key'  => $license_key,
+                            'report_token' => $report_token,
+                        );
+                        ciq_log( 'CWV trigger: dispatching POST to conversioniq-app.com/api/pagespeed — url=' . $page_url . ' token=' . substr( $report_token, 0, 8 ) . '… triggered_at=' . gmdate( 'Y-m-d H:i:s' ) . ' UTC' );
+                        $trigger_start = microtime( true );
+                        wp_remote_post( 'https://conversioniq-app.com/api/pagespeed', array(
+                            'timeout'   => 1,   // don't block the audit response
+                            'blocking'  => false,
+                            'headers'   => array( 'Content-Type' => 'application/json' ),
+                            'body'      => wp_json_encode( $trigger_payload ),
+                        ) );
+                        $trigger_dispatch_ms = round( ( microtime( true ) - $trigger_start ) * 1000 );
+                        ciq_log( 'CWV trigger: dispatched (non-blocking) in ' . $trigger_dispatch_ms . 'ms — SaaS will PATCH audits.core_web_vitals asynchronously' );
+                    } elseif ( ! $license_key ) {
+                        ciq_log( 'CWV trigger: ⚠️ skipped — no license_key stored (Settings → License Key)' );
+                    } else {
+                        ciq_log( 'CWV trigger: ⚠️ skipped — report_token was empty after sync' );
+                    }
+                } else {
+                    ciq_log('Supabase sync: ❌ send_audit() returned false — audit NOT in Supabase, CWV trigger will NOT fire');
                 }
             }
             catch (Exception $e) {
@@ -1110,7 +1242,171 @@ $results = array();
         }
     }
 
+    // Schedule competitor analysis as a background cron job so the audit
+    // response is returned immediately — competitor fetches + AI calls can
+    // take 60-90s which would otherwise hit PHP max_execution_time.
+    $competitors_raw = trim( $business['competitors'] ?? '' );
+    if ( ! empty( $competitors_raw ) ) {
+        // Pass the business profile via a transient so the cron handler can read it
+        set_transient( 'ciq_comp_business', $business, 5 * MINUTE_IN_SECONDS );
+        if ( ! wp_next_scheduled( 'ciq_run_competitor_analysis' ) ) {
+            wp_schedule_single_event( time(), 'ciq_run_competitor_analysis' );
+            if ( function_exists( 'spawn_cron' ) ) spawn_cron();
+            ciq_log( 'Competitors: background job scheduled' );
+        } else {
+            ciq_log( 'Competitors: background job already pending — skipping duplicate schedule' );
+        }
+    }
+
     return rest_ensure_response(array('success' => true, 'results' => $results));
+}
+
+/**
+ * Fetch, AI-score, and upsert each competitor URL from the business profile.
+ *
+ * Runs after the main audit loop. Results go to ciq_competitor_scores in
+ * Supabase so the report's BenchmarkSection can display a Competitor Average
+ * and per-competitor bar chart.
+ *
+ * Capped at 3 competitors per run. Each URL is skipped for 7 days after a
+ * successful analysis to avoid redundant AI calls.
+ *
+ * @param array $business  Business profile from conversion_iq_settings option.
+ */
+// Hook the competitor analysis function to the cron action.
+add_action( 'ciq_run_competitor_analysis', 'conversioniq_run_competitor_analysis_job' );
+
+function conversioniq_run_competitor_analysis_job() {
+    $business = get_transient( 'ciq_comp_business' );
+    if ( ! $business ) {
+        ciq_log( 'Competitors: cron fired but no business transient found — skipping' );
+        return;
+    }
+    delete_transient( 'ciq_comp_business' );
+    ciq_log( 'Competitors: background job started' );
+    conversioniq_analyze_competitors( $business );
+}
+
+function conversioniq_analyze_competitors( $business ) {
+    $competitors_raw = trim( $business['competitors'] ?? '' );
+    if ( empty( $competitors_raw ) ) {
+        ciq_log( 'Competitors: none configured in business profile — skipping' );
+        return;
+    }
+
+    // Parse comma-separated entries into validated URLs.
+    // Accepts: bare domains ("competitor.com"), full URLs ("https://...").
+    // Plain business names without a TLD are skipped — can't infer a URL.
+    $urls = [];
+    foreach ( array_filter( array_map( 'trim', explode( ',', $competitors_raw ) ) ) as $entry ) {
+        if ( preg_match( '/^https?:\/\//i', $entry ) ) {
+            $urls[] = esc_url_raw( $entry );
+        } elseif ( preg_match( '/^[a-z0-9][a-z0-9\-\.]+\.[a-z]{2,}$/i', $entry ) ) {
+            $urls[] = 'https://' . $entry;
+        } else {
+            ciq_log( 'Competitors: skipping "' . $entry . '" — not a recognizable URL or domain' );
+        }
+    }
+
+    if ( empty( $urls ) ) {
+        ciq_log( 'Competitors: no valid URLs found in competitors field — nothing to analyze' );
+        return;
+    }
+
+    // Cap at 3 to keep total audit time reasonable
+    $urls = array_slice( $urls, 0, 3 );
+    ciq_log( 'Competitors: ' . count( $urls ) . ' URL(s) to check: ' . implode( ', ', $urls ) );
+
+    $supabase_sync = new ConversionIQ_Supabase_Sync();
+
+    foreach ( $urls as $competitor_url ) {
+        $cache_key = 'ciq_comp_' . md5( $competitor_url );
+        if ( get_transient( $cache_key ) ) {
+            ciq_log( 'Competitors: ⏭ ' . $competitor_url . ' analyzed within last 7 days — skipping' );
+            continue;
+        }
+
+        $comp_start = microtime( true );
+        ciq_log( 'Competitors: fetching ' . $competitor_url );
+
+        $resp = wp_remote_get( $competitor_url, [
+            'timeout'    => 12,
+            'sslverify'  => false,
+            'user-agent' => 'Mozilla/5.0 (compatible; ConversionIQ/1.0)',
+        ]);
+
+        if ( is_wp_error( $resp ) ) {
+            ciq_log( 'Competitors: ❌ fetch failed for ' . $competitor_url . ' — ' . $resp->get_error_message() );
+            continue;
+        }
+
+        $http_code = wp_remote_retrieve_response_code( $resp );
+        if ( $http_code !== 200 ) {
+            ciq_log( 'Competitors: ❌ HTTP ' . $http_code . ' for ' . $competitor_url . ' — skipping' );
+            continue;
+        }
+
+        $html    = wp_remote_retrieve_body( $resp );
+        $content = wp_strip_all_tags( $html );
+        $content = trim( preg_replace( '/\s+/', ' ', $content ) );
+        $content = substr( $content, 0, 6000 ); // stay within single-chunk AI limit
+
+        // Derive a display name from the page <title>, falling back to hostname
+        $name = parse_url( $competitor_url, PHP_URL_HOST ) ?: $competitor_url;
+        if ( preg_match( '/<title[^>]*>(.*?)<\/title>/is', $html, $m ) ) {
+            $extracted = trim( wp_strip_all_tags( $m[1] ) );
+            if ( ! empty( $extracted ) ) {
+                $name = substr( $extracted, 0, 100 );
+            }
+        }
+
+        ciq_log( 'Competitors: running AI analysis for "' . $name . '"' );
+
+        try {
+            $ai = ConversionIQ_AI::analyze([
+                'business' => $business,
+                'page'     => [
+                    'title'          => $name,
+                    'content'        => $content,
+                    'url'            => $competitor_url,
+                    'word_count'     => str_word_count( $content ),
+                    'html_structure' => '',
+                ],
+            ]);
+
+            if ( ! is_array( $ai ) || ! isset( $ai['overall_score'] ) ) {
+                ciq_log( 'Competitors: ⚠️ AI returned unexpected response for ' . $competitor_url );
+                continue;
+            }
+
+            $scores = [
+                'clarity_score'     => isset( $ai['clarity_score'] )     ? intval( $ai['clarity_score'] )     : null,
+                'emotional_score'   => isset( $ai['emotional_score'] )   ? intval( $ai['emotional_score'] )   : null,
+                'cta_strength'      => isset( $ai['cta_strength'] )      ? intval( $ai['cta_strength'] )      : null,
+                'readability_score' => isset( $ai['readability_score'] ) ? intval( $ai['readability_score'] ) : null,
+                'engagement_score'  => isset( $ai['engagement_score'] )  ? intval( $ai['engagement_score'] )  : null,
+                'trust_score'       => isset( $ai['trust_score'] )       ? intval( $ai['trust_score'] )       : null,
+            ];
+
+            $upserted = $supabase_sync->upsert_competitor_score(
+                $competitor_url,
+                $name,
+                intval( $ai['overall_score'] ),
+                $scores
+            );
+
+            if ( $upserted ) {
+                // Cache 7 days — don't re-analyze until likely stale
+                set_transient( $cache_key, 1, 7 * DAY_IN_SECONDS );
+            }
+
+            $elapsed = round( microtime( true ) - $comp_start, 2 );
+            ciq_log( 'Competitors: ' . ( $upserted ? '✅' : '⚠️ upsert failed —' ) . ' "' . $name . '" overall=' . $ai['overall_score'] . ' in ' . $elapsed . 's' );
+
+        } catch ( Exception $e ) {
+            ciq_log( 'Competitors: exception for ' . $competitor_url . ' — ' . $e->getMessage() );
+        }
+    }
 }
 
 function conversioniq_get_next_run_time($frequency)
@@ -1872,6 +2168,7 @@ function conversioniq_license_refresh()
             'license_key'       => $license_key,
             'site_url'          => get_site_url(),
             'organization_id'   => get_option('conversioniq_organization_id', '') ?: null,
+            'plugin_version'    => defined('CONVERSION_IQ_VERSION') ? CONVERSION_IQ_VERSION : null,
         ))),
     ));
 
@@ -1977,6 +2274,7 @@ function conversioniq_license_activate(WP_REST_Request $request)
             'license_key'       => $license_key,
             'site_url'          => get_site_url(),
             'organization_id'   => get_option('conversioniq_organization_id', '') ?: null,
+            'plugin_version'    => defined('CONVERSION_IQ_VERSION') ? CONVERSION_IQ_VERSION : null,
         ))),
     ));
 
@@ -2852,6 +3150,15 @@ function conversioniq_heatmap_record( WP_REST_Request $request ) {
     $raw_url = isset( $body['page_url'] ) ? esc_url_raw( $body['page_url'] ) : '';
     $events  = isset( $body['events'] ) && is_array( $body['events'] ) ? $body['events'] : array();
 
+    // Optional enrichment fields sent alongside click/scroll events
+    $session_id_batch = isset( $body['session_id'] )
+                        ? preg_replace( '/[^a-z0-9]/i', '', substr( $body['session_id'], 0, 100 ) )
+                        : null;
+    $device_info    = isset( $body['device_info'] )    && is_array( $body['device_info'] )    ? $body['device_info']    : null;
+    $form_analytics = isset( $body['form_analytics'] ) && is_array( $body['form_analytics'] ) ? $body['form_analytics'] : array();
+    $above_fold     = isset( $body['above_fold'] )     && is_array( $body['above_fold'] )     ? $body['above_fold']     : null;
+    $cwv            = isset( $body['cwv'] )            && is_array( $body['cwv'] )            ? $body['cwv']            : null;
+
     // Validate URL — must be a valid http/https URL
     if ( ! $raw_url || ! preg_match( '/^https?:\/\//i', $raw_url ) ) {
         return new WP_REST_Response( array( 'success' => false, 'message' => 'Invalid page_url' ), 400 );
@@ -2919,7 +3226,155 @@ function conversioniq_heatmap_record( WP_REST_Request $request ) {
         $inserted++;
     }
 
+    // Resolve the session identifier: prefer batch-level id, fall back to first event
+    $effective_session = $session_id_batch;
+    if ( ! $effective_session && ! empty( $events ) && isset( $events[0]['session_id'] ) ) {
+        $effective_session = preg_replace( '/[^a-z0-9]/i', '', substr( $events[0]['session_id'], 0, 100 ) );
+    }
+
+    // Persist device info, above-fold snapshot, form analytics, and RUM CWV
+    if ( $effective_session && ( $device_info || $above_fold || ! empty( $form_analytics ) || $cwv ) ) {
+        conversioniq_heatmap_store_enrichment( $raw_url, $effective_session, $device_info, $above_fold, $form_analytics, $cwv );
+    }
+
     return new WP_REST_Response( array( 'success' => true, 'inserted' => $inserted ), 200 );
+}
+
+/**
+ * Persist enrichment data from heatmap batches (device info, above-fold,
+ * form analytics) into their respective tables.
+ *
+ * @param string $raw_url           Normalised page URL.
+ * @param string|null $session_id   Session identifier from batch payload.
+ * @param array|null $device_info   Device / browser metadata.
+ * @param array|null $above_fold    Above-the-fold element snapshot.
+ * @param array $form_analytics     Array of per-form tracking objects.
+ */
+function conversioniq_heatmap_store_enrichment( $raw_url, $session_id, $device_info, $above_fold, $form_analytics, $cwv = null ) {
+    global $wpdb;
+
+    if ( ! $session_id ) { return; }
+
+    // ── Device / browser session ─────────────────────────────────────────
+    $sessions_table = $wpdb->prefix . 'conversioniq_heatmap_sessions';
+    if ( $device_info ) {
+        $exists = $wpdb->get_var( $wpdb->prepare(
+            "SELECT id FROM {$sessions_table} WHERE session_id = %s LIMIT 1",
+            $session_id
+        ) );
+        if ( ! $exists ) {
+            $row = array(
+                'session_id'  => $session_id,
+                'page_url'    => $raw_url,
+                'device_type' => sanitize_key( substr( $device_info['device_type'] ?? 'unknown', 0, 20 ) ),
+                'browser'     => sanitize_key( substr( $device_info['browser']      ?? 'unknown', 0, 20 ) ),
+                'screen_w'    => absint( $device_info['screen_w'] ?? 0 ),
+                'screen_h'    => absint( $device_info['screen_h'] ?? 0 ),
+                'pixel_ratio' => round( (float) ( $device_info['pixel_ratio'] ?? 1 ), 1 ),
+                'recorded_at' => current_time( 'mysql', 1 ),
+            );
+            $fmt = array( '%s', '%s', '%s', '%s', '%d', '%d', '%f', '%s' );
+            if ( $cwv ) {
+                $row['lcp_ms']  = isset( $cwv['lcp_ms']  ) ? absint( $cwv['lcp_ms']  ) : null;
+                $row['cls']     = isset( $cwv['cls']     ) ? round( (float) $cwv['cls'], 3 ) : null;
+                $row['fcp_ms']  = isset( $cwv['fcp_ms']  ) ? absint( $cwv['fcp_ms']  ) : null;
+                $row['ttfb_ms'] = isset( $cwv['ttfb_ms'] ) ? absint( $cwv['ttfb_ms'] ) : null;
+                $row['inp_ms']  = isset( $cwv['inp_ms']  ) ? absint( $cwv['inp_ms']  ) : null;
+                array_push( $fmt, '%d', '%f', '%d', '%d', '%d' );
+            }
+            $wpdb->insert( $sessions_table, $row, $fmt );
+        }
+    }
+
+    // ── Update RUM CWV on existing session row ────────────────────────────
+    // CWV can arrive in later batches (pagehide) after the session row was
+    // already created, so UPDATE whenever we have fresh values.
+    if ( $cwv ) {
+        $has_any = ( isset( $cwv['lcp_ms'] ) && $cwv['lcp_ms'] ) ||
+                   ( isset( $cwv['fcp_ms'] ) && $cwv['fcp_ms'] ) ||
+                   ( isset( $cwv['ttfb_ms'] ) && $cwv['ttfb_ms'] );
+        if ( $has_any ) {
+            $wpdb->update(
+                $sessions_table,
+                array(
+                    'lcp_ms'  => isset( $cwv['lcp_ms']  ) ? absint( $cwv['lcp_ms']  ) : null,
+                    'cls'     => isset( $cwv['cls']     ) ? round( (float) $cwv['cls'], 3 ) : null,
+                    'fcp_ms'  => isset( $cwv['fcp_ms']  ) ? absint( $cwv['fcp_ms']  ) : null,
+                    'ttfb_ms' => isset( $cwv['ttfb_ms'] ) ? absint( $cwv['ttfb_ms'] ) : null,
+                    'inp_ms'  => isset( $cwv['inp_ms']  ) ? absint( $cwv['inp_ms']  ) : null,
+                ),
+                array( 'session_id' => $session_id ),
+                array( '%d', '%f', '%d', '%d', '%d' ),
+                array( '%s' )
+            );
+        }
+    }
+
+    // ── Above-the-fold snapshot ──────────────────────────────────────────
+    if ( $above_fold ) {
+        $atf_table = $wpdb->prefix . 'conversioniq_above_fold';
+        // One snapshot per session is enough
+        $exists = $wpdb->get_var( $wpdb->prepare(
+            "SELECT id FROM {$atf_table} WHERE session_id = %s LIMIT 1",
+            $session_id
+        ) );
+        if ( ! $exists ) {
+            $elements_json = wp_json_encode( $above_fold['elements'] ?? array() );
+            $wpdb->insert( $atf_table, array(
+                'session_id'      => $session_id,
+                'page_url'        => $raw_url,
+                'viewport_height' => absint( $above_fold['viewport_height'] ?? 0 ),
+                'elements'        => $elements_json,
+                'recorded_at'     => current_time( 'mysql', 1 ),
+            ), array( '%s', '%s', '%d', '%s', '%s' ) );
+        }
+    }
+
+    // ── Form analytics ───────────────────────────────────────────────────
+    if ( ! empty( $form_analytics ) ) {
+        $form_table = $wpdb->prefix . 'conversioniq_form_analytics';
+        foreach ( $form_analytics as $fa ) {
+            if ( ! is_array( $fa ) ) { continue; }
+            $form_id = sanitize_text_field( substr( $fa['id'] ?? 'form_unknown', 0, 80 ) );
+            // Upsert: one row per session+form_id
+            $exists = $wpdb->get_var( $wpdb->prepare(
+                "SELECT id FROM {$form_table} WHERE session_id = %s AND form_id = %s LIMIT 1",
+                $session_id, $form_id
+            ) );
+            $insert_row = array(
+                'session_id'     => $session_id,
+                'page_url'       => $raw_url,
+                'form_id'        => $form_id,
+                'starts'         => absint( $fa['starts']       ?? 0 ),
+                'completions'    => absint( $fa['completions']  ?? 0 ),
+                'time_sec'       => isset( $fa['time_sec'] ) ? absint( $fa['time_sec'] ) : null,
+                'drop_off_field' => isset( $fa['drop_off_field'] ) ? sanitize_text_field( substr( $fa['drop_off_field'], 0, 60 ) ) : null,
+                'recorded_at'    => current_time( 'mysql', 1 ),
+            );
+            // Use %s for nullable fields — wpdb serialises null correctly with %s.
+            // Never use 'NULL' as a format specifier; it is not a valid wpdb token.
+            $insert_formats = array( '%s', '%s', '%s', '%d', '%d', '%s', '%s', '%s' );
+
+            if ( $exists ) {
+                $update_data = array(
+                    'starts'         => $insert_row['starts'],
+                    'completions'    => $insert_row['completions'],
+                    'time_sec'       => $insert_row['time_sec'],
+                    'drop_off_field' => $insert_row['drop_off_field'],
+                    'recorded_at'    => $insert_row['recorded_at'],
+                );
+                $wpdb->update(
+                    $form_table,
+                    $update_data,
+                    array( 'session_id' => $session_id, 'form_id' => $form_id ),
+                    array( '%d', '%d', '%s', '%s', '%s' ),
+                    array( '%s', '%s' )
+                );
+            } else {
+                $wpdb->insert( $form_table, $insert_row, $insert_formats );
+            }
+        }
+    }
 }
 
 /**
@@ -3071,6 +3526,39 @@ function conversioniq_capture_audit_screenshot( $page_url, $force_refresh = fals
         $source = ! empty( $data['from_cache'] ) ? 'cached' : 'new capture';
         ciq_log( 'CIQ screenshot [' . $source . ']: ' . $data['screenshot_url'] );
         return $data['screenshot_url'];
+    }
+
+    // On a 5xx error retry once after a short pause — the screenshot service
+    // sometimes returns a transient 500 on the first attempt but succeeds immediately
+    // on a second try (cold-start / race condition on the SaaS side).
+    if ( $code >= 500 ) {
+        ciq_log( 'CIQ screenshot: HTTP ' . $code . ' — retrying once in 3s…' );
+        sleep( 3 );
+        $retry = wp_remote_post( 'https://conversioniq-app.com/api/heatmap/screenshot', array(
+            'headers' => array(
+                'Content-Type'  => 'application/json',
+                'Authorization' => 'Bearer ' . $api_key,
+            ),
+            'body'    => wp_json_encode( array(
+                'page_url'        => $page_url,
+                'license_key'     => $license_key,
+                'site_url'        => get_site_url(),
+                'organization_id' => $org_id,
+                'force_refresh'   => $force_refresh,
+            ) ),
+            'timeout' => 60,
+        ) );
+        if ( ! is_wp_error( $retry ) ) {
+            $retry_code = wp_remote_retrieve_response_code( $retry );
+            $retry_data = json_decode( wp_remote_retrieve_body( $retry ), true );
+            if ( $retry_code === 200 && ! empty( $retry_data['success'] ) && ! empty( $retry_data['screenshot_url'] ) ) {
+                ciq_log( 'CIQ screenshot [retry OK]: ' . $retry_data['screenshot_url'] );
+                return $retry_data['screenshot_url'];
+            }
+            ciq_log( 'CIQ screenshot retry also failed (HTTP ' . $retry_code . '): ' . wp_json_encode( $retry_data ) );
+        } else {
+            ciq_log( 'CIQ screenshot retry error: ' . $retry->get_error_message() );
+        }
     }
 
     ciq_log( 'CIQ screenshot unavailable (HTTP ' . $code . '): ' . wp_json_encode( $data ) );
@@ -3266,26 +3754,22 @@ function conversioniq_heatmap_screenshot( WP_REST_Request $request ) {    $body 
 function conversioniq_heatmap_trigger_sync() {
     global $wpdb;
 
-    ciq_log( '🔧 Heatmap trigger-sync: endpoint called by admin.' );
+    ciq_log( '🔧 Heatmap trigger-sync: 30-day backfill triggered by admin.' );
 
     $api_key = get_option( 'conversioniq_api_key', '' );
     $org_id  = get_option( 'conversioniq_organization_id', '' );
 
-    $cron_ts  = wp_next_scheduled( 'conversioniq_heatmap_sync' );
+    $cron_ts     = wp_next_scheduled( 'conversioniq_heatmap_sync' );
     $diagnostics = array(
-        'api_key_set'          => ! empty( $api_key ),
-        'org_id_set'           => ! empty( $org_id ),
-        'cron_scheduled'       => (bool) $cron_ts,
-        'cron_next_utc'        => $cron_ts
-                                    ? gmdate( 'Y-m-d H:i:s', $cron_ts ) . ' UTC'
-                                    : 'not scheduled (admin_init fallback is active)',
-        'last_sync_date'       => get_option( 'conversioniq_heatmap_last_sync_date', 'never' ),
-        'today_utc'            => gmdate( 'Y-m-d' ),
+        'api_key_set'    => ! empty( $api_key ),
+        'org_id_set'     => ! empty( $org_id ),
+        'cron_scheduled' => (bool) $cron_ts,
+        'cron_next_utc'  => $cron_ts
+                                ? gmdate( 'Y-m-d H:i:s', $cron_ts ) . ' UTC'
+                                : 'not scheduled (admin_init fallback is active)',
+        'last_sync_date' => get_option( 'conversioniq_heatmap_last_sync_date', 'never' ),
+        'today_utc'      => gmdate( 'Y-m-d' ),
     );
-
-    ciq_log( '🔧 Heatmap trigger-sync diagnostics: api_key_set=' . ( $diagnostics['api_key_set'] ? 'yes' : 'NO' )
-        . ' org_id_set=' . ( $diagnostics['org_id_set'] ? 'yes' : 'NO' )
-        . ' cron=' . $diagnostics['cron_next_utc'] );
 
     if ( ! $api_key || ! $org_id ) {
         ciq_log( '🔧 Heatmap trigger-sync: aborting — missing api_key or org_id.' );
@@ -3296,54 +3780,89 @@ function conversioniq_heatmap_trigger_sync() {
         ), 400 );
     }
 
-    $table     = $wpdb->prefix . 'conversioniq_heatmap_events';
-    $yesterday = gmdate( 'Y-m-d', strtotime( '-1 day' ) );
-    $day_start = $yesterday . ' 00:00:00';
-    $day_end   = $yesterday . ' 23:59:59';
+    $table        = $wpdb->prefix . 'conversioniq_heatmap_events';
+    $synced_dates = array();
+    $skipped_dates = array();
 
-    $event_count  = (int) $wpdb->get_var( $wpdb->prepare(
-        "SELECT COUNT(*) FROM {$table} WHERE recorded_at BETWEEN %s AND %s",
-        $day_start, $day_end
-    ) );
-    $total_events = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
+    // Loop through the last 30 days (most recent first) and sync any day with data.
+    // This serves as both the initial backfill and a re-sync that overwrites dirty
+    // rows in Supabase (e.g. internal URLs recorded before filters were added).
+    for ( $i = 1; $i <= 30; $i++ ) {
+        $date      = gmdate( 'Y-m-d', strtotime( "-{$i} days" ) );
+        $day_start = $date . ' 00:00:00';
+        $day_end   = $date . ' 23:59:59';
 
-    $diagnostics['events_yesterday']      = $event_count;
-    $diagnostics['total_events_all_time'] = $total_events;
-    $diagnostics['syncing_date']          = $yesterday;
+        $count = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$table}
+             WHERE recorded_at BETWEEN %s AND %s
+               AND page_url LIKE 'http%%'
+               AND page_url NOT LIKE '%%/wp-admin%%'
+               AND page_url NOT LIKE '%%/wp-json/%%'",
+            $day_start, $day_end
+        ) );
 
-    ciq_log( '🔧 Heatmap trigger-sync: events_yesterday=' . $event_count . ' total_all_time=' . $total_events . ' date=' . $yesterday );
-
-    if ( $event_count === 0 ) {
-        ciq_log( '🔧 Heatmap trigger-sync: no events for ' . $yesterday . ' — nothing to sync.' );
-        return new WP_REST_Response( array(
-            'success'     => false,
-            'message'     => "No heatmap events recorded for {$yesterday}. Nothing to sync.",
-            'diagnostics' => $diagnostics,
-        ), 200 );
+        if ( $count > 0 ) {
+            ciq_log( '🔧 Heatmap trigger-sync: syncing ' . $date . ' (' . $count . ' events)' );
+            conversioniq_heatmap_sync_daily( $date );
+            $synced_dates[] = $date . ' (' . $count . ' events)';
+        } else {
+            $skipped_dates[] = $date;
+        }
     }
 
-    ciq_log( '🔧 Heatmap trigger-sync: calling conversioniq_heatmap_sync_daily() now...' );
-    conversioniq_heatmap_sync_daily();
-    ciq_log( '🔧 Heatmap trigger-sync: conversioniq_heatmap_sync_daily() returned.' );
+    $synced_count = count( $synced_dates );
+    ciq_log( '🔧 Heatmap trigger-sync: backfill complete — ' . $synced_count . ' day(s) synced.' );
+
+    // Enrichment backfill: sync sessions, form analytics, and above-fold data for
+    // ALL 30 days, including days that had no click/scroll events and were skipped
+    // above. Uses ignore-duplicates so re-running is always safe.
+    ciq_log( '🔧 Heatmap trigger-sync: running enrichment backfill for last 30 days.' );
+    $supabase_enrichment = new ConversionIQ_Supabase_Sync();
+    $enrichment_dates = array();
+    for ( $i = 1; $i <= 30; $i++ ) {
+        $edate      = gmdate( 'Y-m-d', strtotime( "-{$i} days" ) );
+        $eday_start = $edate . ' 00:00:00';
+        $eday_end   = $edate . ' 23:59:59';
+
+        // Only bother if at least one enrichment table has data for this date
+        $sessions_table = $wpdb->prefix . 'conversioniq_heatmap_sessions';
+        $ecount = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$sessions_table} WHERE recorded_at BETWEEN %s AND %s",
+            $eday_start, $eday_end
+        ) );
+
+        if ( $ecount > 0 ) {
+            $supabase_enrichment->sync_enrichment_data( $edate );
+            $enrichment_dates[] = $edate . ' (' . $ecount . ' sessions)';
+        }
+    }
+    ciq_log( '🔧 Enrichment backfill complete — ' . count( $enrichment_dates ) . ' day(s) synced.' );
+
+    $diagnostics['synced_dates']      = $synced_dates;
+    $diagnostics['skipped_dates']     = $skipped_dates;
+    $diagnostics['enrichment_dates']  = $enrichment_dates;
 
     return new WP_REST_Response( array(
         'success'     => true,
-        'message'     => "Sync triggered for {$yesterday} ({$event_count} events). Check debug logs for the HTTP result.",
+        'message'     => "30-day backfill complete: {$synced_count} heatmap day(s) + " . count( $enrichment_dates ) . " enrichment day(s) synced to Supabase. Check debug logs for details.",
         'diagnostics' => $diagnostics,
     ), 200 );
 }
 
 // ── Heatmap: nightly summary sync to Supabase ───────────────────────────────
 
-function conversioniq_heatmap_sync_daily() {
+function conversioniq_heatmap_sync_daily( $date = null ) {
     global $wpdb;
 
     $api_key  = get_option( 'conversioniq_api_key', '' );
     $org_id   = get_option( 'conversioniq_organization_id', '' );
     $site_url = get_site_url();
 
-    // Record that the sync ran today regardless of whether there\'s data
-    update_option( 'conversioniq_heatmap_last_sync_date', gmdate( 'Y-m-d' ) );
+    // For the normal daily auto-run (no specific date), mark today so the
+    // admin_init guard doesn't re-fire later the same UTC day.
+    if ( $date === null ) {
+        update_option( 'conversioniq_heatmap_last_sync_date', gmdate( 'Y-m-d' ) );
+    }
 
     // Nothing to sync without a license
     if ( ! $api_key || ! $org_id ) {
@@ -3352,35 +3871,43 @@ function conversioniq_heatmap_sync_daily() {
     }
 
     $table     = $wpdb->prefix . 'conversioniq_heatmap_events';
-    $yesterday = gmdate( 'Y-m-d', strtotime( '-1 day' ) );
+    $yesterday = $date ?? gmdate( 'Y-m-d', strtotime( '-1 day' ) );
     $day_start = $yesterday . ' 00:00:00';
     $day_end   = $yesterday . ' 23:59:59';
 
     ciq_log( '🔄 Heatmap sync_daily: syncing date=' . $yesterday );
 
-    // All distinct pages that had any event yesterday — excluding internal/builder URLs
+    // All distinct pages that had any event on this date — excluding internal/builder URLs
+    // and any rows with corrupted/non-URL page_url values (e.g. bare integers).
+    // NOTE: literal % signs inside $wpdb->prepare() MUST be doubled (%%) per WP docs,
+    // otherwise WordPress misinterprets %f, %e etc. as printf format specifiers.
     $pages = $wpdb->get_col( $wpdb->prepare(
         "SELECT DISTINCT page_url FROM {$table}
          WHERE recorded_at BETWEEN %s AND %s
-           AND page_url NOT LIKE '%/wp-admin%'
-           AND page_url NOT LIKE '%/wp-login.php%'
-           AND page_url NOT LIKE '%/wp-json/%'
-           AND page_url NOT LIKE '%elementor-preview=%'
-           AND page_url NOT LIKE '%preview_id=%'
-           AND page_url NOT LIKE '%fl_builder=%'
-           AND page_url NOT LIKE '%et_pb_preview=%'
-           AND page_url NOT LIKE '%preview=true%'
+           AND page_url LIKE 'http%%'
+           AND page_url NOT LIKE '%%/wp-admin%%'
+           AND page_url NOT LIKE '%%/wp-login.php%%'
+           AND page_url NOT LIKE '%%/wp-json/%%'
+           AND page_url NOT LIKE '%%elementor-preview=%%'
+           AND page_url NOT LIKE '%%preview_id=%%'
+           AND page_url NOT LIKE '%%fl_builder=%%'
+           AND page_url NOT LIKE '%%et_pb_preview=%%'
+           AND page_url NOT LIKE '%%preview=true%%'
          LIMIT 100",
         $day_start,
         $day_end
     ) );
 
     if ( empty( $pages ) ) {
-        ciq_log( '🔄 Heatmap sync_daily: no events for ' . $yesterday . ' — nothing to push.' );
+        ciq_log( '🔄 Heatmap sync_daily: no valid events for ' . $yesterday . ' — skipping heatmap summary; still running enrichment sync.' );
+        // Still sync enrichment data (sessions, form analytics, above-fold) even when
+        // there are no click/scroll events for this date.
+        $supabase_enrichment = new ConversionIQ_Supabase_Sync();
+        $supabase_enrichment->sync_enrichment_data( $yesterday );
         return;
     }
 
-    ciq_log( '🔄 Heatmap sync_daily: found ' . count( $pages ) . ' distinct page(s) to sync.' );
+    ciq_log( '🔄 Heatmap sync_daily: found ' . count( $pages ) . ' distinct page(s) to sync: ' . implode( ', ', $pages ) );
 
     $summaries = array();
 
@@ -3482,4 +4009,83 @@ function conversioniq_heatmap_sync_daily() {
     } else {
         ciq_log( 'ConversionIQ Heatmap sync: HTTP ' . $code . ' — ' . wp_remote_retrieve_body( $response ) );
     }
+
+    // Sync enrichment data (device sessions, form analytics, above-fold) to Supabase
+    $supabase = new ConversionIQ_Supabase_Sync();
+    $supabase->sync_enrichment_data( $yesterday );
+}
+
+// ── SEO Audit endpoint ────────────────────────────────────────────────────
+
+/**
+ * GET /conversioniq/v1/seo-audit?page_id=<id>
+ *
+ * Runs the deterministic on-page SEO analyzer (Tier 1) and appends Real
+ * User Metrics Core Web Vitals where available (Tier 2).
+ */
+function conversioniq_run_seo_audit( WP_REST_Request $request ) {
+    $page_id = (int) $request->get_param( 'page_id' );
+
+    // Validate: must be a published page or post
+    $post = get_post( $page_id );
+    if ( ! $post || $post->post_status !== 'publish' || ! in_array( $post->post_type, array( 'page', 'post' ), true ) ) {
+        ciq_log( 'SEO REST: 404 for page_id=' . $page_id );
+        return new WP_REST_Response(
+            array( 'success' => false, 'message' => 'Page not found or not published.' ),
+            404
+        );
+    }
+
+    // Rate-limit: one SEO audit per page per 60 seconds per user
+    $user_id      = get_current_user_id();
+    $throttle_key = 'ciq_seo_lock_' . $user_id . '_' . $page_id;
+    if ( get_transient( $throttle_key ) ) {
+        ciq_log( 'SEO REST: rate-limited user=' . $user_id . ' page_id=' . $page_id );
+        return new WP_REST_Response(
+            array( 'success' => false, 'message' => 'Please wait before re-running the SEO audit for this page.' ),
+            429
+        );
+    }
+    set_transient( $throttle_key, 1, 60 );
+
+    ciq_log( 'SEO REST: triggered by user=' . $user_id . ' page_id=' . $page_id . ' ("' . $post->post_title . '")' );
+
+    $result = ConversionIQ_SEO_Analyzer::analyze( $page_id );
+
+    if ( is_wp_error( $result ) ) {
+        ciq_log( 'SEO REST: analyzer error — ' . $result->get_error_message() );
+        return new WP_REST_Response(
+            array( 'success' => false, 'message' => $result->get_error_message() ),
+            400
+        );
+    }
+
+    // Sync to Supabase so the SaaS dashboard can display SEO results
+    $supabase = new ConversionIQ_Supabase_Sync();
+    $synced   = $supabase->send_seo_audit( $result );
+
+    // Cache locally so the admin tab can reload instantly without re-running the analysis
+    set_transient( 'ciq_seo_last_' . $page_id, $result, 7 * DAY_IN_SECONDS );
+
+    ciq_log( 'SEO REST: complete — score=' . $result['overall_score'] . ' supabase=' . ( $synced ? 'ok' : 'failed' ) );
+
+    return new WP_REST_Response( array( 'success' => true, 'data' => $result ), 200 );
+}
+
+/**
+ * GET /conversioniq/v1/seo-last?page_id=<id>
+ *
+ * Returns the locally-cached result of the most recent SEO audit for this page.
+ * Returns { success: true, data: null } if no audit has been run yet.
+ * Never triggers a new analysis.
+ */
+function conversioniq_get_last_seo_audit( WP_REST_Request $request ) {
+    $page_id = (int) $request->get_param( 'page_id' );
+    $cached  = get_transient( 'ciq_seo_last_' . $page_id );
+
+    if ( $cached && is_array( $cached ) ) {
+        return new WP_REST_Response( array( 'success' => true, 'data' => $cached ), 200 );
+    }
+
+    return new WP_REST_Response( array( 'success' => true, 'data' => null ), 200 );
 }

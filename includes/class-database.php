@@ -407,5 +407,64 @@ class ConversionIQ_DB
 
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         dbDelta( $sql );
+
+        // ── Device / browser sessions (one row per browser session) ──────
+        $sessions_table = $wpdb->prefix . 'conversioniq_heatmap_sessions';
+        $sql_sessions = "CREATE TABLE IF NOT EXISTS $sessions_table (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            session_id VARCHAR(100) NOT NULL,
+            page_url TEXT NOT NULL,
+            device_type VARCHAR(20) DEFAULT NULL,
+            browser VARCHAR(20) DEFAULT NULL,
+            screen_w SMALLINT UNSIGNED DEFAULT NULL,
+            screen_h SMALLINT UNSIGNED DEFAULT NULL,
+            pixel_ratio DECIMAL(3,1) DEFAULT NULL,
+            lcp_ms SMALLINT UNSIGNED DEFAULT NULL,
+            cls DECIMAL(5,3) DEFAULT NULL,
+            fcp_ms SMALLINT UNSIGNED DEFAULT NULL,
+            ttfb_ms SMALLINT UNSIGNED DEFAULT NULL,
+            inp_ms SMALLINT UNSIGNED DEFAULT NULL,
+            recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY session_id (session_id),
+            KEY page_url (page_url(255)),
+            KEY recorded_at (recorded_at)
+        ) $charset_collate;";
+        dbDelta( $sql_sessions );
+
+        // ── Form analytics (one row per form per session) ─────────────────
+        $form_table = $wpdb->prefix . 'conversioniq_form_analytics';
+        $sql_form = "CREATE TABLE IF NOT EXISTS $form_table (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            session_id VARCHAR(100) NOT NULL,
+            page_url TEXT NOT NULL,
+            form_id VARCHAR(80) DEFAULT NULL,
+            starts TINYINT UNSIGNED DEFAULT 0,
+            completions TINYINT UNSIGNED DEFAULT 0,
+            time_sec SMALLINT UNSIGNED DEFAULT NULL,
+            drop_off_field VARCHAR(60) DEFAULT NULL,
+            recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY session_form (session_id, form_id(80)),
+            KEY page_url (page_url(255)),
+            KEY recorded_at (recorded_at)
+        ) $charset_collate;";
+        dbDelta( $sql_form );
+
+        // ── Above-the-fold snapshots (one row per page load) ──────────────
+        $atf_table = $wpdb->prefix . 'conversioniq_above_fold';
+        $sql_atf = "CREATE TABLE IF NOT EXISTS $atf_table (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            session_id VARCHAR(100) NOT NULL,
+            page_url TEXT NOT NULL,
+            viewport_height SMALLINT UNSIGNED DEFAULT NULL,
+            elements LONGTEXT DEFAULT NULL,
+            recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY session_id (session_id),
+            KEY page_url (page_url(255)),
+            KEY recorded_at (recorded_at)
+        ) $charset_collate;";
+        dbDelta( $sql_atf );
     }
 }

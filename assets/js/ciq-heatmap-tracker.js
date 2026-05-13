@@ -67,6 +67,177 @@
     var queue = [];
     var flushScheduled = false;
 
+    // ── Device / browser detection ────────────────────────────────────────
+    // Detected once at page load; sent with every batch so the server can
+    // build mobile vs. desktop split reports without per-event overhead.
+    var deviceInfo = (function () {
+        var ua = navigator.userAgent;
+        var isTablet = /iPad|(?:Android(?!.*Mobile))/i.test(ua);
+        var isMobile = !isTablet && /Mobi|Android|iPhone|iPod/i.test(ua);
+        return {
+            device_type:  isTablet ? 'tablet' : (isMobile ? 'mobile' : 'desktop'),
+            browser:      /Firefox\//.test(ua)   ? 'firefox'  :
+                          /Edg\//.test(ua)        ? 'edge'     :
+                          /Chrome\//.test(ua)     ? 'chrome'   :
+                          /Safari\//.test(ua)     ? 'safari'   :
+                          /MSIE|Trident/.test(ua) ? 'ie'       : 'other',
+            screen_w:     screen.width,
+            screen_h:     screen.height,
+            pixel_ratio:  Math.round((window.devicePixelRatio || 1) * 10) / 10
+        };
+    }());
+
+    // ── Real User Metrics (Core Web Vitals) ───────────────────────────────
+    // Collected via browser PerformanceObserver — no server-side outbound
+    // network call needed.  Final values are sent on pagehide.
+    var rumCwv = { lcp_ms: null, cls: null, fcp_ms: null, ttfb_ms: null, inp_ms: null };
+
+    // CLS — accumulate all layout-shift entries (session window value)
+    (function () {
+        if (!('PerformanceObserver' in window)) { return; }
+        try {
+            var clsValue = 0;
+            new PerformanceObserver(function (list) {
+                list.getEntries().forEach(function (e) {
+                    if (!e.hadRecentInput) { clsValue += e.value; }
+                });
+                rumCwv.cls = Math.round(clsValue * 1000) / 1000;
+            }).observe({ type: 'layout-shift', buffered: true });
+        } catch (e) {}
+    }());
+
+    // LCP — last reported entry is the final LCP value
+    (function () {
+        if (!('PerformanceObserver' in window)) { return; }
+        try {
+            new PerformanceObserver(function (list) {
+                var entries = list.getEntries();
+                if (entries.length) {
+                    rumCwv.lcp_ms = Math.round(entries[entries.length - 1].startTime);
+                }
+            }).observe({ type: 'largest-contentful-paint', buffered: true });
+        } catch (e) {}
+    }());
+
+    // FCP — first-contentful-paint
+    (function () {
+        if (!('PerformanceObserver' in window)) { return; }
+        try {
+            new PerformanceObserver(function (list) {
+                list.getEntries().forEach(function (e) {
+                    if (e.name === 'first-contentful-paint') {
+                        rumCwv.fcp_ms = Math.round(e.startTime);
+                    }
+                });
+            }).observe({ type: 'paint', buffered: true });
+        } catch (e) {}
+    }());
+
+    // TTFB — Navigation Timing API (synchronous, available immediately)
+    (function () {
+        try {
+            var nav = performance.getEntriesByType('navigation')[0];
+            if (nav) { rumCwv.ttfb_ms = Math.round(nav.responseStart - nav.requestStart); }
+        } catch (e) {}
+    }());
+
+    // INP — interaction to next paint (Chrome 96+)
+    (function () {
+        if (!('PerformanceObserver' in window)) { return; }
+        try {
+            new PerformanceObserver(function (list) {
+                list.getEntries().forEach(function (e) {
+                    if (rumCwv.inp_ms === null || e.duration > rumCwv.inp_ms) {
+                        rumCwv.inp_ms = Math.round(e.duration);
+                    }
+                });
+            }).observe({ type: 'event', buffered: true, durationThreshold: 16 });
+        } catch (e) {}
+    }());
+
+    // ── Above-the-fold snapshot ────────────────────────────────────────────
+    // Measures once after first paint whether key elements are visible
+    // without scrolling.  Sent with the first event batch, then never again.
+    var aboveFoldData = null;
+    var aboveFoldSent = false;
+
+    function measureAboveFold() {
+        var vh = window.innerHeight;
+        var checks = [
+            { type: 'h1',         query: 'h1' },
+            { type: 'cta',        query: '.btn,.cta,button[type="submit"],[class*="btn"],[class*="cta"]' },
+            { type: 'hero_image', query: '[class*="hero"] img,[class*="banner"] img' },
+            { type: 'form',       query: 'form' }
+        ];
+        var elements = [];
+        checks.forEach(function (c) {
+            try {
+                var nodes = document.querySelectorAll(c.query);
+                for (var i = 0; i < Math.min(nodes.length, 3); i++) {
+                    var rect = nodes[i].getBoundingClientRect();
+                    if (rect.width > 0 && rect.height > 0) {
+                        elements.push({
+                            type:       c.type,
+                            y_top:      Math.round(rect.top + (window.pageYOffset || 0)),
+                            above_fold: rect.top < vh
+                        });
+                    }
+                }
+            } catch (e) { /* ignore unsupported selectors */ }
+        });
+        aboveFoldData = { viewport_height: vh, elements: elements };
+    }
+    // Defer until after first paint so layout is stable
+    if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(function () { setTimeout(measureAboveFold, 0); });
+    } else {
+        setTimeout(measureAboveFold, 150);
+    }
+
+    // ── Form analytics ────────────────────────────────────────────────────
+    // Tracks starts, completions, and drop-off field per form per session.
+    var formStates = {};
+
+    function getFormId(form) {
+        var id = (form.id || form.getAttribute('name') || '').slice(0, 80);
+        if (!id) {
+            var all = document.querySelectorAll('form');
+            for (var i = 0; i < all.length; i++) {
+                if (all[i] === form) { id = 'form_' + i; break; }
+            }
+        }
+        return id || 'form_unknown';
+    }
+
+    // Record which field the user last touched (used as drop-off field on abandon)
+    document.addEventListener('focusin', function (e) {
+        var el = e.target;
+        if (!el || !el.form) { return; }
+        var tag = (el.tagName || '').toLowerCase();
+        if (tag !== 'input' && tag !== 'textarea' && tag !== 'select') { return; }
+        var fid = getFormId(el.form);
+        if (!formStates[fid]) {
+            formStates[fid] = { id: fid, starts: 1, completions: 0, start_time: Date.now(), drop_off_field: null, time_sec: null };
+        }
+        var fieldName = (el.getAttribute('name') || el.getAttribute('id') || el.getAttribute('type') || 'field').slice(0, 60);
+        formStates[fid].drop_off_field = fieldName;
+    }, true);
+
+    // Mark completion and clear the drop-off field on submit
+    document.addEventListener('submit', function (e) {
+        var form = e.target;
+        if (!form || (form.tagName || '').toLowerCase() !== 'form') { return; }
+        var fid = getFormId(form);
+        if (!formStates[fid]) {
+            formStates[fid] = { id: fid, starts: 1, completions: 0, start_time: Date.now(), drop_off_field: null, time_sec: null };
+        }
+        formStates[fid].completions = 1;
+        formStates[fid].drop_off_field = null;
+        if (formStates[fid].start_time) {
+            formStates[fid].time_sec = Math.round((Date.now() - formStates[fid].start_time) / 1000);
+        }
+    }, true);
+
     function getPageDimensions() {
         return {
             w: Math.max(document.body ? document.body.scrollWidth : 0, window.innerWidth),
@@ -87,9 +258,26 @@
 
     function flush() {
         flushScheduled = false;
-        if (queue.length === 0) { return; }
+        var hasUnsentAtf = !aboveFoldSent && aboveFoldData;
+        // Don't bail on empty queue if we still have above-fold data to send
+        if (queue.length === 0 && !hasUnsentAtf) { return; }
         var events = queue.splice(0, queue.length);
-        var payload = JSON.stringify({ page_url: pageUrl, events: events });
+        var batch = {
+            page_url:    pageUrl,
+            session_id:  sessionId,
+            events:      events,
+            device_info: deviceInfo
+        };
+        // Attach above-fold snapshot once per page load (first flush only)
+        if (!aboveFoldSent && aboveFoldData) {
+            batch.above_fold = aboveFoldData;
+            aboveFoldSent = true;
+        }
+        // Attach RUM CWV if any values are available (server updates session row each time)
+        if (rumCwv.lcp_ms !== null || rumCwv.fcp_ms !== null || rumCwv.ttfb_ms !== null) {
+            batch.cwv = rumCwv;
+        }
+        var payload = JSON.stringify(batch);
         if (navigator.sendBeacon) {
             navigator.sendBeacon(endpoint, new Blob([payload], { type: 'application/json' }));
         } else {
@@ -252,7 +440,38 @@
 
     // ── Flush on page unload ──────────────────────────────────────────────
 
-    window.addEventListener('pagehide', flush);
+    // ── Flush on page unload ──────────────────────────────────────────────
+
+    window.addEventListener('pagehide', function () {
+        // Flush queued click/scroll events (also sends above_fold if still pending)
+        flush();
+        // Send form analytics + final RUM CWV + any still-unsent above-fold data
+        // in one pagehide beacon. CWV observers may still update values until the
+        // very end of the page lifetime, so pagehide is the most accurate capture point.
+        var formList = [];
+        for (var k in formStates) {
+            if (Object.prototype.hasOwnProperty.call(formStates, k)) {
+                formList.push(formStates[k]);
+            }
+        }
+        var hasCwv = rumCwv.lcp_ms !== null || rumCwv.fcp_ms !== null || rumCwv.ttfb_ms !== null;
+        // Final safety net: include above-fold if flush() couldn't send it
+        // (e.g. aboveFoldData wasn't ready when the last event batch fired)
+        var hasAtf = !aboveFoldSent && aboveFoldData;
+        if ((formList.length > 0 || hasCwv || hasAtf) && navigator.sendBeacon) {
+            if (hasAtf) { aboveFoldSent = true; }
+            var faBatch = JSON.stringify({
+                page_url:       pageUrl,
+                session_id:     sessionId,
+                events:         [],
+                device_info:    deviceInfo,
+                form_analytics: formList,
+                cwv:            hasCwv ? rumCwv : undefined,
+                above_fold:     hasAtf ? aboveFoldData : undefined
+            });
+            navigator.sendBeacon(endpoint, new Blob([faBatch], { type: 'application/json' }));
+        }
+    });
     window.addEventListener('beforeunload', flush);
 
     // Safety net: flush every 30 s so we don't lose data on long sessions

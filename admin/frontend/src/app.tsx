@@ -3,6 +3,7 @@ import axios from 'axios';
 import type { Suggestion, Audit, Page, Branding } from './types';
 import OverviewTab from './OverviewTab';
 import HeatmapTab from './HeatmapTab';
+import SeoTab from './SeoTab';
 
 type Page = { id: number; title: string; permalink: string };
 
@@ -65,7 +66,7 @@ export default function App() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingAutomated, setSavingAutomated] = useState(false);
   const [auditRunning, setAuditRunning] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'audits' | 'knockknock' | 'heatmap' | 'license'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'audits' | 'knockknock' | 'heatmap' | 'seo' | 'license'>('overview');
   const [scoreHistory, setScoreHistory] = useState<any[]>([]);
   const [overviewPageFilter, setOverviewPageFilter] = useState<string>('all');
 
@@ -77,6 +78,7 @@ export default function App() {
     totalPages: 0,
     message: 'Initializing audit...'
   });
+  const auditStepTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const [auditFilter, setAuditFilter] = useState<'all' | 'ai' | 'fallback'>('all');
   const [auditSearchQuery, setAuditSearchQuery] = useState('');
   
@@ -500,17 +502,31 @@ export default function App() {
       currentPage: pageNames[0] || '',
       currentIndex: 0,
       totalPages: selectedPages.length,
-      message: 'Starting audit analysis...'
+      message: 'Initializing audit...'
     });
+
+    // Rotate through realistic step messages timed to match the actual server-side sequence.
+    const auditSteps = [
+      { delay: 0,     text: 'Fetching page content…' },
+      { delay: 5000,  text: 'Extracting HTML structure & trust signals…' },
+      { delay: 10000, text: 'Requesting visual screenshot…' },
+      { delay: 18000, text: 'Screenshot captured — preparing AI prompt…' },
+      { delay: 24000, text: 'Sending page to AI for analysis…' },
+      { delay: 32000, text: 'AI is scoring conversion clarity & emotional resonance…' },
+      { delay: 40000, text: 'Generating CTA strength & readability insights…' },
+      { delay: 48000, text: 'Building recommendations & quick wins…' },
+      { delay: 55000, text: 'Finalising report & syncing to Supabase…' },
+    ];
+    const stepTimers: ReturnType<typeof setTimeout>[] = [];
+    auditSteps.forEach(({ delay, text }) => {
+      stepTimers.push(setTimeout(() => {
+        setAuditProgress(prev => prev.isRunning ? { ...prev, message: text } : prev);
+      }, delay));
+    });
+    (auditStepTimerRef as any).current = stepTimers;
     
     try {
       console.log(`🔍 Running audit for ${selectedPages.length} page(s)`);
-      
-      // Update progress message
-      setAuditProgress(prev => ({
-        ...prev,
-        message: 'Analyzing page content with AI...'
-      }));
       
       // Call backend audit endpoint - AI is handled on the server
       const response = await axios.post(
@@ -665,6 +681,11 @@ export default function App() {
         });
       }, 5000);
     } finally {
+      // Clear all pending step-message timers
+      if ((auditStepTimerRef as any).current) {
+        ((auditStepTimerRef as any).current as ReturnType<typeof setTimeout>[]).forEach(clearTimeout);
+        (auditStepTimerRef as any).current = null;
+      }
       setLoading(false);
       setProgress(0);
     }
@@ -918,6 +939,23 @@ export default function App() {
               }}
             >
               Heatmap
+            </button>
+            <button
+              onClick={() => setActiveTab('seo')}
+              style={{
+                flex: 1,
+                padding: '16px 24px',
+                background: activeTab === 'seo' ? '#7c3aed' : '#fff',
+                color: activeTab === 'seo' ? '#fff' : '#6b7280',
+                border: 'none',
+                borderBottom: activeTab === 'seo' ? '3px solid #5b21b6' : '3px solid transparent',
+                cursor: 'pointer',
+                fontSize: 16,
+                fontWeight: 600,
+                transition: 'all 0.2s'
+              }}
+            >
+              SEO
             </button>
             <button
               onClick={() => setActiveTab('license')}
@@ -2027,6 +2065,15 @@ export default function App() {
             nonce={nonce}
             apiBase={(window as any).ConversionIQData?.restUrl || '/wp-json/conversioniq/v1/'}
             features={liveFeatures}
+          />
+        )}
+
+        {/* SEO Tab */}
+        {activeTab === 'seo' && (
+          <SeoTab
+            nonce={nonce}
+            apiBase={(window as any).ConversionIQData?.restUrl || '/wp-json/conversioniq/v1/'}
+            pages={pages}
           />
         )}
 

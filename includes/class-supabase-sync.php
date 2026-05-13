@@ -670,8 +670,12 @@ class ConversionIQ_Supabase_Sync {
             return false;
         }
 
+        ciq_log( 'Supabase sync Phase 1: ✅ INSERT accepted (HTTP 201) — page="' . ( $audit_data['page_title'] ?? $audit_data['page_url'] ?? '?' ) . '" score=' . ( $audit_data['overall_score'] ?? '?' ) . ' token=' . substr( $token ?? '', 0, 8 ) . '…' );
+
         // ── Phase 2: PATCH JSONB report fields (best-effort, non-blocking on failure) ──
         if ($token) {
+            $has_cwv = ! empty( $audit_data['core_web_vitals'] );
+            ciq_log( 'Supabase sync Phase 2: PATCHing JSONB fields (insights=' . ( isset( $audit_data['insights'] ) ? 'yes' : 'no' ) . ' recommendations=' . ( isset( $audit_data['recommendations'] ) ? 'yes' : 'no' ) . ' cro_checklist=' . ( isset( $audit_data['cro_checklist'] ) ? 'yes' : 'no' ) . ' core_web_vitals=' . ( $has_cwv ? 'yes' : 'NO ⚠️' ) . ')' );
             $jsonb_data = [
                 'insights'           => $audit_data['insights'] ?? null,
                 'recommendations'    => $audit_data['recommendations'] ?? null,
@@ -679,6 +683,7 @@ class ConversionIQ_Supabase_Sync {
                 'business_context'   => $audit_data['business_context'] ?? null,
                 'lead_intelligence'  => $audit_data['lead_intelligence'] ?? null,
                 'cro_checklist'      => $audit_data['cro_checklist'] ?? null,
+                'core_web_vitals'    => $audit_data['core_web_vitals'] ?? null,
             ];
 
             $patch_body = json_encode($jsonb_data);
@@ -703,7 +708,9 @@ class ConversionIQ_Supabase_Sync {
                     ciq_log('ConversionIQ Sync Warning (Phase 2 PATCH): ' . $patch_response->get_error_message());
                 } else {
                     $patch_status = wp_remote_retrieve_response_code($patch_response);
-                    if ($patch_status !== 200 && $patch_status !== 204) {
+                    if ($patch_status === 200 || $patch_status === 204) {
+                        ciq_log( 'Supabase sync Phase 2: ✅ PATCH accepted (HTTP ' . $patch_status . ')' );
+                    } else {
                         ciq_log('ConversionIQ Sync Warning (Phase 2 PATCH): Status ' . $patch_status);
                         ciq_log('ConversionIQ PATCH Response: ' . wp_remote_retrieve_body($patch_response));
                     }
@@ -777,6 +784,73 @@ class ConversionIQ_Supabase_Sync {
 
         $body = json_decode(wp_remote_retrieve_body($response), true);
         return is_array($body) ? $body : false;
+    }
+
+    /**
+     * Persist an SEO audit result to the seo_audits Supabase table.
+     *
+     * Uses UPSERT (on_conflict=page_id,organization_id) so re-running an audit
+     * on the same page updates the existing row rather than creating duplicates.
+     * Historical rows are preserved — each run inserts a new row because
+     * `page_id` alone is not unique; the conflict target is (organization_id, page_url).
+     *
+     * @param array $audit_data Full result array from ConversionIQ_SEO_Analyzer::analyze()
+     * @return bool True on success, false on failure
+     */
+    public function send_seo_audit( array $audit_data ) {
+        if ( ! $this->supabase_anon_key ) {
+            ciq_log( 'CIQ SEO Sync: skipped — Supabase credentials not configured' );
+            return false;
+        }
+
+        if ( ! $this->organization_id && ! $this->ensure_organization() ) {
+            ciq_log( 'CIQ SEO Sync: skipped — could not obtain organization_id' );
+            return false;
+        }
+
+        $payload = [
+            'organization_id' => $this->organization_id,
+            'page_id'         => isset( $audit_data['page_id'] ) ? (int) $audit_data['page_id'] : null,
+            'page_url'        => $audit_data['page_url'] ?? '',
+            'page_title'      => $audit_data['page_title'] ?? null,
+            'overall_score'   => isset( $audit_data['overall_score'] ) ? (int) $audit_data['overall_score'] : null,
+            'category_scores' => $audit_data['category_scores'] ?? null,
+            'checklist'       => $audit_data['checklist'] ?? null,
+            'actions'         => $audit_data['actions'] ?? null,
+            'details'         => $audit_data['details'] ?? null,
+            'core_web_vitals' => $audit_data['core_web_vitals'] ?? null,
+            'cwv_scores'      => $audit_data['cwv_scores'] ?? null,
+            'analyzed_at'     => $audit_data['analyzed_at'] ?? gmdate( 'c' ),
+        ];
+
+        $response = wp_remote_post(
+            $this->supabase_url . '/rest/v1/seo_audits',
+            [
+                'headers' => [
+                    'apikey'        => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                    'Content-Type'  => 'application/json',
+                    'X-API-Key'     => $this->api_key,
+                    'Prefer'        => 'return=minimal',
+                ],
+                'body'    => wp_json_encode( $payload ),
+                'timeout' => 20,
+            ]
+        );
+
+        if ( is_wp_error( $response ) ) {
+            ciq_log( 'CIQ SEO Sync error: ' . $response->get_error_message() );
+            return false;
+        }
+
+        $status = wp_remote_retrieve_response_code( $response );
+        if ( $status === 201 ) {
+            ciq_log( 'CIQ SEO Sync: ✅ saved seo_audit for page_id=' . ( $payload['page_id'] ?? '?' ) . ' score=' . ( $payload['overall_score'] ?? '?' ) );
+            return true;
+        }
+
+        ciq_log( 'CIQ SEO Sync: ⚠️ unexpected status ' . $status . ' — ' . wp_remote_retrieve_body( $response ) );
+        return false;
     }
 
     /**
@@ -1373,9 +1447,11 @@ class ConversionIQ_Supabase_Sync {
                     'Prefer'        => 'return=minimal',
                 ),
                 'body'    => json_encode( array(
-                    'remote_secret' => $secret,
-                    'endpoint'      => $endpoint,
-                    'tracked_pages' => $pages_data,
+                    'remote_secret'  => $secret,
+                    'endpoint'       => $endpoint,
+                    'tracked_pages'  => $pages_data,
+                    'plugin_version' => defined( 'CONVERSION_IQ_VERSION' ) ? CONVERSION_IQ_VERSION : null,
+                    'last_seen_at'   => gmdate( 'c' ),
                 ) ),
                 'timeout' => 15,
             )
@@ -1564,5 +1640,230 @@ class ConversionIQ_Supabase_Sync {
             'status'       => 'failed',
             'completed_at' => gmdate( 'c' ),
         ) );
+    }
+
+    /**
+     * Sync enrichment data (device/browser sessions, form analytics, above-the-fold
+     * snapshots) collected by the tracker JS into the three Supabase tables.
+     *
+     * Called from conversioniq_heatmap_sync_daily() after the main heatmap summary
+     * has been pushed.  Uses INSERT with conflict resolution so re-running the sync
+     * on the same date is safe.
+     *
+     * @param string $date  UTC date string 'Y-m-d'. Defaults to yesterday.
+     */
+    public function sync_enrichment_data( $date = null ) {
+        global $wpdb;
+
+        if ( ! $this->supabase_anon_key || ! $this->organization_id ) {
+            ciq_log( 'Enrichment sync: aborting — no Supabase credentials.' );
+            return;
+        }
+
+        $target_date = $date ?? gmdate( 'Y-m-d', strtotime( '-1 day' ) );
+        $day_start   = $target_date . ' 00:00:00';
+        $day_end     = $target_date . ' 23:59:59';
+        $org_id      = $this->organization_id;
+
+        ciq_log( 'Enrichment sync: starting for date=' . $target_date . ' org=' . substr( $org_id, 0, 8 ) . '…' );
+
+        $headers = array(
+            'apikey'        => $this->supabase_anon_key,
+            'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+            'Content-Type'  => 'application/json',
+            'X-API-Key'     => $this->api_key,
+            'Prefer'        => 'resolution=ignore-duplicates,return=minimal',
+        );
+
+        // ── 1. Device / browser sessions ─────────────────────────────────
+        $sessions_table = $wpdb->prefix . 'conversioniq_heatmap_sessions';
+        $sessions = $wpdb->get_results( $wpdb->prepare(
+            "SELECT session_id, page_url, device_type, browser,
+                    screen_w, screen_h, pixel_ratio,
+                    lcp_ms, cls, fcp_ms, ttfb_ms, inp_ms,
+                    recorded_at
+             FROM {$sessions_table}
+             WHERE recorded_at BETWEEN %s AND %s
+             LIMIT 500",
+            $day_start, $day_end
+        ), ARRAY_A );
+
+        ciq_log( 'Enrichment sync: local sessions found = ' . count( $sessions ?? array() ) . ' (table: ' . $sessions_table . ')' );
+
+        if ( ! empty( $sessions ) ) {
+            $rows = array_map( function( $row ) use ( $org_id ) {
+                return array(
+                    'organization_id' => $org_id,
+                    'session_id'      => $row['session_id'],
+                    'page_url'        => $row['page_url'],
+                    'device_type'     => $row['device_type'],
+                    'browser'         => $row['browser'],
+                    'screen_w'        => $row['screen_w'] ? (int) $row['screen_w'] : null,
+                    'screen_h'        => $row['screen_h'] ? (int) $row['screen_h'] : null,
+                    'pixel_ratio'     => $row['pixel_ratio'] ? (float) $row['pixel_ratio'] : null,
+                    'lcp_ms'          => $row['lcp_ms']  ? (int) $row['lcp_ms']  : null,
+                    'cls'             => $row['cls']     !== null && $row['cls'] !== '' ? (float) $row['cls'] : null,
+                    'fcp_ms'          => $row['fcp_ms']  ? (int) $row['fcp_ms']  : null,
+                    'ttfb_ms'         => $row['ttfb_ms'] ? (int) $row['ttfb_ms'] : null,
+                    'inp_ms'          => $row['inp_ms']  ? (int) $row['inp_ms']  : null,
+                    'recorded_at'     => str_replace( ' ', 'T', $row['recorded_at'] ) . 'Z',
+                );
+            }, $sessions );
+
+            $resp = wp_remote_post( $this->supabase_url . '/rest/v1/ciq_heatmap_sessions', array(
+                'headers' => $headers,
+                'body'    => wp_json_encode( $rows ),
+                'timeout' => 20,
+            ) );
+            $code = is_wp_error( $resp ) ? $resp->get_error_message() : wp_remote_retrieve_response_code( $resp );
+            $sessions_ok = ( $code === 201 || $code === 200 );
+            ciq_log( 'Enrichment sync sessions → Supabase ciq_heatmap_sessions: ' . count( $rows ) . ' rows, HTTP ' . $code . ( $sessions_ok ? ' ✅' : ' ❌ body=' . ( is_wp_error( $resp ) ? '' : substr( wp_remote_retrieve_body( $resp ), 0, 200 ) ) ) );
+        }
+
+        // ── 2. Form analytics ─────────────────────────────────────────────
+        $form_table = $wpdb->prefix . 'conversioniq_form_analytics';
+        $forms = $wpdb->get_results( $wpdb->prepare(
+            "SELECT session_id, page_url, form_id, starts, completions,
+                    time_sec, drop_off_field, recorded_at
+             FROM {$form_table}
+             WHERE recorded_at BETWEEN %s AND %s
+             LIMIT 500",
+            $day_start, $day_end
+        ), ARRAY_A );
+
+        ciq_log( 'Enrichment sync: local form_analytics found = ' . count( $forms ?? array() ) . ' (table: ' . $form_table . ')' );
+
+        if ( ! empty( $forms ) ) {
+            $rows = array_map( function( $row ) use ( $org_id ) {
+                return array(
+                    'organization_id' => $org_id,
+                    'session_id'      => $row['session_id'],
+                    'page_url'        => $row['page_url'],
+                    'form_id'         => $row['form_id'],
+                    'starts'          => (int) $row['starts'],
+                    'completions'     => (int) $row['completions'],
+                    'time_sec'        => isset( $row['time_sec'] ) && $row['time_sec'] !== null ? (int) $row['time_sec'] : null,
+                    'drop_off_field'  => $row['drop_off_field'] ?: null,
+                    'recorded_at'     => str_replace( ' ', 'T', $row['recorded_at'] ) . 'Z',
+                );
+            }, $forms );
+
+            $resp = wp_remote_post( $this->supabase_url . '/rest/v1/ciq_form_analytics', array(
+                'headers' => $headers,
+                'body'    => wp_json_encode( $rows ),
+                'timeout' => 20,
+            ) );
+            $code = is_wp_error( $resp ) ? $resp->get_error_message() : wp_remote_retrieve_response_code( $resp );
+            $forms_ok = ( $code === 201 || $code === 200 );
+            ciq_log( 'Enrichment sync form_analytics → Supabase ciq_form_analytics: ' . count( $rows ) . ' rows, HTTP ' . $code . ( $forms_ok ? ' ✅' : ' ❌ body=' . ( is_wp_error( $resp ) ? '' : substr( wp_remote_retrieve_body( $resp ), 0, 200 ) ) ) );
+        }
+
+        // ── 3. Above-the-fold snapshots ───────────────────────────────────
+        $atf_table = $wpdb->prefix . 'conversioniq_above_fold';
+        $atf_rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT session_id, page_url, viewport_height, elements, recorded_at
+             FROM {$atf_table}
+             WHERE recorded_at BETWEEN %s AND %s
+             LIMIT 500",
+            $day_start, $day_end
+        ), ARRAY_A );
+
+        ciq_log( 'Enrichment sync: local above_fold found = ' . count( $atf_rows ?? array() ) . ' (table: ' . $atf_table . ')' );
+
+        if ( ! empty( $atf_rows ) ) {
+            $rows = array_map( function( $row ) use ( $org_id ) {
+                // elements is stored as JSON string in MySQL — decode so Supabase
+                // receives a real JSONB value rather than a double-encoded string.
+                $elements = null;
+                if ( ! empty( $row['elements'] ) ) {
+                    $decoded = json_decode( $row['elements'], true );
+                    $elements = is_array( $decoded ) ? $decoded : null;
+                }
+                return array(
+                    'organization_id' => $org_id,
+                    'session_id'      => $row['session_id'],
+                    'page_url'        => $row['page_url'],
+                    'viewport_height' => $row['viewport_height'] ? (int) $row['viewport_height'] : null,
+                    'elements'        => $elements,
+                    'recorded_at'     => str_replace( ' ', 'T', $row['recorded_at'] ) . 'Z',
+                );
+            }, $atf_rows );
+
+            $resp = wp_remote_post( $this->supabase_url . '/rest/v1/ciq_above_fold', array(
+                'headers' => $headers,
+                'body'    => wp_json_encode( $rows ),
+                'timeout' => 20,
+            ) );
+            $code = is_wp_error( $resp ) ? $resp->get_error_message() : wp_remote_retrieve_response_code( $resp );
+            $atf_ok = ( $code === 201 || $code === 200 );
+            ciq_log( 'Enrichment sync above_fold → Supabase ciq_above_fold: ' . count( $rows ) . ' rows, HTTP ' . $code . ( $atf_ok ? ' ✅' : ' ❌ body=' . ( is_wp_error( $resp ) ? '' : substr( wp_remote_retrieve_body( $resp ), 0, 200 ) ) ) );
+        }
+
+        ciq_log( 'Enrichment sync complete for ' . $target_date
+            . ' — sessions:' . count( $sessions ?? array() )
+            . ' forms:' . count( $forms ?? array() )
+            . ' atf:' . count( $atf_rows ?? array() ) );
+    }
+
+    /**
+     * Upsert a competitor's CRO scores into ciq_competitor_scores.
+     *
+     * Uses PostgREST merge-duplicates so re-runs overwrite the stale row
+     * (ON CONFLICT organization_id, url → UPDATE).
+     *
+     * @param string $url           Competitor page URL
+     * @param string $name          Display name (page title or domain)
+     * @param int    $overall_score
+     * @param array  $scores        { clarity_score, emotional_score, cta_strength, ... }
+     * @return bool
+     */
+    public function upsert_competitor_score( $url, $name, $overall_score, $scores ) {
+        if ( ! $this->supabase_anon_key ) {
+            ciq_log( 'Competitor upsert: no Supabase credentials' );
+            return false;
+        }
+
+        if ( ! $this->organization_id && ! $this->ensure_organization() ) {
+            ciq_log( 'Competitor upsert: no organization_id' );
+            return false;
+        }
+
+        $payload = [
+            'organization_id' => $this->organization_id,
+            'url'             => $url,
+            'name'            => $name,
+            'overall_score'   => intval( $overall_score ),
+            'scores'          => $scores,
+            'analyzed_at'     => gmdate( 'Y-m-d\TH:i:s\Z' ),
+        ];
+
+        $response = wp_remote_post(
+            $this->supabase_url . '/rest/v1/ciq_competitor_scores',
+            [
+                'headers' => [
+                    'apikey'        => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                    'Content-Type'  => 'application/json',
+                    'X-API-Key'     => $this->api_key,
+                    'Prefer'        => 'resolution=merge-duplicates,return=minimal',
+                ],
+                'body'    => json_encode( $payload ),
+                'timeout' => 20,
+            ]
+        );
+
+        if ( is_wp_error( $response ) ) {
+            ciq_log( 'Competitor upsert error (' . $name . '): ' . $response->get_error_message() );
+            return false;
+        }
+
+        $status = wp_remote_retrieve_response_code( $response );
+        if ( $status === 200 || $status === 201 ) {
+            ciq_log( 'Competitor upsert: ✅ ' . $name . ' overall=' . $overall_score . ' (HTTP ' . $status . ')' );
+            return true;
+        }
+
+        ciq_log( 'Competitor upsert failed (' . $name . '): HTTP ' . $status . ' — ' . substr( wp_remote_retrieve_body( $response ), 0, 200 ) );
+        return false;
     }
 }
