@@ -41,14 +41,14 @@ class ConversionIQ_AI
         $screenshot_url = isset($payload['page']['screenshot_url']) ? $payload['page']['screenshot_url'] : null;
 
         // Check if content is too long and needs chunking
-        if (strlen($page_content) > 8000) {
+        if (strlen($page_content) > 15000) {
             ciq_log('📚 Long content detected (' . strlen($page_content) . ' chars), using chunked analysis');
             return self::analyze_chunked($payload);
         }
 
         // Build the AI prompts (system = rubric/persona, user = page content)
         $system_prompt = self::build_system_prompt();
-        $user_prompt = self::build_user_prompt($page_title, $page_content, $page_url, $word_count, $html_structure, $business);
+        $user_prompt = self::build_user_prompt($page_title, $page_content, $page_url, $word_count, $html_structure, $business, $screenshot_url);
 
         // Call Abacus.ai API
         $start_time = microtime(true);
@@ -136,7 +136,8 @@ class ConversionIQ_AI
                 isset($payload['page']['url']) ? $payload['page']['url'] : '',
                 str_word_count($compressed),
                 isset($payload['page']['html_structure']) ? $payload['page']['html_structure'] : '',
-                isset($payload['business']) ? $payload['business'] : array()
+                isset($payload['business']) ? $payload['business'] : array(),
+                ( $current === 1 ) ? $screenshot_url : null
             );
 
             // Pass screenshot only on the first chunk (hero section / above-the-fold context)
@@ -691,6 +692,14 @@ class ConversionIQ_AI
     }
 
     /**
+     * Public wrapper — returns just the page type string (e.g. "About Page").
+     * Used by the audit pipeline to attach page_type to the result and sync to Supabase.
+     */
+    public static function get_page_type( $title, $url ) {
+        return self::detect_page_type( $title, $url )['type'];
+    }
+
+    /**
      * Detect page type and return appropriate conversion context
      */
     private static function detect_page_type($title, $url)
@@ -698,14 +707,24 @@ class ConversionIQ_AI
         $title_lower = strtolower($title);
         $url_lower = strtolower($url);
 
-        // Homepage detection
+        // Homepage detection — title is "Home" (exact) OR the URL has no path beyond the domain root
         if (preg_match('/^home$/i', $title) ||
-        preg_match('/\/\s*$/', $url) ||
+        preg_match('/^https?:\/\/[^\/]+\/?$/', $url) ||
         strpos($url_lower, 'homepage') !== false) {
             return array(
                 'type' => 'Homepage',
                 'context' => 'The homepage is the first impression and gateway to your business. It should quickly communicate value, build trust, and guide visitors to take the next step in their journey.',
-                'conversion_goal' => 'Capture attention, communicate value proposition clearly, and guide visitors to explore key pages or take primary action (contact, sign up, learn more)'
+                'conversion_goal' => 'Capture attention, communicate value proposition clearly, and guide visitors to explore key pages or take primary action (contact, sign up, learn more)',
+                'expected_elements' => [
+                    'Hero section with a clear, benefit-driven headline',
+                    'Primary CTA visible above the fold without scrolling',
+                    'Brief overview of the core service or product offering',
+                    'Social proof section (testimonials, client logos, review count)',
+                    'Trust signals (awards, certifications, years in business)',
+                    'Secondary CTA or lead capture element',
+                    'Clear navigation paths to key pages (Services, About, Contact)',
+                ],
+                'scoring_emphasis' => 'clarity_score and cta_strength are the primary metrics — visitors decide within 5 seconds whether to stay. trust_score is a close second as first-time visitors need rapid credibility signals. emotional_score should reflect how well the hero communicates the brand promise and speaks to the target audience\'s aspirations or pain.'
             );
         }
 
@@ -715,7 +734,17 @@ class ConversionIQ_AI
             return array(
                 'type' => 'About Page',
                 'context' => 'The About page builds trust and credibility by humanizing your business. Visitors here are evaluating whether to work with you.',
-                'conversion_goal' => 'Build trust and emotional connection, showcase expertise and values, guide visitors to contact or service pages'
+                'conversion_goal' => 'Build trust and emotional connection, showcase expertise and values, guide visitors to contact or service pages',
+                'expected_elements' => [
+                    'Founder or company origin story (how and why the business was started)',
+                    'Team member bios with names, roles, and photos',
+                    'Company mission, vision, or values statement',
+                    'Years in business or founding date',
+                    'Awards, certifications, press mentions, or accreditations',
+                    'CTA directing visitors to contact or services page',
+                    'Social proof tied to credibility — not sales (e.g., community involvement, expertise)',
+                ],
+                'scoring_emphasis' => 'trust_score is the single most critical metric on an About page — visitors are actively vetting whether to work with or buy from this business. emotional_score carries extra weight because the page must humanize the brand and create connection. cta_strength is secondary; the primary job is relationship-building, not hard conversion. Flag missing team photos, an absent origin story, or lack of credentials as high-priority weaknesses.'
             );
         }
 
@@ -725,7 +754,17 @@ class ConversionIQ_AI
             return array(
                 'type' => 'Services/Products Page',
                 'context' => 'Service pages are high-intent pages where visitors evaluate your specific offerings. They need clear information and strong CTAs.',
-                'conversion_goal' => 'Clearly explain offerings, demonstrate value and benefits, address objections, drive direct conversion (inquiry, booking, purchase)'
+                'conversion_goal' => 'Clearly explain offerings, demonstrate value and benefits, address objections, drive direct conversion (inquiry, booking, purchase)',
+                'expected_elements' => [
+                    'Individual service or product descriptions with benefit-led copy',
+                    'Pricing signals or starting-from rates (or a clear reason why pricing is not listed)',
+                    'Benefits vs. features framing for each offering',
+                    'Process or how-it-works section showing what happens after enquiry',
+                    'Service-specific testimonials or case studies',
+                    'Clear CTA per service (Get a Quote, Book Now, Enquire)',
+                    'FAQs addressing the most common objections for each service',
+                ],
+                'scoring_emphasis' => 'clarity_score and cta_strength are the primary metrics — visitors are mid-funnel evaluating a specific purchase decision. Each service needs its own value proposition and CTA. trust_score is critical for objection handling; missing service-specific testimonials or proof should be flagged as a high-priority weakness. emotional_score should reflect how well the copy frames benefits around the visitor\'s outcome, not just feature lists.'
             );
         }
 
@@ -735,7 +774,17 @@ class ConversionIQ_AI
             return array(
                 'type' => 'Contact/Booking Page',
                 'context' => 'This is a high-intent page where visitors are ready to take action. Remove friction and make it easy to connect.',
-                'conversion_goal' => 'Minimize friction, provide multiple contact options, reassure visitors, make it extremely easy to take action'
+                'conversion_goal' => 'Minimize friction, provide multiple contact options, reassure visitors, make it extremely easy to take action',
+                'expected_elements' => [
+                    'Contact form with minimal required fields (3 fields or fewer is ideal)',
+                    'Multiple contact methods (phone, email, and form)',
+                    'Response time promise or availability hours',
+                    'Physical address or service area',
+                    'Reassurance micro-copy near the form (e.g., "No spam. We reply within 24 hours.")',
+                    'Clear expectation of what happens after submitting (next steps)',
+                    'Map or directions if in-person visits are relevant',
+                ],
+                'scoring_emphasis' => 'cta_strength and readability_score are the primary metrics — friction kills conversions on high-intent pages. Count the form fields; more than 5 mandatory fields is a direct conversion obstacle. trust_score matters for final reassurance before submission. clarity_score should reflect how clearly each contact option is presented. Flag any form that asks for information not strictly necessary to make first contact.'
             );
         }
 
@@ -745,7 +794,16 @@ class ConversionIQ_AI
             return array(
                 'type' => 'FAQ Page',
                 'context' => 'FAQ pages remove objections and answer concerns that prevent conversion. They support the buying decision.',
-                'conversion_goal' => 'Address common objections clearly, reduce uncertainty, build confidence, include CTAs to move visitors to conversion'
+                'conversion_goal' => 'Address common objections clearly, reduce uncertainty, build confidence, include CTAs to move visitors to conversion',
+                'expected_elements' => [
+                    'Objection-handling questions covering cost, timeline, process, and qualifications',
+                    'Answers that lead naturally into services or next steps',
+                    'CTA within or immediately after FAQ answers',
+                    'Scannable accordion or clear question/answer formatting',
+                    'Internal links to relevant service pages within answers',
+                    'Schema FAQ markup for search result rich snippets',
+                ],
+                'scoring_emphasis' => 'readability_score and clarity_score are the primary metrics — if answers are buried in dense paragraphs or hard to navigate, the page defeats its own purpose. cta_strength matters because FAQ pages should funnel visitors toward conversion, not just answer questions in isolation. Flag FAQ pages with no CTAs within answers as a critical gap.'
             );
         }
 
@@ -755,7 +813,17 @@ class ConversionIQ_AI
             return array(
                 'type' => 'Pricing Page',
                 'context' => 'Pricing pages are critical conversion points. Visitors need clear value justification and easy next steps.',
-                'conversion_goal' => 'Present pricing clearly, justify value, compare options effectively, drive purchase or inquiry with strong CTAs'
+                'conversion_goal' => 'Present pricing clearly, justify value, compare options effectively, drive purchase or inquiry with strong CTAs',
+                'expected_elements' => [
+                    'Clear pricing tiers or packages with names',
+                    'Itemised list of what is included in each tier',
+                    'Value anchoring — a higher-priced option that makes the primary offer look like value',
+                    'FAQ section addressing pricing objections (contracts, hidden fees, cancellation)',
+                    'Money-back guarantee, free trial, or other risk-reversal offer',
+                    'CTA button per pricing tier',
+                    'Social proof tied to ROI or results (e.g., "Clients see 3x ROI within 6 months")',
+                ],
+                'scoring_emphasis' => 'clarity_score is the primary metric — visitors must immediately understand what they get for the price at each tier. trust_score and cta_strength are close seconds; value justification and low-friction next steps are the conversion levers. emotional_score should reflect how well the copy frames cost in terms of outcome and ROI rather than just listing features. Flag absence of risk-reversal (guarantee, trial) as high priority.'
             );
         }
 
@@ -765,7 +833,17 @@ class ConversionIQ_AI
             return array(
                 'type' => 'Blog/Content Page',
                 'context' => 'Content pages attract and educate visitors. They should build authority and guide readers to service pages.',
-                'conversion_goal' => 'Provide valuable information, establish expertise, include relevant CTAs to services/contact, capture emails for nurturing'
+                'conversion_goal' => 'Provide valuable information, establish expertise, include relevant CTAs to services/contact, capture emails for nurturing',
+                'expected_elements' => [
+                    'Author bio or byline with credentials and photo',
+                    'Publish date and last-updated date (freshness signals for trust)',
+                    'Subheadings (H2/H3) breaking content into scannable sections',
+                    'Inline CTAs or contextual content upgrades relevant to the article topic',
+                    'Internal links to related services or product pages',
+                    'Email capture or lead magnet (checklist, guide, free tool)',
+                    'Social sharing options',
+                ],
+                'scoring_emphasis' => 'readability_score is the primary metric — content must be easy to consume or visitors will bounce. clarity_score reflects whether the article delivers on its headline promise. trust_score should credit author credentials and freshness signals. cta_strength should be evaluated for in-content CTAs, not just a single page-level button — an article with no inline CTAs should score cta_strength below 40 regardless of page-level CTAs.'
             );
         }
 
@@ -775,7 +853,17 @@ class ConversionIQ_AI
             return array(
                 'type' => 'Testimonials/Social Proof Page',
                 'context' => 'Social proof pages validate your claims and build trust. They overcome skepticism.',
-                'conversion_goal' => 'Showcase credible testimonials and results, build trust through social proof, guide visitors to take action'
+                'conversion_goal' => 'Showcase credible testimonials and results, build trust through social proof, guide visitors to take action',
+                'expected_elements' => [
+                    'Full testimonials with first name and last name (not just "John D." or "A happy customer")',
+                    'Headshot photo for each reviewer',
+                    'Company name and job title for each reviewer',
+                    'Specific result or outcome mentioned in each testimonial',
+                    'Video testimonials if available',
+                    'Third-party review platform badges or links (Google, Trustpilot, etc.)',
+                    'CTA positioned after the testimonials section',
+                ],
+                'scoring_emphasis' => 'trust_score is the only metric that carries primary weight on this page — it exists solely to build credibility. Score rigorously: anonymous or first-name-only testimonials should cap trust_score at 50. Named testimonials with photo, company, and specific results can reach 80+. Video testimonials push toward 90+. Flag absence of a CTA after proof as a missed conversion opportunity.'
             );
         }
 
@@ -785,7 +873,17 @@ class ConversionIQ_AI
             return array(
                 'type' => 'Gallery/Portfolio Page',
                 'context' => 'Visual showcases demonstrate quality and capability. They should inspire confidence.',
-                'conversion_goal' => 'Showcase quality of work, demonstrate capabilities, provide context for projects, guide to inquiry or booking'
+                'conversion_goal' => 'Showcase quality of work, demonstrate capabilities, provide context for projects, guide to inquiry or booking',
+                'expected_elements' => [
+                    'Project title and brief description for each piece',
+                    'Client name or industry context for each project',
+                    'Before/after or process images where applicable',
+                    'Quantifiable results or outcomes (e.g., "30% increase in organic traffic")',
+                    'CTA to request similar work or get a quote',
+                    'Filter or category navigation for portfolios with more than 6 projects',
+                    'Testimonial or case study link associated with each project',
+                ],
+                'scoring_emphasis' => 'engagement_score and trust_score are the primary metrics — visitors are visually evaluating quality and deciding whether this business can deliver what they need. clarity_score reflects whether each project clearly communicates what was done, for whom, and with what result. cta_strength should be evaluated for project-level CTAs, not just a single page CTA; missing per-project CTAs are a key conversion gap.'
             );
         }
 
@@ -793,7 +891,14 @@ class ConversionIQ_AI
         return array(
             'type' => 'Standard Page',
             'context' => 'This page supports the overall customer journey and should align with its specific purpose in the conversion funnel.',
-            'conversion_goal' => 'Guide visitors toward the primary business goal while serving the specific purpose of this page'
+            'conversion_goal' => 'Guide visitors toward the primary business goal while serving the specific purpose of this page',
+            'expected_elements' => [
+                'Clear page headline that states the purpose of the page',
+                'CTA aligned to the page\'s logical next step in the visitor journey',
+                'Trust signals relevant to the topic or audience',
+                'Internal links to related content, services, or contact page',
+            ],
+            'scoring_emphasis' => 'All scoring dimensions apply equally. Assess whether the page has a clear purpose, communicates it effectively, and guides visitors to a logical next step. Flag any page with no discernible CTA or purpose as a critical clarity gap.'
         );
     }
 
@@ -1040,7 +1145,7 @@ Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact struc
      * Build the user prompt — page content, business context, lead intelligence.
      * This changes for every audit.
      */
-    private static function build_user_prompt($title, $content, $url, $word_count, $html_structure, $business)
+    private static function build_user_prompt($title, $content, $url, $word_count, $html_structure, $business, $screenshot_url = null)
     {
         $industry = isset($business['industry']) ? $business['industry'] : 'Not specified';
         $product = isset($business['product']) ? $business['product'] : 'Not specified';
@@ -1051,8 +1156,22 @@ Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact struc
         $page_type_info = self::detect_page_type($title, $url);
         $page_type = $page_type_info['type'];
         $conversion_goal = $page_type_info['conversion_goal'];
+        $page_context = $page_type_info['context'];
+        $scoring_emphasis = $page_type_info['scoring_emphasis'];
+        $expected_elements = isset($page_type_info['expected_elements']) ? $page_type_info['expected_elements'] : [];
 
         ciq_log('🎯 Detected page type: ' . $page_type . ' | Conversion goal: ' . $conversion_goal);
+
+        // Build page-type structural checklist block
+        $page_type_block = "\nPAGE TYPE CONTEXT:\n{$page_context}\n";
+        if (!empty($expected_elements)) {
+            $page_type_block .= "\nEXPECTED STRUCTURAL ELEMENTS FOR A {$page_type}:\n";
+            $page_type_block .= "Audit each element below. For every element that is absent, flag it in your weaknesses, suggestions, or quick_wins. Do NOT create new JSON fields for this — incorporate findings into the existing response structure.\n";
+            foreach ($expected_elements as $element) {
+                $page_type_block .= "  - {$element}\n";
+            }
+        }
+        $page_type_block .= "\nSCORING EMPHASIS FOR THIS PAGE TYPE:\n{$scoring_emphasis}\n";
 
         // Get webhook statistics for lead intelligence context
         $webhook_stats = self::get_webhook_statistics($url);
@@ -1089,18 +1208,35 @@ Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact struc
             $leads_context .= "\nUse ONLY these real numbers in lead_intelligence_summary. Do NOT invent stats.\n";
         }
 
-        // Limit content length
-        if (strlen($content) > 8000) {
-            $content = substr($content, 0, 8000) . '... [truncated]';
+        // Cap content length — 15 000 chars (~3 750 tokens) stays well within GPT-4o's
+        // 128 K-token context window while covering even long-form pages in a single pass.
+        if (strlen($content) > 15000) {
+            $content = substr($content, 0, 15000) . '... [truncated]';
         }
-        if (strlen($html_structure) > 3500) {
-            $html_structure = substr($html_structure, 0, 3500) . '... [truncated]';
+        // Cap HTML structure — 6 000 chars accommodates the full 13-signal CRO summary
+        // plus CPT review data without approaching any model limit.
+        if (strlen($html_structure) > 6000) {
+            $html_structure = substr($html_structure, 0, 6000) . '... [truncated]';
         }
 
         // Build lead intelligence JSON fragment if data exists
         $lead_json_fragment = '';
         if ($webhook_stats) {
             $lead_json_fragment = "\n\nInclude this additional field in your JSON output:\n\"lead_intelligence_summary\": {\n  \"insight\": \"2-3 sentences analyzing what lead data reveals about page performance\",\n  \"recommendations\": [\"Action item based on lead patterns\", \"Action item 2\", \"Action item 3\"]\n}";
+        }
+
+        // Screenshot availability notice — critical for honest visual scoring.
+        // When no screenshot was captured, explicitly tell the model so it does not
+        // fabricate visual observations for the visual-evidence CRO checklist items.
+        $screenshot_notice = '';
+        if ( ! $screenshot_url ) {
+            $screenshot_notice = "\nSCREENSHOT NOTICE: No page screenshot is available for this audit. "
+                . "You MUST NOT fabricate or guess visual observations. "
+                . "For CRO checklist items 1 (CTA Above the Fold), 2 (Trust Signals), 3 (Inline Social Proof), "
+                . "5 (Sticky CTA in Nav), 7 (Clear Visual Hierarchy), 11 (Anchor Pricing), and 13 (Progress Indicators): "
+                . "set present=false unless the HTML signal data explicitly confirms presence, "
+                . "and set explanation to a statement based solely on HTML evidence (e.g. \"Assessed from HTML signals only — no screenshot available\"). "
+                . "Do not include screenshot-observation phrases in suggestions or insights.\n";
         }
 
         $prompt = "Analyze this {$page_type} page for conversion optimization.
@@ -1112,7 +1248,7 @@ BUSINESS CONTEXT:
 - Pain Points: {$pain_points}
 - Conversion Goal: {$goal}
 - Page Conversion Goal: {$conversion_goal}
-
+{$page_type_block}{$screenshot_notice}
 PAGE: {$title} ({$word_count} words)
 
 CONTENT:
@@ -1121,7 +1257,7 @@ CONTENT:
 HTML STRUCTURE:
 {$html_structure}{$leads_context}
 
-Score this page using the rubric from your instructions. Provide all suggestions referencing SPECIFIC page elements. Connect recommendations to actual weaknesses (cite scores). Compute overall_score using the weights specified.{$lead_json_fragment}";
+Score this page using the rubric from your instructions. Apply the SCORING EMPHASIS above when calibrating scores — it overrides generic rubric defaults for this specific page type. Audit every EXPECTED STRUCTURAL ELEMENT listed above and incorporate missing-element findings into your weaknesses, suggestions, or quick_wins. Provide all suggestions referencing SPECIFIC page elements. Connect recommendations to actual weaknesses (cite scores). Compute overall_score using the weights specified.{$lead_json_fragment}";
 
         return $prompt;
     }

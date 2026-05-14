@@ -4,7 +4,7 @@ Tags: conversion optimization, AI audit, copy analysis, website scoring, lead in
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.0.45
+Stable tag: 2.0.83
 License: GPLv2 or later
 
 AI-powered conversion auditing for WordPress. Scores your pages, generates actionable reports, and rewrites copy to convert more visitors.
@@ -57,6 +57,15 @@ Yes. On the Professional and Agency plans you can customize the company name, lo
 Yes. Conversion IQ extracts rendered content from any published page regardless of how it was built (Elementor, Divi, Gutenberg, etc.).
 
 == Changelog ==
+
+= 2.0.83 =
+* Fix: page-type detection now correctly identifies About, Services, Contact, FAQ, and Pricing pages — previously all pages with a trailing slash matched as Homepage, causing identical scores across all page types
+* Improvement: above-fold CTA detection strips <head>, <script>, and <style> blocks before sampling hero markup, expanded window from 4,000 to 5,000 chars
+* Improvement: HTML entity decode (html_entity_decode ENT_QUOTES|ENT_HTML5) and whitespace normalisation applied after wp_strip_all_tags in all three audit pipelines (main loop, scheduled loop, automated reports)
+* Improvement: content hash now includes first 2,000 chars of raw HTML so CSS/theme changes trigger a fresh screenshot, not just post_content changes
+* Improvement: page_type detected for each audit and synced to Supabase audits table (Phase 2 PATCH) — requires ALTER TABLE audits ADD COLUMN IF NOT EXISTS page_type text in Supabase
+* Improvement: plugin_version and organization_id now included in every sync_from_saas() call so SaaS backend stays current on daily cron, not only at activation
+* Fix: Supabase Phase 1 INSERT no longer breaks on unknown columns — page_type moved to Phase 2 PATCH to avoid schema-cache errors on sites not yet migrated
 
 = 2.0.38 =
 * License tab: Active Sites management panel — view all sites using the license, remove individual site slots

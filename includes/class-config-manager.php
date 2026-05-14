@@ -268,10 +268,12 @@ class ConversionIQ_Config_Manager
 
         $response = wp_remote_post('https://conversioniq-app.com/api/get-config', array(
             'timeout' => 15,
-            'body'    => wp_json_encode(array(
-                'license_key' => $license_key,
-                'site_url'    => get_site_url(),
-            )),
+            'body'    => wp_json_encode(array_filter(array(
+                'license_key'     => $license_key,
+                'site_url'        => get_site_url(),
+                'organization_id' => get_option('conversioniq_organization_id', '') ?: null,
+                'plugin_version'  => defined('CONVERSION_IQ_VERSION') ? CONVERSION_IQ_VERSION : null,
+            ))),
             'headers' => array('Content-Type' => 'application/json'),
         ));
 

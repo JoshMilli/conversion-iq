@@ -70,23 +70,31 @@ class ConversionIQ_Automated_Reports
                 continue;
             }
 
-            // Get page content
-            $content = $post->post_content;
-            $content = strip_shortcodes($content);
-            $content = wp_strip_all_tags($content);
-
-            // Fetch HTML structure
+            // Get page content — render page-builder blocks via the_content filter.
             $page_url = get_permalink($post);
-            $html_structure = '';
+            $rendered_content = apply_filters( 'the_content', $post->post_content );
+            $content          = wp_strip_all_tags( $rendered_content );
+            $content = html_entity_decode( $content, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+            $content = trim( preg_replace( '/\s+/', ' ', $content ) );
 
+            // Fetch HTML structure (and body-text fallback for page builders)
+            $html_structure = '';
             $response = wp_remote_get($page_url, array(
-                'timeout' => 10,
+                'timeout' => 15,
                 'sslverify' => true,
             ));
 
             if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
                 $html = wp_remote_retrieve_body($response);
                 $html_structure = conversioniq_extract_html_structure($html);
+
+                if ( strlen( trim( $content ) ) < 300 ) {
+                    $fallback_text = conversioniq_extract_body_text( $html );
+                    if ( strlen( $fallback_text ) > strlen( $content ) ) {
+                        $content = $fallback_text;
+                        ciq_log( 'Automated audit: HTML body-text fallback applied (' . strlen( $content ) . ' chars)' );
+                    }
+                }
             }
 
             $payload = array(

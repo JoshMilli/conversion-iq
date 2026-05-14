@@ -684,6 +684,7 @@ class ConversionIQ_Supabase_Sync {
                 'lead_intelligence'  => $audit_data['lead_intelligence'] ?? null,
                 'cro_checklist'      => $audit_data['cro_checklist'] ?? null,
                 'core_web_vitals'    => $audit_data['core_web_vitals'] ?? null,
+                'page_type'          => $audit_data['page_type'] ?? null,
             ];
 
             $patch_body = json_encode($jsonb_data);

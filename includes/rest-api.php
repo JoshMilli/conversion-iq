@@ -167,7 +167,12 @@ function conversioniq_extract_html_structure($html)
     $cro_signals = array();
 
     // 1. CTA Above the Fold â€” look for button/link in the first ~4000 chars (hero/header area)
-    $above_fold = substr($html, 0, 4000);
+    // 1. CTA Above the Fold — strip non-visible head/script/style regions first so
+    // the first 5,000 chars reliably contain visible hero markup, not <head> boilerplate.
+    $above_fold_html = preg_replace( '/<head[\s>][\s\S]*?<\/head>/i', '', $html );
+    $above_fold_html = preg_replace( '/<script[\s>][\s\S]*?<\/script>/i', '', $above_fold_html );
+    $above_fold_html = preg_replace( '/<style[\s>][\s\S]*?<\/style>/i',  '', $above_fold_html );
+    $above_fold = substr( $above_fold_html, 0, 5000 );
     if (preg_match_all('/<(?:button|a)[^>]*(?:class|role)[^>]*(?:btn|button|cta|get-started|start|try|buy|book|request|contact|sign-up|signup)[^>]*>([^<]{2,60})<\/(?:button|a)>/i', $above_fold, $cta_matches)) {
         $cta_texts = array_unique(array_map('wp_strip_all_tags', $cta_matches[1]));
         $cro_signals[] = 'CTA Above the Fold: YES â€” found button/link element(s) in first screen area: "' . implode('", "', array_slice($cta_texts, 0, 3)) . '"';
@@ -304,6 +309,37 @@ function conversioniq_extract_html_structure($html)
     $summary .= "\nNote: Use these section names when categorizing your suggestions.";
 
     return $summary;
+}
+
+/**
+ * Extract readable body text from a fully rendered HTML page.
+ *
+ * This is used as a fallback for page-builder sites (Elementor, Divi, Beaver Builder)
+ * where $post->post_content contains raw block/widget JSON rather than readable copy.
+ * We strip non-content regions (head, nav, footer, scripts, styles) and return clean text.
+ *
+ * @param  string $html  Full rendered HTML of the page.
+ * @return string        Normalised plain text of the main body content.
+ */
+function conversioniq_extract_body_text( $html ) {
+    if ( empty( $html ) ) {
+        return '';
+    }
+
+    // Remove regions that contain navigation/boilerplate, not page copy
+    $remove_tags = array( 'head', 'script', 'style', 'nav', 'footer', 'aside', 'noscript' );
+    foreach ( $remove_tags as $tag ) {
+        $html = preg_replace( '/<' . $tag . '[\s>][\s\S]*?<\/' . $tag . '>/i', ' ', $html );
+    }
+
+    // Strip all remaining HTML tags
+    $text = wp_strip_all_tags( $html );
+
+    // Collapse whitespace and decode HTML entities
+    $text = html_entity_decode( $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+    $text = preg_replace( '/\s+/', ' ', $text );
+
+    return trim( $text );
 }
 
 /**
@@ -1008,18 +1044,24 @@ $results = array();
         if (!$post)
             continue;
 
-        // Get clean page content
-        $content = $post->post_content;
-        $content = strip_shortcodes($content);
-        $content = wp_strip_all_tags($content);
+        // Get clean page content.
+        // apply_filters('the_content') runs page-builder render hooks (Elementor, Divi,
+        // Gutenberg) so we get actual readable copy rather than raw block/widget JSON.
+        $rendered_content = apply_filters( 'the_content', $post->post_content );
+        $content          = wp_strip_all_tags( $rendered_content );
+        // Decode HTML entities (&amp; &nbsp; &#8211; etc.) so the AI reads clean prose.
+        $content = html_entity_decode( $content, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+        $content = trim( preg_replace( '/\s+/', ' ', $content ) );
 
-        // Fetch HTML structure for better AI analysis
+        // Fetch the live rendered HTML — used for html_structure extraction and,
+        // if the DB content turns out thin, as a body-text fallback.
         $page_url = get_permalink($post);
         $html_structure = '';
+        $html = '';
 
         ciq_log('Fetching HTML from: ' . $page_url);
         $response = wp_remote_get($page_url, array(
-            'timeout' => 10,
+            'timeout' => 15,
             'sslverify' => true,
         ));
 
@@ -1029,6 +1071,16 @@ $results = array();
             // Extract key HTML elements and their classes/IDs
             $html_structure = conversioniq_extract_html_structure($html);
             ciq_log('HTML structure extracted (' . strlen($html_structure) . ' chars)');
+
+            // Fallback for page builders that store content in meta (not post_content):
+            // if the rendered DB content is thin, extract body text from the live HTML fetch.
+            if ( strlen( trim( $content ) ) < 300 ) {
+                $fallback_text = conversioniq_extract_body_text( $html );
+                if ( strlen( $fallback_text ) > strlen( $content ) ) {
+                    $content = $fallback_text;
+                    ciq_log( 'Content: HTML body-text fallback applied (' . strlen( $content ) . ' chars) — DB content was thin' );
+                }
+            }
         }
         else {
             ciq_log('Could not fetch HTML: ' . (is_wp_error($response) ? $response->get_error_message() : 'HTTP error'));
@@ -1046,7 +1098,10 @@ $results = array();
 
         // Calculate content hash for change detection (done here so we can use it
         // to decide whether to force a fresh screenshot before the AI call).
-        $content_hash = hash('sha256', $content . $html_structure);
+        // Content hash — include a fingerprint of the raw HTML head (stylesheet/asset
+        // version strings) so that CSS or theme changes also trigger a fresh screenshot,
+        // not just post_content changes.
+        $content_hash = hash('sha256', $content . $html_structure . substr($html, 0, 2000));
 
         // Determine whether the page content has changed since the last audit.
         // If it has (or there is no previous audit), force a fresh screenshot so
@@ -1096,6 +1151,9 @@ $results = array();
         try {
             $ai = ConversionIQ_AI::analyze($payload);
             $audit_time = round((microtime(true) - $audit_start), 2);
+
+            // Attach the detected page type so it can be stored and synced.
+            $ai['page_type'] = ConversionIQ_AI::get_page_type( $post->post_title, $page_url );
 
             // Validate AI response structure
             if (!is_array($ai)) {
@@ -1181,6 +1239,7 @@ $results = array();
                     'lead_intelligence'  => isset($ai['lead_intelligence_summary']) ? $ai['lead_intelligence_summary'] : null,
                     'cro_checklist'      => isset($ai['cro_checklist']) ? $ai['cro_checklist'] : null,
                     'plan'               => ConversionIQ_Config_Manager::get_plan(),
+                    'page_type'          => $ai['page_type'] ?? null,
                 ));
 
                 // Track usage for analytics
@@ -2578,22 +2637,32 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
 
             $log[] = '  Ã°Å¸â€â€ž Running audit for: ' . $page->post_title;
 
-            // Get page content
+            // Get page content — render page-builder blocks via the_content filter.
             $page_url = get_permalink($page_id);
-            $content = $page->post_content;
-            $content = strip_shortcodes($content);
-            $content = wp_strip_all_tags($content);
+            $rendered_content = apply_filters( 'the_content', $page->post_content );
+            $content          = wp_strip_all_tags( $rendered_content );
+            $content = html_entity_decode( $content, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+            $content = trim( preg_replace( '/\s+/', ' ', $content ) );
 
-            // Fetch HTML structure
+            // Fetch HTML structure (and body-text fallback for page builders)
             $html_structure = '';
+            $html_body = '';
             $response = wp_remote_get($page_url, array(
-                'timeout' => 10,
+                'timeout' => 15,
                 'sslverify' => true,
             ));
 
             if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
-                $html = wp_remote_retrieve_body($response);
-                $html_structure = conversioniq_extract_html_structure($html);
+                $html_body = wp_remote_retrieve_body($response);
+                $html_structure = conversioniq_extract_html_structure($html_body);
+
+                if ( strlen( trim( $content ) ) < 300 ) {
+                    $fallback_text = conversioniq_extract_body_text( $html_body );
+                    if ( strlen( $fallback_text ) > strlen( $content ) ) {
+                        $content = $fallback_text;
+                        $log[] = '    Content: HTML body-text fallback applied (' . strlen( $content ) . ' chars)';
+                    }
+                }
             }
 
             // Supplement HTML-based trust signals with reviews stored in WordPress CPTs
