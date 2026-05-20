@@ -135,8 +135,10 @@ class ConversionIQ_AI
             );
 
             // Pass screenshot only on the first chunk (hero section / above-the-fold context)
+            // Secondary chunks only need scores + suggestions — 1500 tokens is enough and is ~2× faster.
             $chunk_screenshot = ( $current === 1 ) ? $screenshot_url : null;
-            $response = self::call_abacus_ai($user_prompt, $system_prompt, $chunk_screenshot);
+            $chunk_max_tokens = ( $current === 1 ) ? 4000 : 1500;
+            $response = self::call_abacus_ai($user_prompt, $system_prompt, $chunk_screenshot, $chunk_max_tokens);
 
             if ($response && isset($response['success']) && $response['success']) {
                 $data = $response['data'];
@@ -163,10 +165,6 @@ class ConversionIQ_AI
                 ciq_log("⚠️ Section '{$section_name}' analysis failed");
             }
 
-            // Small delay to avoid rate limiting
-            if ($current < $section_count) {
-                sleep(1);
-            }
         }
 
         // Aggregate results
@@ -1458,7 +1456,7 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
      * The WP plugin sends messages + license key; the SaaS adds the real AI API
      * key and forwards to the AI provider.  No AI key is ever stored on the WP site.
      */
-    private static function call_abacus_ai($prompt, $system_prompt = null, $screenshot_url = null)
+    private static function call_abacus_ai($prompt, $system_prompt = null, $screenshot_url = null, $max_tokens = 4000)
     {
         $license_key = self::get_license_key();
         if ( empty( $license_key ) ) {
@@ -1500,7 +1498,7 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
         $body = array(
             'model' => 'gpt-4o',
             'messages' => $messages,
-            'max_tokens' => 4000,
+            'max_tokens' => $max_tokens,
             'temperature' => 0.1,
             'stream' => false
         );

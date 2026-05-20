@@ -1218,6 +1218,28 @@ $results = array();
         ciq_log('Running audit for: ' . $post->post_title);
         ciq_log('Content hash: ' . $content_hash);
 
+        // Skip AI call if content is identical to the last audit — return the cached record instead.
+        if ( ! $content_changed ) {
+            $cached = $wpdb->get_row( $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}conversioniq_audits
+                 WHERE page_id = %d AND content_hash = %s
+                 ORDER BY created_at DESC LIMIT 1",
+                $post->ID,
+                $content_hash
+            ), ARRAY_A );
+
+            if ( $cached ) {
+                ciq_log( '⚡ Content unchanged — returning cached audit for "' . $post->post_title . '" (skipping AI call)' );
+                $results[] = array(
+                    'page_id'    => $post->ID,
+                    'page_title' => $post->post_title,
+                    'cached'     => true,
+                    'audit_id'   => $cached['id'],
+                );
+                continue;
+            }
+        }
+
         $audit_start = microtime(true);
         try {
             $ai = ConversionIQ_AI::analyze($payload);
