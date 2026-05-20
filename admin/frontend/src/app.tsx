@@ -562,29 +562,6 @@ export default function App() {
             trust: result.trust_score
           });
           console.log('Suggestions Count:', result.suggestions?.length || 0);
-          
-          // Detailed webhook posting information
-          console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #10b981');
-          console.log('%c🌐 WEBHOOK POSTED TO SUPPORT PORTAL', 'color: #10b981; font-weight: bold; font-size: 13px; background: #d1fae5; padding: 4px 8px; border-radius: 4px');
-          console.log('%cEndpoint:', 'color: #059669; font-weight: bold', 'https://webtecsupportportal.abacusai.app/api/webhook/conversion-iq');
-          console.log('%cMethod:', 'color: #059669; font-weight: bold', 'POST');
-          console.log('%cAuthentication:', 'color: #059669; font-weight: bold', 'X-API-Key header (auto-configured from account)');
-          console.log('%cPayload Data:', 'color: #059669; font-weight: bold');
-          console.log('  • Page Title:', result.page_title || 'N/A');
-          console.log('  • Page URL:', result.page_url || 'N/A');
-          console.log('  • Page ID:', result.page_id || 'N/A');
-          console.log('  • Clarity Score:', result.clarity_score);
-          console.log('  • Emotional Score:', result.emotional_score);
-          console.log('  • CTA Strength:', result.cta_strength);
-          console.log('  • Readability Score:', result.readability_score);
-          console.log('  • Engagement Score:', result.engagement_score);
-          console.log('  • Trust Score:', result.trust_score);
-          console.log('  • Suggestions:', result.suggestions?.length || 0, 'items');
-          console.log('  • AI Used:', result.ai_used !== false ? 'YES' : 'NO (Fallback)');
-          console.log('  • Site URL:', window.location.origin);
-          console.log('%c✅ Check WordPress debug.log for webhook response details', 'color: #10b981; font-style: italic');
-          console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #10b981');
-          
           console.groupEnd();
         });
 
