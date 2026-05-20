@@ -230,6 +230,7 @@ if ( ! function_exists( 'get_option' ) ) {
         <button class="action-button" onclick="testAPI()">Test API Endpoint</button>
         <button class="action-button" onclick="clearCache()">Clear Cache</button>
         <button class="action-button" onclick="testSaasConnectivity()" style="background:#2271b1;">Test SaaS Connectivity</button>
+        <button class="action-button" onclick="testWorkerHealth()" style="background:#1a7e4a;">Worker Health</button>
     </p>
     <div id="test-results"></div>
 
@@ -293,8 +294,43 @@ function reloadPage() {
     location.reload();
 }
 
-function testSaasConnectivity() {
+function testWorkerHealth() {
     const results = document.getElementById('test-results');
+    results.innerHTML = '<p>Checking SaaS worker health...</p>';
+
+    fetch('<?php echo rest_url('conversioniq/v1/worker-health'); ?>', {
+        headers: { 'X-WP-Nonce': '<?php echo wp_create_nonce('wp_rest'); ?>' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        const ok = data.ok !== false && data.worker_running !== false;
+        const color = ok ? 'green' : 'red';
+        let html = '<p style="color:' + color + '"><strong>' + (ok ? '✅ Worker is healthy' : '❌ Worker may be down') + '</strong></p>';
+
+        if (data.worker_running !== undefined) {
+            html += '<table><tr><th>Metric</th><th>Value</th></tr>';
+            html += '<tr><td>Worker running</td><td>' + (data.worker_running ? '✅ Yes' : '❌ No') + '</td></tr>';
+            html += '<tr><td>Queue depth</td><td>' + (data.queue_depth ?? '?') + '</td></tr>';
+            html += '<tr><td>Active jobs</td><td>' + (data.processing_count ?? '?') + '</td></tr>';
+            html += '<tr><td>Avg job time</td><td>' + (data.avg_job_ms ? (data.avg_job_ms / 1000).toFixed(1) + 's' : '?') + '</td></tr>';
+            html += '<tr><td>Recent completions</td><td>' + (data.recent_completions ?? '?') + '</td></tr>';
+            if (data.oldest_pending_age_ms) {
+                html += '<tr><td style="color:orange">Oldest pending job</td><td style="color:orange">' + (data.oldest_pending_age_ms / 1000).toFixed(0) + 's old</td></tr>';
+            }
+            html += '<tr><td>Response time</td><td>' + data.elapsed_ms + 'ms</td></tr>';
+            html += '</table>';
+        } else {
+            html += '<pre style="background:#f0f0f0;padding:10px;font-size:12px">' + JSON.stringify(data, null, 2) + '</pre>';
+        }
+
+        results.innerHTML = html;
+    })
+    .catch(err => {
+        results.innerHTML = '<p style="color:red">❌ Health check failed: ' + err.message + '</p>';
+    });
+}
+
+function testSaasConnectivity() {    const results = document.getElementById('test-results');
     results.innerHTML = '<p>Testing outbound connection from WP server to conversioniq-app.com/api/ai-proxy... (10s timeout)</p>';
 
     fetch('<?php echo rest_url('conversioniq/v1/connectivity-test'); ?>', {

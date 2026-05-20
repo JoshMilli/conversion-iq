@@ -762,6 +762,37 @@ add_action('rest_api_init', function () {
             },
         ));
 
+        // Worker health — WP admin only. Proxies GET /api/ai-proxy/health from the SaaS
+        // and returns the result so the diagnostic page can show queue depth and avg latency.
+        register_rest_route('conversioniq/v1', '/worker-health', array(
+            'methods'             => 'GET',
+            'permission_callback' => function() { return current_user_can( 'manage_options' ); },
+            'callback'            => function() {
+                $start    = microtime( true );
+                $response = wp_remote_get( ConversionIQ_AI::SAAS_API_URL . '/api/ai-proxy/health', array(
+                    'timeout'   => 8,
+                    'sslverify' => true,
+                ) );
+                $elapsed = round( ( microtime( true ) - $start ) * 1000 );
+
+                if ( is_wp_error( $response ) ) {
+                    return new WP_REST_Response( array(
+                        'ok'         => false,
+                        'error'      => $response->get_error_message(),
+                        'elapsed_ms' => $elapsed,
+                    ), 200 );
+                }
+
+                $body   = json_decode( wp_remote_retrieve_body( $response ), true );
+                $status = wp_remote_retrieve_response_code( $response );
+
+                return new WP_REST_Response( array_merge(
+                    $body ?: array(),
+                    array( 'ok' => ( $status === 200 ), 'elapsed_ms' => $elapsed )
+                ), 200 );
+            },
+        ));
+
         // Debug/diagnostic endpoint — WP admin only. Runs the full poll handler inline
         // and returns a detailed report. Use this to verify the cron pipeline works
         // without waiting for WP-Cron to fire naturally.

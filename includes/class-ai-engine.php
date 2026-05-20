@@ -88,13 +88,11 @@ class ConversionIQ_AI
      */
     private static function analyze_chunked($payload)
     {
-        $page_title = isset($payload['page']['title']) ? $payload['page']['title'] : 'Unknown Page';
-        $content = isset($payload['page']['content']) ? $payload['page']['content'] : '';
-        // Screenshot is only used on the first chunk — it gives overall visual context
-        // for the hero/above-the-fold area, which is where visual scoring matters most.
-        $screenshot_url = isset($payload['page']['screenshot_url']) ? $payload['page']['screenshot_url'] : null;
+        $page_title     = isset($payload['page']['title'])         ? $payload['page']['title']         : 'Unknown Page';
+        $content        = isset($payload['page']['content'])       ? $payload['page']['content']       : '';
+        $screenshot_url = isset($payload['page']['screenshot_url'])? $payload['page']['screenshot_url']: null;
 
-        ciq_log('🔍 Starting chunked analysis for: ' . $page_title);
+        ciq_log('🔍 Starting chunked analysis (batch) for: ' . $page_title);
 
         $sections = self::split_into_sections($content);
 
@@ -104,70 +102,236 @@ class ConversionIQ_AI
             return self::analyze($payload);
         }
 
-        $all_scores = array();
-        $all_suggestions = array();
-        $all_functionality_suggestions = array();
-
         $section_count = count($sections);
-        $current = 0;
+        ciq_log("📦 Submitting {$section_count} section(s) as a single batch job");
+
+        // ── Build one request object per section ──────────────────────────────
+        $batch_requests  = array();   // sent to /api/ai-proxy/batch
+        $section_meta    = array();   // indexed same as $batch_requests
+        $current         = 0;
 
         foreach ($sections as $section_name => $section_content) {
             $current++;
-            ciq_log("📄 Analyzing section {$current}/{$section_count}: {$section_name} (" . strlen($section_content) . " chars)");
-
-            // Compress content if still too long
-            $compressed = self::compress_content($section_content);
-
-            // Update payload with section content
-            $section_payload = $payload;
-            $section_payload['page']['content'] = $compressed;
-            $section_payload['page']['word_count'] = str_word_count($compressed);
+            $compressed  = self::compress_content($section_content);
+            $is_first    = ( $current === 1 );
+            $max_tokens  = $is_first ? 4000 : 1500;
+            $chunk_shot  = $is_first ? $screenshot_url : null;
 
             $system_prompt = self::build_system_prompt($section_name);
-            $user_prompt = self::build_user_prompt(
-                $payload['page']['title'],
+            $user_prompt   = self::build_user_prompt(
+                $page_title,
                 $compressed,
-                isset($payload['page']['url']) ? $payload['page']['url'] : '',
+                isset($payload['page']['url'])            ? $payload['page']['url']            : '',
                 str_word_count($compressed),
                 isset($payload['page']['html_structure']) ? $payload['page']['html_structure'] : '',
-                isset($payload['business']) ? $payload['business'] : array(),
-                ( $current === 1 ) ? $screenshot_url : null
+                isset($payload['business'])               ? $payload['business']               : array(),
+                $chunk_shot
             );
 
-            // Pass screenshot only on the first chunk (hero section / above-the-fold context)
-            // Secondary chunks only need scores + suggestions — 1500 tokens is enough and is ~2× faster.
-            $chunk_screenshot = ( $current === 1 ) ? $screenshot_url : null;
-            $chunk_max_tokens = ( $current === 1 ) ? 4000 : 1500;
-            $response = self::call_abacus_ai($user_prompt, $system_prompt, $chunk_screenshot, $chunk_max_tokens);
+            $messages = array();
+            $messages[] = array('role' => 'system', 'content' => $system_prompt);
+
+            if ($chunk_shot) {
+                $visual_instruction = "A full-page screenshot of this page is attached below. Use it as primary visual evidence:\n"
+                    . "- Above-the-fold: note exactly what a visitor sees before scrolling — headline, CTA button, hero image. "
+                    .   "If the primary CTA button is not visible in the first viewport, lower cta_strength accordingly.\n"
+                    . "- CTA visual prominence: assess the button's colour contrast, size, and spacing.\n"
+                    . "- Layout density & whitespace: judge readability_score from actual typography visible in the screenshot.\n"
+                    . "- Trust signals: look for badge images, star-rating widgets, team/founder photos.\n"
+                    . "- Visual richness: identify images, graphics, or video thumbnails that inform engagement_score.";
+                $messages[] = array('role' => 'user', 'content' => array(
+                    array('type' => 'text',      'text'      => $user_prompt),
+                    array('type' => 'text',      'text'      => $visual_instruction),
+                    array('type' => 'image_url', 'image_url' => array('url' => $chunk_shot, 'detail' => 'high')),
+                ));
+            } else {
+                $messages[] = array('role' => 'user', 'content' => $user_prompt);
+            }
+
+            $batch_requests[] = array(
+                'model'      => 'gpt-4o',
+                'messages'   => $messages,
+                'max_tokens' => $max_tokens,
+                'temperature'=> 0.1,
+            );
+            $section_meta[] = array(
+                'name'     => $section_name,
+                'is_first' => $is_first,
+            );
+
+            ciq_log("📄 Queued section {$current}/{$section_count}: {$section_name} ({$max_tokens} max_tokens)");
+        }
+
+        // ── Submit the whole batch ─────────────────────────────────────────────
+        $license_key = self::get_license_key();
+        if (empty($license_key)) {
+            return null;
+        }
+
+        $batch_response = wp_remote_post(self::SAAS_API_URL . '/api/ai-proxy/batch', array(
+            'headers'   => array(
+                'X-License-Key' => $license_key,
+                'Content-Type'  => 'application/json',
+            ),
+            'body'    => wp_json_encode(array('requests' => $batch_requests)),
+            'timeout' => 15,
+            'sslverify' => true,
+        ));
+
+        if (is_wp_error($batch_response)) {
+            ciq_log('❌ Batch submit WP_Error: ' . $batch_response->get_error_message() . ' — falling back to sequential');
+            return self::analyze_chunked_sequential($payload, $sections, $screenshot_url);
+        }
+
+        $batch_status = wp_remote_retrieve_response_code($batch_response);
+        if ($batch_status !== 200) {
+            ciq_log("❌ Batch submit HTTP {$batch_status} — falling back to sequential");
+            return self::analyze_chunked_sequential($payload, $sections, $screenshot_url);
+        }
+
+        $batch_data = json_decode(wp_remote_retrieve_body($batch_response), true);
+        $jobs = isset($batch_data['jobs']) ? $batch_data['jobs'] : array();
+
+        if (count($jobs) !== count($batch_requests)) {
+            ciq_log('❌ Batch returned ' . count($jobs) . ' job_ids for ' . count($batch_requests) . ' requests — falling back to sequential');
+            return self::analyze_chunked_sequential($payload, $sections, $screenshot_url);
+        }
+
+        ciq_log('✅ Batch submitted — ' . count($jobs) . ' jobs queued. Polling all in parallel...');
+
+        // ── Poll all jobs together until all complete ──────────────────────────
+        $pending      = array();   // job_id => section_meta index
+        $completed    = array();   // section_meta index => poll_data
+        foreach ($jobs as $i => $job) {
+            if (!empty($job['job_id'])) {
+                $pending[$job['job_id']] = $i;
+            }
+        }
+
+        $max_polls = 36;
+        for ($attempt = 1; $attempt <= $max_polls && !empty($pending); $attempt++) {
+            sleep(5);
+            ciq_log("🔄 Batch poll {$attempt}/{$max_polls} — " . count($pending) . ' job(s) still pending');
+
+            foreach (array_keys($pending) as $job_id) {
+                $poll_url  = self::SAAS_API_URL . '/api/ai-proxy/result/' . rawurlencode($job_id);
+                $poll_resp = wp_remote_get($poll_url, array(
+                    'headers'   => array('X-License-Key' => $license_key),
+                    'timeout'   => 10,
+                    'sslverify' => true,
+                ));
+                if (is_wp_error($poll_resp)) continue;
+
+                $poll_data  = json_decode(wp_remote_retrieve_body($poll_resp), true);
+                $job_status = isset($poll_data['status']) ? $poll_data['status'] : 'unknown';
+
+                if ($job_status === 'complete') {
+                    $idx = $pending[$job_id];
+                    $completed[$idx] = $poll_data;
+                    unset($pending[$job_id]);
+                    ciq_log("✅ Section '" . $section_meta[$idx]['name'] . "' complete (job {$job_id})");
+
+                    if (isset($poll_data['_meta'])) {
+                        $m = $poll_data['_meta'];
+                        ciq_log("⏱ Timing — total:{$m['total_ms']}ms queue:{$m['queue_ms']}ms processing:{$m['processing_ms']}ms");
+                    }
+                } elseif ($job_status === 'failed' || $job_status === 'not_found') {
+                    $idx = $pending[$job_id];
+                    ciq_log("⚠️ Section '" . $section_meta[$idx]['name'] . "' job {$job_status} — skipping");
+                    unset($pending[$job_id]);
+                }
+                // 'pending' → leave in $pending and continue
+            }
+        }
+
+        if (!empty($pending)) {
+            ciq_log('⚠️ ' . count($pending) . ' section job(s) timed out after ' . ($max_polls * 5) . 's');
+        }
+
+        // ── Parse completed jobs into scores/suggestions ───────────────────────
+        $all_scores                    = array();
+        $all_suggestions               = array();
+        $all_functionality_suggestions = array();
+
+        ksort($completed); // process in section order
+        foreach ($completed as $idx => $poll_data) {
+            $section_name = $section_meta[$idx]['name'];
+            $is_first     = $section_meta[$idx]['is_first'];
+
+            $response = self::parse_abacus_response($poll_data);
+            if (!$response || !$response['success']) {
+                ciq_log("⚠️ Section '{$section_name}' parse failed");
+                continue;
+            }
+
+            $data = $response['data'];
+            $all_scores[] = $data;
+
+            if (isset($data['suggestions']) && is_array($data['suggestions'])) {
+                foreach ($data['suggestions'] as $suggestion) {
+                    if (is_array($suggestion)) {
+                        $suggestion['analyzed_section'] = $section_name;
+                        $all_suggestions[] = $suggestion;
+                    }
+                }
+            }
+
+            if ($is_first && isset($data['functionality_suggestions']) && is_array($data['functionality_suggestions'])) {
+                $all_functionality_suggestions = $data['functionality_suggestions'];
+            }
+        }
+
+        return self::aggregate_section_results($all_scores, $all_suggestions, $all_functionality_suggestions, $payload);
+    }
+
+    /**
+     * Fallback: analyze sections sequentially (used when the batch endpoint is unavailable).
+     */
+    private static function analyze_chunked_sequential($payload, $sections, $screenshot_url)
+    {
+        ciq_log('🔁 Sequential fallback for chunked analysis');
+        $all_scores                    = array();
+        $all_suggestions               = array();
+        $all_functionality_suggestions = array();
+        $section_count = count($sections);
+        $current       = 0;
+
+        foreach ($sections as $section_name => $section_content) {
+            $current++;
+            $compressed     = self::compress_content($section_content);
+            $chunk_shot     = ( $current === 1 ) ? $screenshot_url : null;
+            $chunk_tokens   = ( $current === 1 ) ? 4000 : 1500;
+            $system_prompt  = self::build_system_prompt($section_name);
+            $user_prompt    = self::build_user_prompt(
+                isset($payload['page']['title'])          ? $payload['page']['title']          : '',
+                $compressed,
+                isset($payload['page']['url'])            ? $payload['page']['url']            : '',
+                str_word_count($compressed),
+                isset($payload['page']['html_structure']) ? $payload['page']['html_structure'] : '',
+                isset($payload['business'])               ? $payload['business']               : array(),
+                $chunk_shot
+            );
+
+            ciq_log("📄 Sequential {$current}/{$section_count}: {$section_name}");
+            $response = self::call_abacus_ai($user_prompt, $system_prompt, $chunk_shot, $chunk_tokens);
 
             if ($response && isset($response['success']) && $response['success']) {
                 $data = $response['data'];
                 $all_scores[] = $data;
-
-                // Collect suggestions with section context
                 if (isset($data['suggestions']) && is_array($data['suggestions'])) {
-                    foreach ($data['suggestions'] as $suggestion) {
-                        if (is_array($suggestion)) {
-                            $suggestion['analyzed_section'] = $section_name;
-                            $all_suggestions[] = $suggestion;
-                        }
+                    foreach ($data['suggestions'] as $s) {
+                        if (is_array($s)) { $s['analyzed_section'] = $section_name; $all_suggestions[] = $s; }
                     }
                 }
-
-                // Collect functionality suggestions (only from first section to avoid duplicates)
                 if ($current === 1 && isset($data['functionality_suggestions']) && is_array($data['functionality_suggestions'])) {
                     $all_functionality_suggestions = $data['functionality_suggestions'];
                 }
-
-                ciq_log("✅ Section '{$section_name}' analyzed successfully");
+                ciq_log("✅ Section '{$section_name}' done");
+            } else {
+                ciq_log("⚠️ Section '{$section_name}' failed");
             }
-            else {
-                ciq_log("⚠️ Section '{$section_name}' analysis failed");
-            }
-
         }
 
-        // Aggregate results
         return self::aggregate_section_results($all_scores, $all_suggestions, $all_functionality_suggestions, $payload);
     }
 
@@ -774,6 +938,7 @@ Return the JSON scores.";
 
         $body = array(
             'model'       => 'gpt-4o',
+            'model_hint'  => 'fast',   // route to faster/cheaper model for short scoring prompts
             'messages'    => array(
                 array( 'role' => 'system', 'content' => $system ),
                 array( 'role' => 'user',   'content' => $user   ),
@@ -1548,7 +1713,7 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
 
         ciq_log("⏳ Job queued: {$job_id} — polling for result...");
 
-        // ── Step 2: Poll for result ───────────────────────────────────────────
+        // ── Step 2: Poll for result (smart backoff via estimated_wait_ms) ──────
         $poll_url   = self::SAAS_API_URL . '/api/ai-proxy/result/' . rawurlencode($job_id);
         $poll_args  = array(
             'headers'   => array( 'X-License-Key' => $license_key ),
@@ -1559,7 +1724,11 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
         $max_polls  = 36;
 
         for ($attempt = 1; $attempt <= $max_polls; $attempt++) {
-            sleep(5);
+            // Default 5s, but use estimated_wait_ms from the previous pending response if available.
+            // Clamp between 3s and 15s to avoid hammering or waiting too long.
+            sleep( isset($next_sleep) ? $next_sleep : 5 );
+            unset($next_sleep);
+
             ciq_log("🔄 Poll attempt {$attempt}/{$max_polls}...");
 
             $poll_response = wp_remote_get($poll_url, $poll_args);
@@ -1569,13 +1738,19 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
                 continue;
             }
 
-            $poll_data = json_decode(wp_remote_retrieve_body($poll_response), true);
+            $poll_data  = json_decode(wp_remote_retrieve_body($poll_response), true);
             $job_status = isset($poll_data['status']) ? $poll_data['status'] : 'unknown';
             ciq_log("📊 Poll status: {$job_status}");
 
             if ($job_status === 'complete') {
                 $data = $poll_data;
                 ciq_log("✅ Job complete on poll attempt {$attempt}");
+
+                // Log SaaS-side timing for diagnostics
+                if (isset($data['_meta'])) {
+                    $m = $data['_meta'];
+                    ciq_log("⏱ SaaS timing — total:{$m['total_ms']}ms queue:{$m['queue_ms']}ms processing:{$m['processing_ms']}ms");
+                }
                 break;
             }
 
@@ -1590,7 +1765,13 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
                 return array('success' => false, 'error' => 'AI job expired or not found');
             }
 
-            // status === 'pending' — continue polling
+            // status === 'pending' — use estimated_wait_ms to set smart next sleep
+            if (isset($poll_data['estimated_wait_ms']) && $poll_data['estimated_wait_ms'] > 0) {
+                $eta_s       = (int) round($poll_data['estimated_wait_ms'] / 1000);
+                $next_sleep  = max(3, min(15, $eta_s));
+                $queue_pos   = isset($poll_data['queue_position']) ? $poll_data['queue_position'] : '?';
+                ciq_log("⏳ Queue pos:{$queue_pos} ETA:{$poll_data['estimated_wait_ms']}ms — sleeping {$next_sleep}s");
+            }
         }
 
         if (!$data) {
@@ -1598,6 +1779,18 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
             return array('success' => false, 'error' => 'AI job timed out after polling ' . $max_polls . ' times');
         }
 
+        return self::parse_abacus_response($data);
+    }
+
+    /**
+     * Parse a completed AI proxy poll response into a structured result array.
+     * Shared by call_abacus_ai() and the batch poll path in analyze_chunked().
+     *
+     * @param array $data  Decoded JSON from a "complete" poll response.
+     * @return array       array('success' => true/false, 'data' => [...], 'error' => '...')
+     */
+    private static function parse_abacus_response($data)
+    {
         if (!isset($data['choices'][0]['message']['content'])) {
             ciq_log('⚠️ No content in completed AI job response');
             ciq_log('⚠️ Response keys: ' . json_encode(array_keys($data)));
@@ -1608,15 +1801,12 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
         ciq_log('📄 AI Response length: ' . strlen($content) . ' characters');
         ciq_log('📄 First 500 chars of response: ' . substr($content, 0, 500));
 
-        // Try to parse JSON response
         $content = trim($content);
 
-        // Remove markdown code blocks if present
         if (preg_match('/```json\s*(.*?)\s*```/s', $content, $matches)) {
             $content = $matches[1];
             ciq_log('✂️ Removed JSON markdown wrapper');
-        }
-        elseif (preg_match('/```\s*(.*?)\s*```/s', $content, $matches)) {
+        } elseif (preg_match('/```\s*(.*?)\s*```/s', $content, $matches)) {
             $content = $matches[1];
             ciq_log('✂️ Removed generic markdown wrapper');
         }
@@ -1631,20 +1821,16 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
             return array('success' => false, 'error' => 'Invalid JSON response: ' . json_last_error_msg());
         }
 
-        // Validate required fields in response
         $required_fields = array('clarity_score', 'emotional_score', 'cta_strength', 'readability_score', 'engagement_score', 'trust_score');
-        $missing_fields = array();
+        $missing_fields  = array();
         foreach ($required_fields as $field) {
-            if (!isset($parsed[$field])) {
-                $missing_fields[] = $field;
-            }
+            if (!isset($parsed[$field])) $missing_fields[] = $field;
         }
 
         if (!empty($missing_fields)) {
             ciq_log('⚠️ AI response missing required fields: ' . implode(', ', $missing_fields));
             ciq_log('AI response structure: ' . json_encode(array_keys($parsed)));
-            
-            // Try to extract trust_score from suggestion text if it's missing
+
             if (in_array('trust_score', $missing_fields) && isset($parsed['suggestions'])) {
                 $extracted_trust_score = self::extract_trust_score_from_text($parsed);
                 if ($extracted_trust_score !== null) {
@@ -1652,12 +1838,10 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
                     ciq_log('✅ Trust score extracted from suggestion text: ' . $extracted_trust_score);
                 }
             }
-            
+
             ciq_log('Full AI response: ' . json_encode($parsed));
-        // Still continue - these might be optional or have defaults
         }
 
-        // Ensure suggestions is an array
         if (isset($parsed['suggestions']) && !is_array($parsed['suggestions'])) {
             ciq_log('⚠️ Suggestions is not an array, converting...');
             $parsed['suggestions'] = array(array('text' => $parsed['suggestions'], 'section' => 'General'));
@@ -1665,19 +1849,17 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
 
         ciq_log('✅ AI response parsed successfully (suggestions: ' . (isset($parsed['suggestions']) ? count($parsed['suggestions']) : 0) . ')');
 
-        // Ensure overall_score is computed correctly using the weighted formula
         $parsed['overall_score'] = (int) round(
-            ($parsed['clarity_score'] ?? 0) * 0.20 +
-            ($parsed['emotional_score'] ?? 0) * 0.15 +
-            ($parsed['cta_strength'] ?? 0) * 0.20 +
-            ($parsed['readability_score'] ?? 0) * 0.15 +
+            ($parsed['clarity_score']    ?? 0) * 0.20 +
+            ($parsed['emotional_score']  ?? 0) * 0.15 +
+            ($parsed['cta_strength']     ?? 0) * 0.20 +
+            ($parsed['readability_score']?? 0) * 0.15 +
             ($parsed['engagement_score'] ?? 0) * 0.15 +
-            ($parsed['trust_score'] ?? 0) * 0.15
+            ($parsed['trust_score']      ?? 0) * 0.15
         );
 
         ciq_log('✅ Returning success=true with data (overall_score: ' . $parsed['overall_score'] . ')');
         return array('success' => true, 'data' => $parsed);
-    }
 
     /**
      * Fallback mock response if AI fails
