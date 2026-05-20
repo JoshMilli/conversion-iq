@@ -1797,6 +1797,16 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
         }
 
         $content = $data['choices'][0]['message']['content'];
+
+        if ( empty( trim( $content ) ) ) {
+            ciq_log( '⚠️ AI job completed but returned empty content (job may have produced no tokens)' );
+            ciq_log( '⚠️ Full poll data keys: ' . json_encode( array_keys( $data ) ) );
+            if ( isset( $data['_meta'] ) ) {
+                ciq_log( '⚠️ _meta: ' . json_encode( $data['_meta'] ) );
+            }
+            return array( 'success' => false, 'error' => 'AI job completed with empty response — model produced no output' );
+        }
+
         ciq_log('📄 AI Response length: ' . strlen($content) . ' characters');
         ciq_log('📄 First 500 chars of response: ' . substr($content, 0, 500));
 
