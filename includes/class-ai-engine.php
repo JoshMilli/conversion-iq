@@ -1661,11 +1661,10 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
         }
 
         $body = array(
-            'model' => 'gpt-4o',
-            'messages' => $messages,
-            'max_tokens' => $max_tokens,
+            'model'       => 'gpt-4o',
+            'messages'    => $messages,
+            'max_tokens'  => $max_tokens,
             'temperature' => 0.1,
-            'stream' => false
         );
 
         $submit_args = array(
