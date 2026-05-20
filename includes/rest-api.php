@@ -1223,6 +1223,18 @@ $results = array();
             $ai = ConversionIQ_AI::analyze($payload);
             $audit_time = round((microtime(true) - $audit_start), 2);
 
+            // If AI analysis failed, do not save an empty record — skip this page entirely.
+            if ( $ai === null ) {
+                ciq_log( '❌ AI analysis returned null for "' . $post->post_title . '" — skipping save (no record created)' );
+                $results[] = array(
+                    'page_id'    => $post->ID,
+                    'page_title' => $post->post_title,
+                    'failed'     => true,
+                    'error'      => 'AI analysis failed — no report created',
+                );
+                continue;
+            }
+
             // Attach the detected page type so it can be stored and synced.
             $ai['page_type'] = ConversionIQ_AI::get_page_type( $post->post_title, $page_url );
 

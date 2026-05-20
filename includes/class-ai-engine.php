@@ -1558,7 +1558,7 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
             'sslverify' => true,
         );
         $data       = null;
-        $max_polls  = 20;
+        $max_polls  = 36;
 
         for ($attempt = 1; $attempt <= $max_polls; $attempt++) {
             sleep(5);
@@ -1596,7 +1596,7 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
         }
 
         if (!$data) {
-            ciq_log("❌ AI job did not complete after {$max_polls} poll attempts (" . ($max_polls * 5) . "s)");
+            ciq_log("❌ AI job did not complete after {$max_polls} poll attempts (" . ($max_polls * 5) . "s) — job_id: {$job_id}");
             return array('success' => false, 'error' => 'AI job timed out after polling ' . $max_polls . ' times');
         }
 
