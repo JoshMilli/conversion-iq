@@ -6,25 +6,19 @@ if (!defined('ABSPATH')) {
 class ConversionIQ_AI
 {
 
-    const ABACUS_API_URL = 'https://routellm.abacus.ai/v1/chat/completions';
+    const SAAS_API_URL = 'https://conversioniq-app.com';
 
     /**
-     * Get API key from wp-config.php or wp_options (synced via license activation)
+     * Get license key for authenticating all SaaS AI proxy calls.
+     * The AI API key lives only on conversioniq-app.com — never on the WP site.
      */
-    private static function get_api_key()
+    private static function get_license_key()
     {
-        // Prefer API key from wp-config.php constant
-        if (defined('CONVERSIONIQ_ABACUS_KEY')) {
-            return CONVERSIONIQ_ABACUS_KEY;
+        $key = get_option( 'conversioniq_license_key', '' );
+        if ( empty( $key ) ) {
+            ciq_log( '❌ ConversionIQ: No license key found. Re-activate your license.' );
         }
-        // Then try wp_options (delivered via /api/get-config during license sync)
-        $opt = get_option('conversioniq_api_key', '');
-        if (!empty($opt)) {
-            return $opt;
-        }
-        // No key available — audits will fail until a valid license is activated
-        ciq_log('❌ ConversionIQ: No API key found (conversioniq_api_key is empty). Re-activate your license to provision a key.');
-        return '';
+        return $key;
     }
 
     /**
@@ -700,6 +694,184 @@ class ConversionIQ_AI
     }
 
     /**
+     * Lightweight CRO scoring for a competitor page.
+     *
+     * Uses a lean prompt (no rewrites, no checklist, no lead data) so it finishes
+     * in 3-8 seconds instead of 20-45 seconds. Returns just the 7 score fields
+     * plus a brief competitive_insight string.
+     *
+     * Routes through the SaaS AI proxy (conversioniq-app.com/api/ai-proxy).
+     * No AI API key is stored on the WP site — authentication uses the license key.
+     *
+     * @param string $html_text  Plain-text content already stripped of HTML tags.
+     * @param string $url        Competitor page URL (used for context, not fetched here).
+     * @param string $name       Display name derived from <title> tag.
+     * @param array  $business   Business profile array from conversion_iq_settings.
+     * @return array|null  Keys: overall_score, clarity_score, emotional_score,
+     *                     cta_strength, readability_score, engagement_score,
+     *                     trust_score, competitive_insight. Null on failure.
+     */
+    public static function score_competitor( $html_text, $url, $name, $business ) {
+        $industry  = $business['industry']  ?? 'Not specified';
+        $product   = $business['product']   ?? 'Not specified';
+        $audience  = $business['audience']  ?? 'Not specified';
+
+        // Cap content — 5 000 chars is ample for scoring without wasting tokens.
+        $content = substr( trim( $html_text ), 0, 5000 );
+
+        $system_prompt = 'You are a CRO analyst. Score competitor landing pages using this rubric (0-100 integers):
+
+clarity_score    — how clearly the page communicates its value proposition
+emotional_score  — how well the copy connects emotionally with its audience
+cta_strength     — strength and prominence of calls-to-action
+readability_score — how easy the page is to scan and read
+engagement_score — interactivity and media richness
+trust_score      — credibility signals: testimonials, badges, social proof
+
+overall_score = round(clarity*0.20 + emotional*0.15 + cta*0.20 + readability*0.15 + engagement*0.15 + trust*0.15)
+
+Also write competitive_insight: one sentence stating the single biggest CRO strength or weakness versus a typical ' . $industry . ' competitor.
+
+Return ONLY valid JSON, no markdown, no commentary:
+{"clarity_score":0,"emotional_score":0,"cta_strength":0,"readability_score":0,"engagement_score":0,"trust_score":0,"overall_score":0,"competitive_insight":""}';
+
+        $user_prompt = "Score this competitor page for a {$industry} business.
+
+OUR BUSINESS: {$product} targeting {$audience}.
+COMPETITOR: {$name} ({$url})
+
+PAGE CONTENT:
+{$content}
+
+Return the JSON scores.";
+
+        $start = microtime( true );
+        ciq_log( 'Competitors: scoring "' . $name . '" via SaaS AI proxy (' . strlen( $content ) . ' chars)' );
+
+        $result = self::call_chat_endpoint( $system_prompt, $user_prompt );
+
+        if ( $result ) {
+            ciq_log( 'Competitors: ✅ scored "' . $name . '" in ' . round( microtime(true) - $start, 2 ) . 's' );
+        } else {
+            ciq_log( 'Competitors: ❌ scoring failed for "' . $name . '"' );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Shared helper — calls the SaaS AI proxy with a lean (no-screenshot) request
+     * and parses the JSON response.  No AI API key is held on the WP site.
+     *
+     * @param string $system      System message.
+     * @param string $user        User message.
+     * @param int    $max_tokens  Token budget (default 350 for lean scoring).
+     * @return array|null  Parsed score array, or null on any failure.
+     */
+    private static function call_chat_endpoint( $system, $user, $max_tokens = 350 ) {
+        $license_key = self::get_license_key();
+        if ( empty( $license_key ) ) {
+            return null;
+        }
+
+        $body = array(
+            'model'       => 'gpt-4o',
+            'messages'    => array(
+                array( 'role' => 'system', 'content' => $system ),
+                array( 'role' => 'user',   'content' => $user   ),
+            ),
+            'max_tokens'  => $max_tokens,
+            'temperature' => 0.1,
+        );
+
+        // ── Step 1: Submit job ────────────────────────────────────────────────
+        $submit_response = wp_remote_post( self::SAAS_API_URL . '/api/ai-proxy', array(
+            'headers'   => array(
+                'X-License-Key' => $license_key,
+                'Content-Type'  => 'application/json',
+            ),
+            'body'      => wp_json_encode( $body ),
+            'timeout'   => 15,
+            'sslverify' => true,
+        ) );
+
+        if ( is_wp_error( $submit_response ) ) {
+            ciq_log( 'Competitors: API error — ' . $submit_response->get_error_message() );
+            return null;
+        }
+
+        $submit_status = wp_remote_retrieve_response_code( $submit_response );
+        if ( $submit_status !== 200 ) {
+            ciq_log( 'Competitors: API HTTP ' . $submit_status . ' — ' . substr( wp_remote_retrieve_body( $submit_response ), 0, 200 ) );
+            return null;
+        }
+
+        $submit_data = json_decode( wp_remote_retrieve_body( $submit_response ), true );
+        $job_id = isset( $submit_data['job_id'] ) ? $submit_data['job_id'] : null;
+        if ( ! $job_id ) {
+            ciq_log( 'Competitors: no job_id in submit response' );
+            return null;
+        }
+
+        // ── Step 2: Poll for result ───────────────────────────────────────────
+        $poll_url  = self::SAAS_API_URL . '/api/ai-proxy/result/' . rawurlencode( $job_id );
+        $poll_args = array(
+            'headers'   => array( 'X-License-Key' => $license_key ),
+            'timeout'   => 10,
+            'sslverify' => true,
+        );
+        $data = null;
+
+        for ( $attempt = 1; $attempt <= 20; $attempt++ ) {
+            sleep( 5 );
+            $poll_response = wp_remote_get( $poll_url, $poll_args );
+            if ( is_wp_error( $poll_response ) ) continue;
+
+            $poll_data  = json_decode( wp_remote_retrieve_body( $poll_response ), true );
+            $job_status = isset( $poll_data['status'] ) ? $poll_data['status'] : 'unknown';
+
+            if ( $job_status === 'complete' ) { $data = $poll_data; break; }
+            if ( $job_status === 'failed' || $job_status === 'not_found' ) {
+                ciq_log( 'Competitors: job ' . $job_status . ' — ' . ( $poll_data['error'] ?? '' ) );
+                return null;
+            }
+        }
+
+        if ( ! $data ) {
+            ciq_log( 'Competitors: job did not complete after polling' );
+            return null;
+        }
+
+        $content = $data['choices'][0]['message']['content'] ?? '';
+        if ( empty( $content ) ) {
+            ciq_log( 'Competitors: empty API response' );
+            return null;
+        }
+
+        // Strip markdown fences if model wrapped the JSON
+        $content = trim( $content );
+        if ( preg_match( '/```(?:json)?\s*([\s\S]*?)\s*```/', $content, $m ) ) {
+            $content = $m[1];
+        }
+
+        $parsed = json_decode( $content, true );
+        if ( ! is_array( $parsed ) || ! isset( $parsed['overall_score'] ) ) {
+            ciq_log( 'Competitors: failed to parse score JSON — ' . substr( $content, 0, 200 ) );
+            return null;
+        }
+
+        $required = array( 'clarity_score', 'emotional_score', 'cta_strength', 'readability_score', 'engagement_score', 'trust_score', 'overall_score' );
+        foreach ( $required as $key ) {
+            if ( ! isset( $parsed[ $key ] ) ) {
+                ciq_log( 'Competitors: missing field "' . $key . '" in score response' );
+                return null;
+            }
+        }
+
+        return $parsed;
+    }
+
+    /**
      * Detect page type and return appropriate conversion context
      */
     private static function detect_page_type($title, $url)
@@ -1282,10 +1454,17 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
     }
 
     /**
-     * Call Abacus.ai route-llm API
+     * Call the SaaS AI proxy (conversioniq-app.com/api/ai-proxy).
+     * The WP plugin sends messages + license key; the SaaS adds the real AI API
+     * key and forwards to the AI provider.  No AI key is ever stored on the WP site.
      */
     private static function call_abacus_ai($prompt, $system_prompt = null, $screenshot_url = null)
     {
+        $license_key = self::get_license_key();
+        if ( empty( $license_key ) ) {
+            return array( 'success' => false, 'error' => 'No license key — re-activate your license.' );
+        }
+
         $messages = array();
         if ($system_prompt) {
             $messages[] = array('role' => 'system', 'content' => $system_prompt);
@@ -1326,49 +1505,105 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
             'stream' => false
         );
 
-        $args = array(
+        $submit_args = array(
             'headers' => array(
-                'Authorization' => 'Bearer ' . self::get_api_key(),
-                'Content-Type' => 'application/json',
+                'X-License-Key' => $license_key,
+                'Content-Type'  => 'application/json',
             ),
-            'body' => wp_json_encode($body),
-            'timeout' => 45,
+            'body'      => wp_json_encode($body),
+            'timeout'   => 15,
             'sslverify' => true,
         );
 
-        ciq_log('🚀 Calling Abacus.ai route-llm API...');
+        ciq_log('🚀 Calling SaaS AI proxy (async)...');
         ciq_log('📏 Prompt length: ' . strlen($prompt) . ' chars');
 
-        $response = wp_remote_post(self::ABACUS_API_URL, $args);
+        // ── Step 1: Submit job ────────────────────────────────────────────────
+        $submit_response = wp_remote_post(self::SAAS_API_URL . '/api/ai-proxy', $submit_args);
 
-        if (is_wp_error($response)) {
-            $error_msg = $response->get_error_message();
-            $error_code = $response->get_error_code();
-            ciq_log('❌ Abacus.ai API WP_Error: ' . $error_msg);
+        if (is_wp_error($submit_response)) {
+            $error_msg = $submit_response->get_error_message();
+            $error_code = $submit_response->get_error_code();
+            ciq_log('❌ SaaS AI proxy WP_Error: ' . $error_msg);
             ciq_log('❌ Error code: ' . $error_code);
             ciq_log('❌ Error type: Network/Connection issue');
             return array('success' => false, 'error' => 'API connection failed: ' . $error_msg . ' (code: ' . $error_code . ')');
         }
 
-        $status_code = wp_remote_retrieve_response_code($response);
-        ciq_log("📡 Response status: {$status_code}");
+        $submit_status = wp_remote_retrieve_response_code($submit_response);
+        ciq_log("📡 Submit response status: {$submit_status}");
 
-        if ($status_code !== 200) {
-            $body = wp_remote_retrieve_body($response);
-            ciq_log("❌ Abacus.ai API HTTP error: {$status_code}");
-            ciq_log("❌ Response headers: " . json_encode(wp_remote_retrieve_headers($response)));
-            ciq_log("❌ Response body: " . substr($body, 0, 500));
-            return array('success' => false, 'error' => "API returned HTTP {$status_code}: " . substr($body, 0, 200));
+        if ($submit_status !== 200) {
+            $submit_body = wp_remote_retrieve_body($submit_response);
+            ciq_log("❌ SaaS AI proxy HTTP error on submit: {$submit_status}");
+            ciq_log("❌ Response body: " . substr($submit_body, 0, 500));
+            return array('success' => false, 'error' => "API returned HTTP {$submit_status}: " . substr($submit_body, 0, 200));
         }
 
-        $body = wp_remote_retrieve_body($response);
-        $data = json_decode($body, true);
+        $submit_data = json_decode(wp_remote_retrieve_body($submit_response), true);
+        $job_id = isset($submit_data['job_id']) ? $submit_data['job_id'] : null;
+
+        if (!$job_id) {
+            ciq_log('❌ No job_id in AI proxy submit response: ' . substr(wp_remote_retrieve_body($submit_response), 0, 200));
+            return array('success' => false, 'error' => 'No job_id returned from AI proxy');
+        }
+
+        ciq_log("⏳ Job queued: {$job_id} — polling for result...");
+
+        // ── Step 2: Poll for result ───────────────────────────────────────────
+        $poll_url   = self::SAAS_API_URL . '/api/ai-proxy/result/' . rawurlencode($job_id);
+        $poll_args  = array(
+            'headers'   => array( 'X-License-Key' => $license_key ),
+            'timeout'   => 10,
+            'sslverify' => true,
+        );
+        $data       = null;
+        $max_polls  = 20;
+
+        for ($attempt = 1; $attempt <= $max_polls; $attempt++) {
+            sleep(5);
+            ciq_log("🔄 Poll attempt {$attempt}/{$max_polls}...");
+
+            $poll_response = wp_remote_get($poll_url, $poll_args);
+
+            if (is_wp_error($poll_response)) {
+                ciq_log('⚠️ Poll WP_Error: ' . $poll_response->get_error_message());
+                continue;
+            }
+
+            $poll_data = json_decode(wp_remote_retrieve_body($poll_response), true);
+            $job_status = isset($poll_data['status']) ? $poll_data['status'] : 'unknown';
+            ciq_log("📊 Poll status: {$job_status}");
+
+            if ($job_status === 'complete') {
+                $data = $poll_data;
+                ciq_log("✅ Job complete on poll attempt {$attempt}");
+                break;
+            }
+
+            if ($job_status === 'failed') {
+                $err = isset($poll_data['error']) ? $poll_data['error'] : 'Unknown error';
+                ciq_log("❌ AI job failed: {$err}");
+                return array('success' => false, 'error' => "AI job failed: {$err}");
+            }
+
+            if ($job_status === 'not_found') {
+                ciq_log("❌ AI job not found or expired: {$job_id}");
+                return array('success' => false, 'error' => 'AI job expired or not found');
+            }
+
+            // status === 'pending' — continue polling
+        }
+
+        if (!$data) {
+            ciq_log("❌ AI job did not complete after {$max_polls} poll attempts (" . ($max_polls * 5) . "s)");
+            return array('success' => false, 'error' => 'AI job timed out after polling ' . $max_polls . ' times');
+        }
 
         if (!isset($data['choices'][0]['message']['content'])) {
-            ciq_log('⚠️ No content in AI response');
-            ciq_log('⚠️ Response structure: ' . json_encode(array_keys($data)));
-            ciq_log('⚠️ Full response body: ' . substr($body, 0, 1000));
-            return array('success' => false, 'error' => 'Empty AI response - check logs for details');
+            ciq_log('⚠️ No content in completed AI job response');
+            ciq_log('⚠️ Response keys: ' . json_encode(array_keys($data)));
+            return array('success' => false, 'error' => 'Empty AI response in completed job');
         }
 
         $content = $data['choices'][0]['message']['content'];
@@ -1469,19 +1704,19 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
                     'implementation' => 'Check debug.log at wp-content/debug.log for error details'
                 ),
                     array(
-                    'text' => 'The audit could not be completed using AI. This may be due to API connectivity issues or invalid responses.',
+                    'text' => 'The audit could not be completed using AI. This may be due to API connectivity issues or an inactive license.',
                     'section' => 'Technical',
                     'why' => 'AI integration is required for personalized recommendations.',
                     'impact' => 'Cannot generate custom suggestions for your business',
-                    'implementation' => 'Verify Abacus.ai API key in wp-config.php and check network connectivity'
+                    'implementation' => 'Verify your license is active at conversioniq-app.com and check network connectivity'
                 )
             ),
             'lead_intelligence_summary' => null,
             'functionality_suggestions' => array(
                     array(
                     'title' => 'Fix AI Integration',
-                    'description' => 'The AI provider is not responding correctly. Check server logs and API credentials.',
-                    'reasoning' => 'AI analysis failed - unable to provide personalized recommendations',
+                    'description' => 'The AI proxy is not responding. Verify your license is active at conversioniq-app.com and check server logs.',
+                    'reasoning' => 'AI analysis failed — unable to provide personalized recommendations',
                     'priority' => 'Critical'
                 )
             ),
@@ -1500,14 +1735,14 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
                         array(
                         'text' => 'Check WordPress debug.log at wp-content/debug.log',
                         'why' => 'The log file contains detailed error messages about why AI analysis failed',
-                        'impact' => 'Identifies the root cause of AI integration issues',
+                        'impact' => 'Identifies the root cause of AI proxy issues',
                         'difficulty' => 'Easy'
                     )
                 ),
                 'long_term' => array(
                         array(
-                        'text' => 'Verify Abacus.ai API key and connectivity',
-                        'why' => 'Valid API credentials are required for AI-powered audit analysis',
+                        'text' => 'Verify your license is active at conversioniq-app.com',
+                        'why' => 'A valid license is required to use the AI analysis proxy',
                         'impact' => 'Enables full AI functionality and personalized recommendations',
                         'difficulty' => 'Easy',
                         'timeframe' => '30 minutes'
@@ -1517,7 +1752,7 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
                     'text' => 'Fix AI integration to get real audit data',
                     'why' => 'Without AI analysis, you are only seeing fallback scores that do not reflect your actual page content or business context',
                     'impact' => 'Full access to personalized conversion insights and recommendations',
-                    'next_steps' => '1. Check debug.log for error messages, 2. Verify CONVERSIONIQ_ABACUS_KEY in wp-config.php, 3. Test API connectivity, 4. Re-run audit'
+                    'next_steps' => '1. Check debug.log for error messages, 2. Verify your license is active at conversioniq-app.com, 3. Test API connectivity, 4. Re-run audit'
                 )
             )
         );

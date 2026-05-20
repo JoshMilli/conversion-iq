@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
+import { T } from './theme';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -137,9 +138,6 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
   const [scrollMilestones, setScrollMilestones]     = useState<{ milestone: number; sessions: number }[]>([]);
   const [scrollLoading, setScrollLoading]           = useState(false);
 
-  const [syncLoading, setSyncLoading]               = useState(false);
-  const [syncResult, setSyncResult]                 = useState<{ success: boolean; message: string; diagnostics?: Record<string, any> } | null>(null);
-
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef    = useRef<HTMLImageElement>(null);
 
@@ -220,20 +218,6 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
       .finally(() => setSsLoading(false));
   };
 
-  // ── Trigger manual Supabase sync ──────────────────────────────────────────
-  const triggerSync = () => {
-    setSyncLoading(true);
-    setSyncResult(null);
-    axios.post(api('heatmap/trigger-sync'), {}, { headers })
-      .then(r => setSyncResult(r.data))
-      .catch(err => setSyncResult({
-        success: false,
-        message: err.response?.data?.message || `HTTP ${err.response?.status || '?'}: ${JSON.stringify(err.response?.data || err.message)}`,
-        diagnostics: err.response?.data?.diagnostics,
-      }))
-      .finally(() => setSyncLoading(false));
-  };
-
   // ── Draw heatmap on canvas when points or screenshot change ───────────────
   useEffect(() => {
     if (!canvasRef.current || !imgRef.current || points.length === 0) return;
@@ -250,13 +234,13 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
 
   // ── Styles ────────────────────────────────────────────────────────────────
   const S = {
-    card: { background: '#fff', borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #e5e7eb', padding: 24 } as React.CSSProperties,
-    label: { fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6, display: 'block' } as React.CSSProperties,
-    select: { padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, color: '#111827', background: '#fff', outline: 'none', cursor: 'pointer' } as React.CSSProperties,
-    btn: (color = '#7c3aed', disabled = false) => ({
+    card: { background: T.bgCard, borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.3)', border: `1px solid ${T.border}`, padding: 24 } as React.CSSProperties,
+    label: { fontSize: 13, fontWeight: 600, color: T.textSecondary, marginBottom: 6, display: 'block' } as React.CSSProperties,
+    select: { padding: '10px 14px', border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 14, color: T.textPrimary, background: T.bgInput, outline: 'none', cursor: 'pointer' } as React.CSSProperties,
+    btn: (color = T.primary, disabled = false) => ({
       padding: '10px 20px',
-      background: disabled ? '#e5e7eb' : color,
-      color: disabled ? '#9ca3af' : '#fff',
+      background: disabled ? T.btnPrimaryDisabled : color,
+      color: disabled ? T.textMuted : T.btnPrimaryText,
       border: 'none',
       borderRadius: 8,
       fontSize: 14,
@@ -264,7 +248,7 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
       cursor: disabled ? 'not-allowed' : 'pointer',
       transition: 'opacity 0.2s',
     } as React.CSSProperties),
-    stat: { padding: '16px 20px', background: '#f9fafb', borderRadius: 10, border: '1px solid #f3f4f6', textAlign: 'center' as const },
+    stat: { padding: '16px 20px', background: T.bgSubtle, borderRadius: 10, border: `1px solid ${T.border}`, textAlign: 'center' as const },
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -273,8 +257,8 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
 
       {/* Header */}
       <section style={S.card}>
-        <h2 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, color: '#111827' }}>Heatmap</h2>
-        <p style={{ margin: '0 0 20px', fontSize: 14, color: '#6b7280' }}>
+        <h2 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, color: T.textPrimary }}>Heatmap</h2>
+        <p style={{ margin: '0 0 20px', fontSize: 14, color: T.textSecondary }}>
           See where visitors click and how far they scroll on your pages. The tracker automatically records interactions — no setup needed.
         </p>
 
@@ -283,9 +267,9 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
           <div style={{ flex: '1 1 300px' }}>
             <label style={S.label}>Page</label>
             {pagesLoading ? (
-              <div style={{ color: '#9ca3af', fontSize: 14 }}>Loading pages…</div>
+              <div style={{ color: T.textMuted, fontSize: 14 }}>Loading pages…</div>
             ) : pages.length === 0 ? (
-              <div style={{ padding: '10px 14px', border: '1px dashed #d1d5db', borderRadius: 8, fontSize: 14, color: '#9ca3af' }}>
+              <div style={{ padding: '10px 14px', border: `1px dashed ${T.border}`, borderRadius: 8, fontSize: 14, color: T.textMuted }}>
                 No data yet — heatmap tracking starts as soon as visitors land on your pages.
               </div>
             ) : (
@@ -316,7 +300,7 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
           </div>
           {selectedUrl && (
             <button
-              style={S.btn('#7c3aed', ssLoading || !selectedUrl)}
+              style={S.btn(T.primary, ssLoading || !selectedUrl)}
               onClick={() => fetchScreenshot(false)}
               disabled={ssLoading || !selectedUrl}
             >
@@ -325,7 +309,7 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
           )}
           {screenshot && (
             <button
-              style={S.btn('#6b7280', ssLoading)}
+              style={S.btn(T.textMuted, ssLoading)}
               onClick={() => fetchScreenshot(true)}
               disabled={ssLoading}
               title="Force re-capture (bypasses 24h cache)"
@@ -337,13 +321,13 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
 
         {/* Map type sub-tabs */}
         {selectedUrl && (
-          <div style={{ display: 'flex', gap: 8, marginTop: 16, borderTop: '1px solid #f3f4f6', paddingTop: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, marginTop: 16, borderTop: `1px solid ${T.border}`, paddingTop: 16, alignItems: 'center', flexWrap: 'wrap' }}>
             <button
               onClick={() => setMapView('click')}
               style={{
                 padding: '8px 20px',
-                background: mapView === 'click' ? '#7c3aed' : '#f3f4f6',
-                color: mapView === 'click' ? '#fff' : '#6b7280',
+                background: mapView === 'click' ? T.primary : T.bgSubtle,
+                color: mapView === 'click' ? T.btnPrimaryText : T.textSecondary,
                 border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600,
                 cursor: 'pointer', transition: 'all 0.15s',
               }}
@@ -355,8 +339,8 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
                 onClick={() => setMapView('scroll')}
                 style={{
                   padding: '8px 20px',
-                  background: mapView === 'scroll' ? '#7c3aed' : '#f3f4f6',
-                  color: mapView === 'scroll' ? '#fff' : '#6b7280',
+                background: mapView === 'scroll' ? T.primary : T.bgSubtle,
+                color: mapView === 'scroll' ? T.btnPrimaryText : T.textSecondary,
                   border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600,
                   cursor: 'pointer', transition: 'all 0.15s',
                 }}
@@ -368,9 +352,9 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
                 title="Upgrade to Professional to unlock Scroll Map"
                 style={{
                   padding: '8px 20px',
-                  background: '#f9fafb',
-                  color: '#d1d5db',
-                  border: '1px dashed #d1d5db',
+                  background: T.bgSubtle,
+                  color: T.textWhisper,
+                  border: `1px dashed ${T.border}`,
                   borderRadius: 8, fontSize: 14, fontWeight: 600,
                   cursor: 'not-allowed',
                 }}
@@ -382,12 +366,12 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
         )}
 
         {ssError && (
-          <div style={{ marginTop: 12, padding: '10px 14px', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 13, color: '#991b1b' }}>
+          <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', borderRadius: 8, fontSize: 13, color: '#fca5a5' }}>
             {ssError}
           </div>
         )}
         {error && (
-          <div style={{ marginTop: 12, padding: '10px 14px', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 13, color: '#991b1b' }}>
+          <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', borderRadius: 8, fontSize: 13, color: '#fca5a5' }}>
             {error}
           </div>
         )}
@@ -404,8 +388,8 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
           ].map((card, i) => (
             <div key={i} style={{ ...S.stat }}>
               <div style={{ fontSize: 24, marginBottom: 6 }}>{card.icon}</div>
-              <div style={{ fontSize: 28, fontWeight: 800, color: '#111827' }}>{card.value}</div>
-              <div style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 4 }}>{card.label}</div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: T.textPrimary }}>{card.value}</div>
+              <div style={{ fontSize: 12, color: T.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 4 }}>{card.label}</div>
             </div>
           ))}
         </div>
@@ -415,24 +399,24 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
       {selectedUrl && mapView === 'click' && (
         <section style={S.card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#111827' }}>Click Map</h3>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: T.textPrimary }}>Click Map</h3>
             {dataLoading && (
-              <span style={{ fontSize: 13, color: '#9ca3af' }}>Loading data…</span>
+              <span style={{ fontSize: 13, color: T.textMuted }}>Loading data…</span>
             )}
             {!dataLoading && points.length > 0 && (
-              <span style={{ fontSize: 13, color: '#6b7280' }}>{points.length.toLocaleString()} data points</span>
+              <span style={{ fontSize: 13, color: T.textSecondary }}>{points.length.toLocaleString()} data points</span>
             )}
           </div>
 
           {!screenshot && !ssLoading && (
-            <div style={{ padding: '60px 20px', background: '#f9fafb', borderRadius: 12, textAlign: 'center', border: '2px dashed #e5e7eb' }}>
+            <div style={{ padding: '60px 20px', background: T.bgSubtle, borderRadius: 12, textAlign: 'center', border: `2px dashed ${T.border}` }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>📸</div>
-              <p style={{ color: '#6b7280', fontSize: 15, margin: '0 0 16px' }}>
+              <p style={{ color: T.textSecondary, fontSize: 15, margin: '0 0 16px' }}>
                 Click <strong>Load screenshot</strong> above to capture a screenshot of this page.<br />
                 The heatmap overlay will render on top of it.
               </p>
               {points.length === 0 && (
-                <p style={{ color: '#9ca3af', fontSize: 13, margin: 0 }}>
+                <p style={{ color: T.textMuted, fontSize: 13, margin: 0 }}>
                   No click data recorded yet for this page in the selected date range.
                 </p>
               )}
@@ -440,10 +424,10 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
           )}
 
           {ssLoading && (
-            <div style={{ padding: '60px 20px', textAlign: 'center', background: '#f9fafb', borderRadius: 12 }}>
-              <div style={{ width: 36, height: 36, border: '4px solid #e5e7eb', borderTopColor: '#7c3aed', borderRadius: '50%', animation: 'ciq-spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+            <div style={{ padding: '60px 20px', textAlign: 'center', background: T.bgSubtle, borderRadius: 12 }}>
+              <div style={{ width: 36, height: 36, border: `4px solid ${T.border}`, borderTopColor: T.primary, borderRadius: '50%', animation: 'ciq-spin 0.8s linear infinite', margin: '0 auto 12px' }} />
               <style>{`@keyframes ciq-spin { to { transform: rotate(360deg); } }`}</style>
-              <p style={{ color: '#6b7280', margin: 0 }}>Capturing screenshot…</p>
+              <p style={{ color: T.textSecondary, margin: 0 }}>Capturing screenshot…</p>
             </div>
           )}
 
@@ -454,7 +438,7 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
                 src={screenshot.screenshot_url}
                 alt="Page screenshot"
                 onLoad={handleImgLoad}
-                style={{ display: 'block', width: '100%', height: 'auto', borderRadius: 8, border: '1px solid #e5e7eb' }}
+                style={{ display: 'block', width: '100%', height: 'auto', borderRadius: 8, border: `1px solid ${T.border}` }}
               />
               <canvas
                 ref={canvasRef}
@@ -471,9 +455,9 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
           {/* Colour scale legend */}
           {screenshot && points.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-              <span style={{ fontSize: 12, color: '#9ca3af' }}>Low</span>
+              <span style={{ fontSize: 12, color: T.textMuted }}>Low</span>
               <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'linear-gradient(90deg, #3b82f6 0%, #22c55e 33%, #eab308 66%, #ef4444 100%)' }} />
-              <span style={{ fontSize: 12, color: '#9ca3af' }}>High</span>
+              <span style={{ fontSize: 12, color: T.textMuted }}>High</span>
             </div>
           )}
         </section>
@@ -482,11 +466,11 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
       {/* No screenshot — show raw dot visualisation as fallback */}
       {selectedUrl && mapView === 'click' && !screenshot && points.length > 0 && (
         <section style={S.card}>
-          <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700, color: '#111827' }}>Click Distribution</h3>
-          <p style={{ margin: '0 0 16px', fontSize: 13, color: '#6b7280' }}>
+          <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700, color: T.textPrimary }}>Click Distribution</h3>
+          <p style={{ margin: '0 0 16px', fontSize: 13, color: T.textSecondary }}>
             Proportional click positions across the page (load a screenshot for the full heatmap overlay).
           </p>
-          <div style={{ position: 'relative', width: '100%', paddingBottom: '56.25%', background: '#f3f4f6', borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ position: 'relative', width: '100%', paddingBottom: '56.25%', background: T.bgSubtle, borderRadius: 8, overflow: 'hidden' }}>
             <svg
               viewBox="0 0 100 56.25"
               preserveAspectRatio="none"
@@ -510,26 +494,26 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
       {/* Top clicked elements */}
       {selectedUrl && mapView === 'click' && topElements.length > 0 && (
         <section style={S.card}>
-          <h3 style={{ margin: '0 0 16px', fontSize: 18, fontWeight: 700, color: '#111827' }}>Most Clicked Elements</h3>
+          <h3 style={{ margin: '0 0 16px', fontSize: 18, fontWeight: 700, color: T.textPrimary }}>Most Clicked Elements</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {topElements.map((el, i) => {
               const maxClicks = topElements[0]?.clicks || 1;
               const pct = Math.round((el.clicks / maxClicks) * 100);
               return (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 32, textAlign: 'center', fontSize: 12, color: '#9ca3af', flexShrink: 0 }}>#{i + 1}</div>
-                  <code style={{ fontSize: 12, color: '#7c3aed', background: '#f3e8ff', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
+                  <div style={{ width: 32, textAlign: 'center', fontSize: 12, color: T.textMuted, flexShrink: 0 }}>#{i + 1}</div>
+                  <code style={{ fontSize: 12, color: T.primary, background: T.primaryBg, padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
                     {el.element_tag || '?'}
                   </code>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 3 }}>
+                    <div style={{ fontSize: 13, color: T.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 3 }}>
                       {el.element_text || '(no text)'}
                     </div>
-                    <div style={{ height: 6, background: '#f3f4f6', borderRadius: 3 }}>
-                      <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #7c3aed, #5b21b6)', borderRadius: 3 }} />
+                    <div style={{ height: 6, background: T.bgSubtle, borderRadius: 3 }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: T.btnPrimary, borderRadius: 3 }} />
                     </div>
                   </div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', flexShrink: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: T.textSecondary, flexShrink: 0 }}>
                     {el.clicks.toLocaleString()}
                   </div>
                 </div>
@@ -544,16 +528,16 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
         <section style={S.card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <div>
-              <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700, color: '#111827' }}>Scroll Depth Map</h3>
-              <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>How far down the page your visitors scroll.</p>
+              <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700, color: T.textPrimary }}>Scroll Depth Map</h3>
+              <p style={{ margin: 0, fontSize: 13, color: T.textSecondary }}>How far down the page your visitors scroll.</p>
             </div>
-            {scrollLoading && <span style={{ fontSize: 13, color: '#9ca3af' }}>Loading data…</span>}
+            {scrollLoading && <span style={{ fontSize: 13, color: T.textMuted }}>Loading data…</span>}
           </div>
 
           {scrollLoading && (
             <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-              <div style={{ width: 32, height: 32, border: '4px solid #e5e7eb', borderTopColor: '#7c3aed', borderRadius: '50%', animation: 'ciq-spin 0.8s linear infinite', margin: '0 auto 12px' }} />
-              <p style={{ color: '#6b7280', margin: 0, fontSize: 14 }}>Loading scroll data…</p>
+              <div style={{ width: 32, height: 32, border: `4px solid ${T.border}`, borderTopColor: T.primary, borderRadius: '50%', animation: 'ciq-spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+              <p style={{ color: T.textSecondary, margin: 0, fontSize: 14 }}>Loading scroll data…</p>
             </div>
           )}
 
@@ -561,9 +545,9 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
             const baseline = scrollMilestones[0]?.sessions || 0;
 
             if (baseline === 0) return (
-              <div style={{ padding: '40px 20px', textAlign: 'center', background: '#f9fafb', borderRadius: 12, border: '2px dashed #e5e7eb' }}>
+              <div style={{ padding: '40px 20px', textAlign: 'center', background: T.bgSubtle, borderRadius: 12, border: `2px dashed ${T.border}` }}>
                 <div style={{ fontSize: 36, marginBottom: 8 }}>📜</div>
-                <p style={{ color: '#6b7280', margin: 0 }}>No scroll data recorded yet for this page in the selected date range.</p>
+                <p style={{ color: T.textSecondary, margin: 0 }}>No scroll data recorded yet for this page in the selected date range.</p>
               </div>
             );
 
@@ -575,10 +559,10 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
                     const pct = Math.round((sessions / baseline) * 100);
                     return (
                       <div key={milestone} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div style={{ width: 44, fontSize: 13, fontWeight: 700, color: '#374151', textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ width: 44, fontSize: 13, fontWeight: 700, color: T.textSecondary, textAlign: 'right', flexShrink: 0 }}>
                           {milestone}%
                         </div>
-                        <div style={{ flex: 1, height: 34, background: '#f3f4f6', borderRadius: 6, overflow: 'hidden', position: 'relative' }}>
+                        <div style={{ flex: 1, height: 34, background: T.bgSubtle, borderRadius: 6, overflow: 'hidden', position: 'relative' }}>
                           <div style={{
                             height: '100%',
                             width: `${pct}%`,
@@ -590,7 +574,7 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
                           <span style={{
                             position: 'absolute', left: 10, top: '50%',
                             transform: 'translateY(-50%)',
-                            fontSize: 12, fontWeight: 600, color: '#374151',
+                            fontSize: 12, fontWeight: 600, color: T.textSecondary,
                             pointerEvents: 'none',
                           }}>
                             {sessions.toLocaleString()} sessions · {pct}% of visitors
@@ -600,18 +584,18 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
                     );
                   })}
                 </div>
-                <p style={{ fontSize: 12, color: '#9ca3af', margin: '4px 0 20px 56px', fontStyle: 'italic' }}>
+                <p style={{ fontSize: 12, color: T.textMuted, margin: '4px 0 20px 56px', fontStyle: 'italic' }}>
                   Percentages relative to visitors who reached 25% scroll depth.
                 </p>
 
                 {screenshot ? (
                   <div>
-                    <h4 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 600, color: '#374151' }}>Page overlay</h4>
+                    <h4 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 600, color: T.textSecondary }}>Page overlay</h4>
                     <div style={{ position: 'relative', display: 'inline-block', width: '100%' }}>
                       <img
                         src={screenshot.screenshot_url}
                         alt="Page screenshot"
-                        style={{ display: 'block', width: '100%', height: 'auto', borderRadius: 8, border: '1px solid #e5e7eb' }}
+                        style={{ display: 'block', width: '100%', height: 'auto', borderRadius: 8, border: `1px solid ${T.border}` }}
                       />
                       {[
                         { from: 0,  to: 25,  milestone: 25,  bg: 'rgba(34,197,94,0.12)' },
@@ -654,7 +638,7 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
                     </div>
                   </div>
                 ) : (
-                  <div style={{ padding: '14px 18px', background: '#f3e8ff', borderRadius: 8, fontSize: 13, color: '#5b21b6' }}>
+                  <div style={{ padding: '14px 18px', background: T.primaryBg, borderRadius: 8, fontSize: 13, color: T.primary }}>
                     💡 Switch to <strong>Click Map</strong> and click <strong>Load screenshot</strong> to see scroll depth bands overlaid on your page.
                   </div>
                 )}
@@ -664,64 +648,15 @@ export default function HeatmapTab({ nonce, apiBase, features = {} }: HeatmapTab
         </section>
       )}
 
-      {/* Supabase sync debug panel */}
-      <section style={{ ...S.card, borderTop: '3px solid #f3f4f6' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: '#374151' }}>Supabase Sync</h3>
-            <p style={{ margin: 0, fontSize: 13, color: '#9ca3af' }}>
-              Syncs yesterday's heatmap summaries to your SaaS dashboard. Runs automatically at 03:00 UTC daily.
-            </p>
-          </div>
-          <button
-            style={S.btn('#1e3a5f', syncLoading)}
-            onClick={triggerSync}
-            disabled={syncLoading}
-          >
-            {syncLoading ? 'Running sync…' : '▶ Test Sync Now'}
-          </button>
-        </div>
-
-        {syncResult && (
-          <div style={{
-            marginTop: 16,
-            padding: '14px 18px',
-            background: syncResult.success ? '#f0fdf4' : '#fef9c3',
-            border: `1px solid ${syncResult.success ? '#bbf7d0' : '#fde047'}`,
-            borderRadius: 8,
-          }}>
-            <p style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 600, color: syncResult.success ? '#15803d' : '#92400e' }}>
-              {syncResult.success ? '✅' : '⚠️'} {syncResult.message}
-            </p>
-            {syncResult.diagnostics && (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <tbody>
-                  {Object.entries(syncResult.diagnostics).map(([k, v]) => (
-                    <tr key={k} style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-                      <td style={{ padding: '4px 8px 4px 0', color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap', width: 200 }}>
-                        {k.replace(/_/g, ' ')}
-                      </td>
-                      <td style={{ padding: '4px 0', color: '#111827', fontFamily: 'monospace' }}>
-                        {String(v)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )}
-      </section>
-
       {/* Empty state — license active, no pages tracked yet */}
       {!pagesLoading && pages.length === 0 && !error && (
         <section style={{ ...S.card, textAlign: 'center', padding: '60px 32px' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🖱️</div>
-          <h3 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 700, color: '#111827' }}>No heatmap data yet</h3>
-          <p style={{ color: '#6b7280', fontSize: 15, maxWidth: 420, margin: '0 auto 12px' }}>
+          <h3 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 700, color: T.textPrimary }}>No heatmap data yet</h3>
+          <p style={{ color: T.textSecondary, fontSize: 15, maxWidth: 420, margin: '0 auto 12px' }}>
             The tracker is active. Data will appear here as visitors interact with your pages. Typically starts within a few hours of real traffic.
           </p>
-          <p style={{ color: '#9ca3af', fontSize: 13, margin: 0 }}>
+          <p style={{ color: T.textMuted, fontSize: 13, margin: 0 }}>
             Make sure your license is activated and the plugin version is up to date.
           </p>
         </section>

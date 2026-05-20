@@ -1661,9 +1661,14 @@ class ConversionIQ_Supabase_Sync {
             return;
         }
 
+        // When called from the trigger-sync backfill with $i=0 the date is today
+        // (gmdate('Y-m-d')). The daily auto-run passes null → defaults to yesterday.
         $target_date = $date ?? gmdate( 'Y-m-d', strtotime( '-1 day' ) );
-        $day_start   = $target_date . ' 00:00:00';
-        $day_end     = $target_date . ' 23:59:59';
+        // For today, cap the window at the current UTC second so we don't query
+        // future rows; for past days use the full 23:59:59 boundary.
+        $is_today  = ( $target_date === gmdate( 'Y-m-d' ) );
+        $day_start = $target_date . ' 00:00:00';
+        $day_end   = $is_today ? gmdate( 'Y-m-d H:i:s' ) : $target_date . ' 23:59:59';
         $org_id      = $this->organization_id;
 
         ciq_log( 'Enrichment sync: starting for date=' . $target_date . ' org=' . substr( $org_id, 0, 8 ) . '…' );

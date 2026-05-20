@@ -19,9 +19,9 @@ class ConversionIQ_Config_Manager
             'company_name'   => 'Webtec',
             'product_name'   => 'Conversion IQ',
             'logo_url'       => '',  // Empty = use bundled Webtec.png
-            'primary_color'  => '#1e3a5f',
-            'accent_color'   => '#2563eb',
-            'light_color'    => '#dbeafe',
+            'primary_color'  => '#09090b',
+            'accent_color'   => '#f59e0b',
+            'light_color'    => '#1a1100',
             'support_email'  => 'support@trywebtec.com',
             'website_url'    => 'https://trywebtec.com',
             'contact_url'    => 'https://trywebtec.com/contact',
@@ -273,6 +273,8 @@ class ConversionIQ_Config_Manager
                 'site_url'        => get_site_url(),
                 'organization_id' => get_option('conversioniq_organization_id', '') ?: null,
                 'plugin_version'  => defined('CONVERSION_IQ_VERSION') ? CONVERSION_IQ_VERSION : null,
+                'sync_endpoint'   => rest_url('conversioniq/v1/sync-daily'),
+                'sync_secret'     => function_exists('conversioniq_get_sync_secret') ? conversioniq_get_sync_secret() : null,
             ))),
             'headers' => array('Content-Type' => 'application/json'),
         ));
@@ -301,12 +303,6 @@ class ConversionIQ_Config_Manager
         // Store feature flags if present
         if (isset($body['features']) && is_array($body['features'])) {
             update_option(self::FEATURE_FLAGS_OPTION, $body['features']);
-        }
-
-        // Store API key if present (Abacus.ai key enabling AI audit features)
-        if (!empty($body['api_key'])) {
-            update_option('conversioniq_api_key', sanitize_text_field($body['api_key']));
-            ciq_log('ConversionIQ Config Sync: API key updated');
         }
 
         update_option(self::CONFIG_UPDATED_OPTION, time());

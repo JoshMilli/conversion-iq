@@ -700,6 +700,68 @@ add_action('rest_api_init', function () {
             },
         ));
 
+        // Connectivity test — WP admin only. Tests outbound HTTPS from the WP server
+        // to conversioniq-app.com/api/ai-proxy and returns raw curl diagnostics.
+        register_rest_route('conversioniq/v1', '/connectivity-test', array(
+            'methods'             => 'POST',
+            'permission_callback' => function() { return current_user_can( 'manage_options' ); },
+            'callback'            => function( WP_REST_Request $req ) {
+                $license_key = get_option( 'conversioniq_license_key', '' );
+                $target_url  = ConversionIQ_AI::SAAS_API_URL . '/api/ai-proxy';
+
+                // 1. DNS resolution check
+                $host    = parse_url( $target_url, PHP_URL_HOST );
+                $dns_ok  = checkdnsrr( $host, 'A' );
+                $dns_ip  = gethostbyname( $host );
+
+                // 2. Minimal POST — tiny payload, short timeout so it returns quickly
+                $mini_body = wp_json_encode( array(
+                    'model'    => 'gpt-4o',
+                    'messages' => array( array( 'role' => 'user', 'content' => 'ping' ) ),
+                    'max_tokens' => 1,
+                ) );
+
+                $start    = microtime( true );
+                $response = wp_remote_post( $target_url, array(
+                    'headers'   => array(
+                        'X-License-Key' => $license_key ?: 'test-no-key',
+                        'Content-Type'  => 'application/json',
+                    ),
+                    'body'      => $mini_body,
+                    'timeout'   => 10,
+                    'sslverify' => true,
+                ) );
+                $elapsed  = round( ( microtime( true ) - $start ) * 1000 );
+
+                if ( is_wp_error( $response ) ) {
+                    return new WP_REST_Response( array(
+                        'ok'          => false,
+                        'stage'       => 'http_request',
+                        'error_code'  => $response->get_error_code(),
+                        'error_msg'   => $response->get_error_message(),
+                        'dns_ok'      => $dns_ok,
+                        'dns_ip'      => $dns_ip,
+                        'target_url'  => $target_url,
+                        'elapsed_ms'  => $elapsed,
+                    ), 200 );
+                }
+
+                $status = wp_remote_retrieve_response_code( $response );
+                $body   = wp_remote_retrieve_body( $response );
+
+                return new WP_REST_Response( array(
+                    'ok'         => true,
+                    'stage'      => 'response_received',
+                    'http_status'=> $status,
+                    'dns_ok'     => $dns_ok,
+                    'dns_ip'     => $dns_ip,
+                    'target_url' => $target_url,
+                    'elapsed_ms' => $elapsed,
+                    'body_preview' => substr( $body, 0, 300 ),
+                ), 200 );
+            },
+        ));
+
         // Debug/diagnostic endpoint — WP admin only. Runs the full poll handler inline
         // and returns a detailed report. Use this to verify the cron pipeline works
         // without waiting for WP-Cron to fire naturally.
@@ -777,6 +839,27 @@ add_action('rest_api_init', function () {
             'permission_callback' => function () { return current_user_can('manage_options'); },
         ));
 
+        // External cron endpoint — nightly sync triggered by a pre-shared secret key.
+        // No WP session required. Safe to call from cron-job.org, server crontab, etc.
+        // Pass ?backfill=1 to run the full 30-day backfill (used on first registration).
+        register_rest_route('conversioniq/v1', '/sync-daily', array(
+            'methods'             => 'GET',
+            'callback'            => 'conversioniq_external_sync_daily',
+            'permission_callback' => '__return_true',
+            'args'                => array(
+                'secret' => array(
+                    'required'          => true,
+                    'validate_callback' => function( $v ) { return is_string( $v ) && strlen( $v ) > 0; },
+                    'sanitize_callback' => 'sanitize_text_field',
+                ),
+                'backfill' => array(
+                    'required'          => false,
+                    'validate_callback' => function( $v ) { return in_array( $v, array( '0', '1', 0, 1, true, false ), true ); },
+                    'sanitize_callback' => function( $v ) { return (bool) $v; },
+                ),
+            ),
+        ));
+
         // SEO audit — on-page analysis for a specific page (Tier 1 + Tier 2 RUM CWV)
         register_rest_route('conversioniq/v1', '/seo-audit', array(
             'methods'             => 'GET',
@@ -813,11 +896,9 @@ function conversioniq_save_settings(WP_REST_Request $request)
     if (empty($params)) {
         return new WP_REST_Response(array('success' => false, 'message' => __('No settings provided', 'conversion-iq')), 400);
     }
-    // Save OpenAI API key separately for backend use
-    if (isset($params['openai_api_key'])) {
-        update_option('conversioniq_api_key', sanitize_text_field($params['openai_api_key']));
-        unset($params['openai_api_key']);
-    }
+    // Remove openai_api_key if submitted — AI calls are now proxied through
+    // conversioniq-app.com so no AI key should be stored on the WP site.
+    unset($params['openai_api_key']);
 
     // Save KnockKnock settings separately
     if (isset($params['knockknock_company_id'])) {
@@ -1053,37 +1134,27 @@ $results = array();
         $content = html_entity_decode( $content, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
         $content = trim( preg_replace( '/\s+/', ' ', $content ) );
 
-        // Fetch the live rendered HTML — used for html_structure extraction and,
-        // if the DB content turns out thin, as a body-text fallback.
+        // Build HTML structure directly from the page-builder rendered content.
+        // wp_remote_get to the site's own URL always times out on this hosting
+        // environment (loopback blocked), so we use the rendered HTML we already
+        // have from apply_filters( 'the_content' ) above — it contains all headings,
+        // CTAs, testimonial blocks, and class/ID patterns that the structure
+        // extractor needs, without any HTTP round-trip.
         $page_url = get_permalink($post);
         $html_structure = '';
-        $html = '';
+        $html = $rendered_content; // reuse rendered output as our "html" source
 
-        ciq_log('Fetching HTML from: ' . $page_url);
-        $response = wp_remote_get($page_url, array(
-            'timeout' => 15,
-            'sslverify' => true,
-        ));
+        $html_structure = conversioniq_extract_html_structure( $rendered_content );
+        ciq_log( 'HTML structure extracted from rendered content (' . strlen( $html_structure ) . ' chars)' );
 
-        if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
-            $html = wp_remote_retrieve_body($response);
-
-            // Extract key HTML elements and their classes/IDs
-            $html_structure = conversioniq_extract_html_structure($html);
-            ciq_log('HTML structure extracted (' . strlen($html_structure) . ' chars)');
-
-            // Fallback for page builders that store content in meta (not post_content):
-            // if the rendered DB content is thin, extract body text from the live HTML fetch.
-            if ( strlen( trim( $content ) ) < 300 ) {
-                $fallback_text = conversioniq_extract_body_text( $html );
-                if ( strlen( $fallback_text ) > strlen( $content ) ) {
-                    $content = $fallback_text;
-                    ciq_log( 'Content: HTML body-text fallback applied (' . strlen( $content ) . ' chars) — DB content was thin' );
-                }
+        // Fallback for page builders that store content in meta (not post_content):
+        // if the stripped content is thin, extract body text from rendered HTML.
+        if ( strlen( trim( $content ) ) < 300 ) {
+            $fallback_text = conversioniq_extract_body_text( $rendered_content );
+            if ( strlen( $fallback_text ) > strlen( $content ) ) {
+                $content = $fallback_text;
+                ciq_log( 'Content: rendered HTML body-text fallback applied (' . strlen( $content ) . ' chars) — DB content was thin' );
             }
-        }
-        else {
-            ciq_log('Could not fetch HTML: ' . (is_wp_error($response) ? $response->get_error_message() : 'HTTP error'));
         }
 
         // Supplement HTML-based trust signals with reviews stored in WordPress CPTs
@@ -1101,7 +1172,7 @@ $results = array();
         // Content hash — include a fingerprint of the raw HTML head (stylesheet/asset
         // version strings) so that CSS or theme changes also trigger a fresh screenshot,
         // not just post_content changes.
-        $content_hash = hash('sha256', $content . $html_structure . substr($html, 0, 2000));
+        $content_hash = hash('sha256', $content . $html_structure . substr($rendered_content, 0, 2000));
 
         // Determine whether the page content has changed since the last audit.
         // If it has (or there is no previous audit), force a fresh screenshot so
@@ -1301,20 +1372,26 @@ $results = array();
         }
     }
 
-    // Schedule competitor analysis as a background cron job so the audit
-    // response is returned immediately — competitor fetches + AI calls can
-    // take 60-90s which would otherwise hit PHP max_execution_time.
+    // Run competitor analysis after the REST response is sent.
+    // WP-Cron is unreliable on loopback-blocked hosts (spawn_cron() itself
+    // makes an HTTP request back to the site which always times out here).
+    // register_shutdown_function() + fastcgi_finish_request() sends the
+    // response immediately then continues processing in the background.
     $competitors_raw = trim( $business['competitors'] ?? '' );
     if ( ! empty( $competitors_raw ) ) {
-        // Pass the business profile via a transient so the cron handler can read it
-        set_transient( 'ciq_comp_business', $business, 5 * MINUTE_IN_SECONDS );
-        if ( ! wp_next_scheduled( 'ciq_run_competitor_analysis' ) ) {
-            wp_schedule_single_event( time(), 'ciq_run_competitor_analysis' );
-            if ( function_exists( 'spawn_cron' ) ) spawn_cron();
-            ciq_log( 'Competitors: background job scheduled' );
-        } else {
-            ciq_log( 'Competitors: background job already pending — skipping duplicate schedule' );
-        }
+        $business_snapshot = $business; // capture by value for the closure
+        register_shutdown_function( function() use ( $business_snapshot ) {
+            // On PHP-FPM / FastCGI hosts this flushes the response to the client
+            // so they don't wait for competitor analysis to complete.
+            if ( function_exists( 'fastcgi_finish_request' ) ) {
+                fastcgi_finish_request();
+            }
+            // Allow analysis to run without hitting max_execution_time
+            @set_time_limit( 120 );
+            ciq_log( 'Competitors: shutdown background analysis starting' );
+            conversioniq_analyze_competitors( $business_snapshot );
+        } );
+        ciq_log( 'Competitors: analysis registered for post-response execution' );
     }
 
     return rest_ensure_response(array('success' => true, 'results' => $results));
@@ -1332,20 +1409,6 @@ $results = array();
  *
  * @param array $business  Business profile from conversion_iq_settings option.
  */
-// Hook the competitor analysis function to the cron action.
-add_action( 'ciq_run_competitor_analysis', 'conversioniq_run_competitor_analysis_job' );
-
-function conversioniq_run_competitor_analysis_job() {
-    $business = get_transient( 'ciq_comp_business' );
-    if ( ! $business ) {
-        ciq_log( 'Competitors: cron fired but no business transient found — skipping' );
-        return;
-    }
-    delete_transient( 'ciq_comp_business' );
-    ciq_log( 'Competitors: background job started' );
-    conversioniq_analyze_competitors( $business );
-}
-
 function conversioniq_analyze_competitors( $business ) {
     $competitors_raw = trim( $business['competitors'] ?? '' );
     if ( empty( $competitors_raw ) ) {
@@ -1422,16 +1485,7 @@ function conversioniq_analyze_competitors( $business ) {
         ciq_log( 'Competitors: running AI analysis for "' . $name . '"' );
 
         try {
-            $ai = ConversionIQ_AI::analyze([
-                'business' => $business,
-                'page'     => [
-                    'title'          => $name,
-                    'content'        => $content,
-                    'url'            => $competitor_url,
-                    'word_count'     => str_word_count( $content ),
-                    'html_structure' => '',
-                ],
-            ]);
+            $ai = ConversionIQ_AI::score_competitor( $content, $competitor_url, $name, $business );
 
             if ( ! is_array( $ai ) || ! isset( $ai['overall_score'] ) ) {
                 ciq_log( 'Competitors: ⚠️ AI returned unexpected response for ' . $competitor_url );
@@ -1445,6 +1499,7 @@ function conversioniq_analyze_competitors( $business ) {
                 'readability_score' => isset( $ai['readability_score'] ) ? intval( $ai['readability_score'] ) : null,
                 'engagement_score'  => isset( $ai['engagement_score'] )  ? intval( $ai['engagement_score'] )  : null,
                 'trust_score'       => isset( $ai['trust_score'] )       ? intval( $ai['trust_score'] )       : null,
+                'competitive_insight' => $ai['competitive_insight'] ?? null,
             ];
 
             $upserted = $supabase_sync->upsert_competitor_score(
@@ -1954,9 +2009,9 @@ function conversioniq_guess_business_info(WP_REST_Request $request)
 
 IMPORTANT: Return ONLY valid JSON, no code blocks, no explanations.";
 
-    // Call AI
-    $api_key = get_option('conversioniq_api_key', '');
-    if (empty($api_key)) {
+    // Call AI via SaaS proxy — no AI key stored on the WP site
+    $license_key = get_option('conversioniq_license_key', '');
+    if (empty($license_key)) {
         ciq_log('âŒ Guess fields: No API key found â€” license must be activated first.');
         return new WP_REST_Response(array(
             'success' => false,
@@ -1979,8 +2034,8 @@ IMPORTANT: Return ONLY valid JSON, no code blocks, no explanations.";
 
     $ai_args = array(
         'headers' => array(
-            'Authorization' => 'Bearer ' . $api_key,
-            'Content-Type' => 'application/json',
+            'X-License-Key' => $license_key,
+            'Content-Type'  => 'application/json',
         ),
         'body' => wp_json_encode($ai_body),
         'timeout' => 60,
@@ -1988,7 +2043,7 @@ IMPORTANT: Return ONLY valid JSON, no code blocks, no explanations.";
     );
 
     ciq_log('Ã°Å¸Â¤â€“ Calling AI to extract business info...');
-    $ai_response = wp_remote_post('https://routellm.abacus.ai/v1/chat/completions', $ai_args);
+    $ai_response = wp_remote_post('https://conversioniq-app.com/api/ai-proxy', $ai_args);
 
     if (is_wp_error($ai_response)) {
         ciq_log('Ã¢ÂÅ’ AI API error: ' . $ai_response->get_error_message());
@@ -2644,24 +2699,16 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
             $content = html_entity_decode( $content, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
             $content = trim( preg_replace( '/\s+/', ' ', $content ) );
 
-            // Fetch HTML structure (and body-text fallback for page builders)
+            // Build HTML structure directly from the page-builder rendered content.
             $html_structure = '';
-            $html_body = '';
-            $response = wp_remote_get($page_url, array(
-                'timeout' => 15,
-                'sslverify' => true,
-            ));
+            $html_body = $rendered_content;
+            $html_structure = conversioniq_extract_html_structure( $rendered_content );
 
-            if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
-                $html_body = wp_remote_retrieve_body($response);
-                $html_structure = conversioniq_extract_html_structure($html_body);
-
-                if ( strlen( trim( $content ) ) < 300 ) {
-                    $fallback_text = conversioniq_extract_body_text( $html_body );
-                    if ( strlen( $fallback_text ) > strlen( $content ) ) {
-                        $content = $fallback_text;
-                        $log[] = '    Content: HTML body-text fallback applied (' . strlen( $content ) . ' chars)';
-                    }
+            if ( strlen( trim( $content ) ) < 300 ) {
+                $fallback_text = conversioniq_extract_body_text( $rendered_content );
+                if ( strlen( $fallback_text ) > strlen( $content ) ) {
+                    $content = $fallback_text;
+                    $log[] = '    Content: rendered HTML body-text fallback applied (' . strlen( $content ) . ' chars)';
                 }
             }
 
@@ -3820,6 +3867,61 @@ function conversioniq_heatmap_screenshot( WP_REST_Request $request ) {    $body 
  */
 // ── Heatmap: manual sync trigger (admin debug) ──────────────────────────────
 
+/**
+ * Get (or auto-generate on first use) the external-cron secret key.
+ */
+function conversioniq_get_sync_secret() {
+    $key = get_option( 'conversioniq_sync_secret_key', '' );
+    if ( empty( $key ) ) {
+        $key = wp_generate_password( 32, false ); // 32 alphanumeric chars, no special chars
+        update_option( 'conversioniq_sync_secret_key', $key, false ); // autoload=false
+    }
+    return $key;
+}
+
+/**
+ * External cron endpoint: GET /wp-json/conversioniq/v1/sync-daily?secret=KEY
+ *
+ * Syncs yesterday's heatmap + enrichment data to Supabase.
+ * No WP session required — authenticated via the pre-shared secret key.
+ */
+function conversioniq_external_sync_daily( WP_REST_Request $request ) {
+    $provided = $request->get_param( 'secret' );
+    $expected = get_option( 'conversioniq_sync_secret_key', '' );
+
+    if ( empty( $expected ) || ! hash_equals( $expected, (string) $provided ) ) {
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => 'Invalid or missing secret key.',
+        ), 403 );
+    }
+
+    $backfill = (bool) $request->get_param( 'backfill' );
+
+    if ( $backfill ) {
+        // Full 30-day backfill — used on first registration by the SaaS backend.
+        ciq_log( '🕐 External cron: 30-day backfill triggered' );
+        $response = conversioniq_heatmap_trigger_sync();
+        $data     = $response->get_data();
+        return new WP_REST_Response( array(
+            'success'   => $data['success'] ?? true,
+            'message'   => 'Backfill complete.',
+            'synced_at' => gmdate( 'Y-m-d H:i:s' ) . ' UTC',
+        ), 200 );
+    }
+
+    $yesterday = gmdate( 'Y-m-d', strtotime( '-1 day' ) );
+    ciq_log( '🕐 External cron: running daily sync for ' . $yesterday );
+    conversioniq_heatmap_sync_daily( $yesterday );
+
+    return new WP_REST_Response( array(
+        'success'   => true,
+        'message'   => 'Sync complete.',
+        'date'      => $yesterday,
+        'synced_at' => gmdate( 'Y-m-d H:i:s' ) . ' UTC',
+    ), 200 );
+}
+
 function conversioniq_heatmap_trigger_sync() {
     global $wpdb;
 
@@ -3883,12 +3985,11 @@ function conversioniq_heatmap_trigger_sync() {
     ciq_log( '🔧 Heatmap trigger-sync: backfill complete — ' . $synced_count . ' day(s) synced.' );
 
     // Enrichment backfill: sync sessions, form analytics, and above-fold data for
-    // ALL 30 days, including days that had no click/scroll events and were skipped
-    // above. Uses ignore-duplicates so re-running is always safe.
-    ciq_log( '🔧 Heatmap trigger-sync: running enrichment backfill for last 30 days.' );
+    // ALL 30 days + today ($i=0). Uses ignore-duplicates so re-running is safe.
+    ciq_log( '🔧 Heatmap trigger-sync: running enrichment backfill for today + last 30 days.' );
     $supabase_enrichment = new ConversionIQ_Supabase_Sync();
     $enrichment_dates = array();
-    for ( $i = 1; $i <= 30; $i++ ) {
+    for ( $i = 0; $i <= 30; $i++ ) {
         $edate      = gmdate( 'Y-m-d', strtotime( "-{$i} days" ) );
         $eday_start = $edate . ' 00:00:00';
         $eday_end   = $edate . ' 23:59:59';

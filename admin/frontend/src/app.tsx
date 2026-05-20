@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import type { Suggestion, Audit, Page, Branding } from './types';
+import { T } from './theme';
 import OverviewTab from './OverviewTab';
 import HeatmapTab from './HeatmapTab';
 import SeoTab from './SeoTab';
@@ -79,7 +80,6 @@ export default function App() {
     message: 'Initializing audit...'
   });
   const auditStepTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
-  const [auditFilter, setAuditFilter] = useState<'all' | 'ai' | 'fallback'>('all');
   const [auditSearchQuery, setAuditSearchQuery] = useState('');
   
   // License display state
@@ -403,9 +403,9 @@ export default function App() {
       }, { headers: { 'X-WP-Nonce': nonce } });
 
       if (response.data.success) {
-        setNotice('✅ KnockKnock settings saved successfully!');
+        setNotice('✅ Visitor Insights settings saved successfully!');
       } else {
-        setNotice('❌ Failed to save KnockKnock settings');
+        setNotice('❌ Failed to save Visitor Insights settings');
       }
     } catch (err: any) {
       setNotice('❌ Failed to save: ' + (err.response?.data?.message || err.message));
@@ -694,9 +694,9 @@ export default function App() {
   // ── License Gate ──────────────────────────────────────────────────────────
   if (licenseStatus === 'checking') {
     return (
-      <div className="ciq-frontend-root" style={{ minHeight: '100vh', background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter,Arial,Helvetica,sans-serif' }}>
-        <div style={{ textAlign: 'center', color: '#6b7280' }}>
-          <div style={{ width: 40, height: 40, border: '4px solid #e5e7eb', borderTopColor: '#7c3aed', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
+      <div className="ciq-frontend-root" style={{ minHeight: '100vh', background: T.bgPage, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter,Arial,Helvetica,sans-serif' }}>
+        <div style={{ textAlign: 'center', color: T.textMuted }}>
+          <div style={{ width: 40, height: 40, border: `4px solid ${T.border}`, borderTopColor: T.primary, borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           <p style={{ margin: 0, fontSize: 15 }}>Loading {B.product}…</p>
         </div>
@@ -706,8 +706,8 @@ export default function App() {
 
   if (licenseStatus === 'inactive') {
     return (
-      <div className="ciq-frontend-root" style={{ minHeight: '100vh', background: `linear-gradient(135deg, ${B.primaryColor} 0%, ${B.accentColor} 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter,Arial,Helvetica,sans-serif', padding: 24 }}>
-        <div style={{ background: '#fff', borderRadius: 20, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', padding: '48px 40px', maxWidth: 480, width: '100%' }}>
+      <div className="ciq-frontend-root" style={{ minHeight: '100vh', background: T.bgPage, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter,Arial,Helvetica,sans-serif', padding: 24 }}>
+        <div style={{ background: T.bgCard, borderRadius: 20, boxShadow: '0 20px 60px rgba(0,0,0,0.5)', border: `1px solid ${T.border}`, padding: '48px 40px', maxWidth: 480, width: '100%' }}>
           {/* Logo / branding */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 32, justifyContent: 'center' }}>
             <img
@@ -717,21 +717,21 @@ export default function App() {
             />
           </div>
 
-          <h1 style={{ margin: '0 0 8px 0', fontSize: 26, fontWeight: 800, color: '#111827', textAlign: 'center' }}>
+          <h1 style={{ margin: '0 0 8px 0', fontSize: 26, fontWeight: 800, color: T.textPrimary, textAlign: 'center' }}>
             Activate {B.product}
           </h1>
-          <p style={{ margin: '0 0 32px 0', fontSize: 15, color: '#6b7280', textAlign: 'center', lineHeight: 1.6 }}>
+          <p style={{ margin: '0 0 32px 0', fontSize: 15, color: T.textSecondary, textAlign: 'center', lineHeight: 1.6 }}>
             Enter your license key to unlock AI-powered conversion audits.{' '}
-            <a href="https://conversioniq-app.com/pricing" target="_blank" rel="noopener noreferrer" style={{ color: '#7c3aed', fontWeight: 600, textDecoration: 'none' }}>
+            <a href="https://conversioniq-app.com/pricing" target="_blank" rel="noopener noreferrer" style={{ color: T.primary, fontWeight: 600, textDecoration: 'none' }}>
               Get a key →
             </a>
           </p>
 
           {notice && (
             <div style={{
-              background: noticeType === 'error' ? '#fee2e2' : '#d1fae5',
-              border: noticeType === 'error' ? '1px solid #fca5a5' : '1px solid #6ee7b7',
-              color: noticeType === 'error' ? '#991b1b' : '#065f46',
+              background: noticeType === 'error' ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)',
+              border: noticeType === 'error' ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(34,197,94,0.3)',
+              color: noticeType === 'error' ? '#fca5a5' : '#86efac',
               borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontWeight: 500, fontSize: 14,
             }}>
               {notice}
@@ -739,7 +739,7 @@ export default function App() {
           )}
 
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: T.textSecondary, marginBottom: 6 }}>
               License Key
             </label>
             <input
@@ -748,9 +748,9 @@ export default function App() {
               value={licenseKey}
               onChange={e => setLicenseKey(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !licenseLoading && handleLicenseActivate()}
-              style={{ width: '100%', padding: '12px 16px', border: '2px solid #e5e7eb', borderRadius: 10, fontSize: 15, outline: 'none', fontFamily: 'monospace', letterSpacing: '0.04em', boxSizing: 'border-box', transition: 'border 0.2s' }}
-              onFocus={e => (e.target.style.borderColor = '#7c3aed')}
-              onBlur={e => (e.target.style.borderColor = '#e5e7eb')}
+              style={{ width: '100%', padding: '12px 16px', border: `2px solid ${T.border}`, background: T.bgInput, color: T.textPrimary, borderRadius: 10, fontSize: 15, outline: 'none', fontFamily: 'monospace', letterSpacing: '0.04em', boxSizing: 'border-box', transition: 'border 0.2s' }}
+              onFocus={e => (e.target.style.borderColor = T.primary)}
+              onBlur={e => (e.target.style.borderColor = T.border)}
               autoFocus
             />
           </div>
@@ -758,14 +758,14 @@ export default function App() {
           <button
             onClick={handleLicenseActivate}
             disabled={licenseLoading || !licenseKey.trim()}
-            style={{ width: '100%', padding: '14px 0', background: licenseLoading || !licenseKey.trim() ? '#c4b5fd' : 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: licenseLoading || !licenseKey.trim() ? 'not-allowed' : 'pointer', transition: 'opacity 0.2s', marginBottom: 24 }}
+            style={{ width: '100%', padding: '14px 0', background: licenseLoading || !licenseKey.trim() ? T.btnPrimaryDisabled : T.btnPrimary, color: T.btnPrimaryText, border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: licenseLoading || !licenseKey.trim() ? 'not-allowed' : 'pointer', transition: 'opacity 0.2s', marginBottom: 24 }}
           >
             {licenseLoading ? 'Activating…' : 'Activate License'}
           </button>
 
-          <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 20, textAlign: 'center', fontSize: 13, color: '#9ca3af' }}>
+          <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 20, textAlign: 'center', fontSize: 13, color: T.textMuted }}>
             Need help?{' '}
-            <a href={`mailto:${B.supportEmail}`} style={{ color: '#7c3aed', fontWeight: 600, textDecoration: 'none' }}>
+            <a href={`mailto:${B.supportEmail}`} style={{ color: T.primary, fontWeight: 600, textDecoration: 'none' }}>
               {B.supportEmail}
             </a>
           </div>
@@ -776,56 +776,81 @@ export default function App() {
   // ── End License Gate ──────────────────────────────────────────────────────
 
   return (
-    <div className="ciq-frontend-root" style={{ minHeight: '100vh', background: '#f3f4f6', padding: 0, fontFamily: 'Inter,Arial,Helvetica,sans-serif' }}>
-      <header style={{ background: `linear-gradient(135deg, ${B.primaryColor} 0%, ${B.accentColor} 100%)`, color: '#fff', padding: '32px 0', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', marginBottom: 40 }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 32px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginBottom: 20 }}>
-            <img 
-              src={B.logoUrl || `${(window as any).ConversionIQData?.pluginUrl || ''}/assets/images/Webtec.png`} 
-              alt={B.company} 
-              style={{ width: 140, height: 'auto' }} 
-            />
-            <div style={{ height: 40, width: 1, background: 'rgba(255,255,255,0.3)' }}></div>
-            <div>
-              <h1 style={{ margin: 0, fontWeight: 800, fontSize: 36, letterSpacing: -1 }}>{B.product}</h1>
-              <p style={{ margin: '4px 0 0 0', fontSize: 16, opacity: 0.9 }}>AI-powered conversion audits & recommendations</p>
+    <div className="ciq-frontend-root" style={{ minHeight: '100vh', background: T.bgPage, padding: 0, fontFamily: 'Inter,Arial,Helvetica,sans-serif' }}>
+      <header style={{ background: T.gradHeader, borderBottom: `1px solid ${T.border}`, color: '#fff', marginBottom: 32, position: 'relative', overflow: 'hidden' }}>
+        {/* Amber top accent bar */}
+        <div style={{ height: 3, background: T.btnPrimary }} />
+        {/* Subtle radial glow */}
+        <div style={{ position: 'absolute', top: -60, left: '18%', width: 520, height: 220, background: 'radial-gradient(ellipse, rgba(245,158,11,0.07) 0%, transparent 70%)', pointerEvents: 'none' }} />
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 32px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24 }}>
+            {/* Left: Logo + Product */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+              <div style={{ width: 64, height: 64, borderRadius: 16, background: T.bgCard, border: `1px solid ${T.borderMid}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', boxShadow: `0 0 0 1px ${T.primaryBorder}, 0 4px 20px rgba(245,158,11,0.12)`, flexShrink: 0 }}>
+                <img
+                  src={B.logoUrl || `${(window as any).ConversionIQData?.pluginUrl || ''}/assets/images/Webtec.png`}
+                  alt={B.company}
+                  style={{ width: 52, height: 52, objectFit: 'contain' }}
+                />
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 5 }}>
+                  <h1 style={{ margin: 0, fontWeight: 800, fontSize: 26, letterSpacing: -0.5, color: T.textPrimary }}>{B.product}</h1>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: T.primaryBg, color: T.primary, border: `1px solid ${T.primaryBorder}`, textTransform: 'uppercase' as const, letterSpacing: 0.8 }}>✦ AI-Powered</span>
+                </div>
+                <p style={{ margin: 0, fontSize: 14, color: T.textSecondary, lineHeight: 1.4 }}>AI-powered conversion audits & recommendations</p>
+              </div>
+            </div>
+            {/* Right: Plan badge + Support */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '7px 14px', borderRadius: 10, background: T.bgSubtle, border: `1px solid ${T.border}` }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: currentPlan === 'free' ? T.textMuted : T.success, display: 'inline-block', flexShrink: 0 }} />
+                <span style={{ fontSize: 13, color: T.textSecondary, fontWeight: 600, textTransform: 'capitalize' as const }}>{currentPlan} Plan</span>
+              </div>
+              <a
+                href={`mailto:${B.supportEmail}`}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, background: T.btnGhost, border: `1px solid ${T.border}`, color: T.textSecondary, textDecoration: 'none', fontSize: 13, fontWeight: 500, transition: 'all 0.2s' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.background = T.btnGhostHover; (e.currentTarget as HTMLAnchorElement).style.color = T.textPrimary; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.background = T.btnGhost; (e.currentTarget as HTMLAnchorElement).style.color = T.textSecondary; }}
+              >
+                Support
+              </a>
             </div>
           </div>
-          <div style={{ padding: '16px 20px', background: 'rgba(255,255,255,0.12)', borderRadius: 12, fontSize: 14, lineHeight: 1.7, borderLeft: '4px solid rgba(255,255,255,0.3)' }}>
-            <p style={{ margin: 0, opacity: 0.95 }}>
-              {B.hidePoweredBy ? '' : <><strong>Built by {B.company}</strong> for conversion audits. </>}Our audits are based on best practices and validated tests over thousands of customers.
-            </p>
-            <p style={{ margin: '8px 0 0 0', opacity: 0.9, fontSize: 13 }}>
-              Unsure about your results? <a href={`mailto:${B.supportEmail}`} style={{ color: '#fff', textDecoration: 'underline', fontWeight: 500 }}>Contact our support team</a> for assistance.
-            </p>
-          </div>
+          {/* Branding line */}
+          {!B.hidePoweredBy && (
+            <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 12, color: T.textWhisper }}>Built by <strong style={{ color: T.textMuted, fontWeight: 600 }}>{B.company}</strong> · Trusted by thousands of businesses</span>
+              <span style={{ fontSize: 12, color: T.textWhisper }}>Audits based on best practices & validated tests</span>
+            </div>
+          )}
         </div>
       </header>
 
       <main style={{ maxWidth: 1200, margin: '0 auto', padding: '0 32px 60px 32px' }}>
         {notice && (
           <div style={{
-            background: noticeType === 'error' ? '#fee2e2' : noticeType === 'success' ? '#d1fae5' : '#7c3aed',
-            border: noticeType === 'error' ? '1px solid #fca5a5' : noticeType === 'success' ? '1px solid #6ee7b7' : 'none',
-            color: noticeType === 'error' ? '#991b1b' : noticeType === 'success' ? '#065f46' : '#fff',
+            background: noticeType === 'error' ? 'rgba(239,68,68,0.12)' : noticeType === 'success' ? 'rgba(34,197,94,0.12)' : T.primaryBg,
+            border: noticeType === 'error' ? '1px solid rgba(239,68,68,0.3)' : noticeType === 'success' ? '1px solid rgba(34,197,94,0.3)' : `1px solid ${T.primaryBorder}`,
+            color: noticeType === 'error' ? '#fca5a5' : noticeType === 'success' ? '#86efac' : T.primary,
             borderRadius: 12, padding: 16, marginBottom: 24, fontWeight: 500,
-            boxShadow: noticeType ? 'none' : '0 4px 12px rgba(124, 58, 237, 0.2)'
+            boxShadow: noticeType ? 'none' : `0 4px 12px ${T.primaryBg}`
           }}>
             {notice}
           </div>
         )}
         {loading && progress > 0 && (
-          <div style={{ marginBottom: 24, background: '#fff', padding: 20, borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-            <div style={{ height: 10, background: '#e9d5ff', borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ marginBottom: 24, background: T.bgCard, padding: 20, borderRadius: 12, boxShadow: `0 2px 8px rgba(0,0,0,0.3)`, border: `1px solid ${T.border}` }}>
+            <div style={{ height: 10, background: T.primaryBg, borderRadius: 8, overflow: 'hidden' }}>
               <div style={{ 
                 width: `${progress}%`, 
                 height: 10, 
-                background: 'linear-gradient(90deg, #7c3aed 0%, #5b21b6 100%)', 
+                background: T.btnPrimary, 
                 transition: 'width 0.5s ease-out', 
                 borderRadius: 8 
               }} />
             </div>
-            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 8, fontStyle: 'italic' }}>
+            <div style={{ fontSize: 12, color: T.textMuted, marginTop: 8, fontStyle: 'italic' }}>
               {progress < 75 && '🤖 AI is analyzing your page content and generating insights...'}
               {progress >= 75 && progress < 100 && '✨ Almost done! Finalizing your comprehensive audit report...'}
               {progress === 100 && '✅ Success! Your audit is ready to view.'}
@@ -834,17 +859,17 @@ export default function App() {
         )}
 
         {/* Tab Navigation */}
-        <div style={{ background: '#fff', borderRadius: 12, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', borderBottom: '2px solid #f3f4f6' }}>
+        <div style={{ background: T.bgCard, borderRadius: 12, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.2)', border: `1px solid ${T.border}`, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', borderBottom: `2px solid ${T.border}` }}>
             <button
               onClick={() => setActiveTab('overview')}
               style={{
                 flex: 1,
                 padding: '16px 24px',
-                background: activeTab === 'overview' ? '#7c3aed' : '#fff',
-                color: activeTab === 'overview' ? '#fff' : '#6b7280',
+                background: activeTab === 'overview' ? T.primaryBg : T.bgCard,
+                color: activeTab === 'overview' ? T.primary : T.textSecondary,
                 border: 'none',
-                borderBottom: activeTab === 'overview' ? '3px solid #5b21b6' : '3px solid transparent',
+                borderBottom: activeTab === 'overview' ? `3px solid ${T.primary}` : '3px solid transparent',
                 cursor: 'pointer',
                 fontSize: 16,
                 fontWeight: 600,
@@ -858,10 +883,10 @@ export default function App() {
               style={{
                 flex: 1,
                 padding: '16px 24px',
-                background: activeTab === 'settings' ? '#7c3aed' : '#fff',
-                color: activeTab === 'settings' ? '#fff' : '#6b7280',
+                background: activeTab === 'settings' ? T.primaryBg : T.bgCard,
+                color: activeTab === 'settings' ? T.primary : T.textSecondary,
                 border: 'none',
-                borderBottom: activeTab === 'settings' ? '3px solid #5b21b6' : '3px solid transparent',
+                borderBottom: activeTab === 'settings' ? `3px solid ${T.primary}` : '3px solid transparent',
                 cursor: 'pointer',
                 fontSize: 16,
                 fontWeight: 600,
@@ -876,10 +901,10 @@ export default function App() {
               style={{
                 flex: 1,
                 padding: '16px 24px',
-                background: activeTab === 'audits' ? '#7c3aed' : '#fff',
-                color: activeTab === 'audits' ? '#fff' : '#6b7280',
+                background: activeTab === 'audits' ? T.primaryBg : T.bgCard,
+                color: activeTab === 'audits' ? T.primary : T.textSecondary,
                 border: 'none',
-                borderBottom: activeTab === 'audits' ? '3px solid #5b21b6' : '3px solid transparent',
+                borderBottom: activeTab === 'audits' ? `3px solid ${T.primary}` : '3px solid transparent',
                 cursor: 'pointer',
                 fontSize: 16,
                 fontWeight: 600,
@@ -893,10 +918,10 @@ export default function App() {
               style={{
                 flex: 1,
                 padding: '16px 24px',
-                background: activeTab === 'knockknock' ? '#7c3aed' : '#fff',
-                color: activeTab === 'knockknock' ? '#fff' : '#6b7280',
+                background: activeTab === 'knockknock' ? T.primaryBg : T.bgCard,
+                color: activeTab === 'knockknock' ? T.primary : T.textSecondary,
                 border: 'none',
-                borderBottom: activeTab === 'knockknock' ? '3px solid #5b21b6' : '3px solid transparent',
+                borderBottom: activeTab === 'knockknock' ? `3px solid ${T.primary}` : '3px solid transparent',
                 cursor: 'pointer',
                 fontSize: 16,
                 fontWeight: 600,
@@ -905,7 +930,7 @@ export default function App() {
               }}
             >
               <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                KnockKnock
+                Visitor Insights
                 {!canUse('knockknock') && (
                   <span style={{
                     display: 'inline-flex',
@@ -913,11 +938,11 @@ export default function App() {
                     justifyContent: 'center',
                     width: 16,
                     height: 16,
-                    background: activeTab === 'knockknock' ? 'rgba(255,255,255,0.25)' : '#f3e8ff',
+                    background: activeTab === 'knockknock' ? T.primaryBg : T.bgSubtle,
                     borderRadius: 4,
                     fontSize: 10,
                     lineHeight: 1,
-                    color: activeTab === 'knockknock' ? '#fff' : '#7c3aed',
+                    color: T.primary,
                     flexShrink: 0
                   }}>🔒</span>
                 )}
@@ -928,10 +953,10 @@ export default function App() {
               style={{
                 flex: 1,
                 padding: '16px 24px',
-                background: activeTab === 'heatmap' ? '#7c3aed' : '#fff',
-                color: activeTab === 'heatmap' ? '#fff' : '#6b7280',
+                background: activeTab === 'heatmap' ? T.primaryBg : T.bgCard,
+                color: activeTab === 'heatmap' ? T.primary : T.textSecondary,
                 border: 'none',
-                borderBottom: activeTab === 'heatmap' ? '3px solid #5b21b6' : '3px solid transparent',
+                borderBottom: activeTab === 'heatmap' ? `3px solid ${T.primary}` : '3px solid transparent',
                 cursor: 'pointer',
                 fontSize: 16,
                 fontWeight: 600,
@@ -945,10 +970,10 @@ export default function App() {
               style={{
                 flex: 1,
                 padding: '16px 24px',
-                background: activeTab === 'seo' ? '#7c3aed' : '#fff',
-                color: activeTab === 'seo' ? '#fff' : '#6b7280',
+                background: activeTab === 'seo' ? T.primaryBg : T.bgCard,
+                color: activeTab === 'seo' ? T.primary : T.textSecondary,
                 border: 'none',
-                borderBottom: activeTab === 'seo' ? '3px solid #5b21b6' : '3px solid transparent',
+                borderBottom: activeTab === 'seo' ? `3px solid ${T.primary}` : '3px solid transparent',
                 cursor: 'pointer',
                 fontSize: 16,
                 fontWeight: 600,
@@ -962,10 +987,10 @@ export default function App() {
               style={{
                 flex: 1,
                 padding: '16px 24px',
-                background: activeTab === 'license' ? '#7c3aed' : '#fff',
-                color: activeTab === 'license' ? '#fff' : '#6b7280',
+                background: activeTab === 'license' ? T.primaryBg : T.bgCard,
+                color: activeTab === 'license' ? T.primary : T.textSecondary,
                 border: 'none',
-                borderBottom: activeTab === 'license' ? '3px solid #5b21b6' : '3px solid transparent',
+                borderBottom: activeTab === 'license' ? `3px solid ${T.primary}` : '3px solid transparent',
                 cursor: 'pointer',
                 fontSize: 16,
                 fontWeight: 600,
@@ -993,8 +1018,8 @@ export default function App() {
         {activeTab === 'settings' && (() => {
           const profileField = (label: string, value: string | undefined) => (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#9ca3af' }}>{label}</span>
-              <span style={{ fontSize: 14, color: value ? '#111827' : '#d1d5db', fontWeight: value ? 500 : 400 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: T.textMuted }}>{label}</span>
+              <span style={{ fontSize: 14, color: value ? T.textPrimary : T.textWhisper, fontWeight: value ? 500 : 400 }}>
                 {value || '—'}
               </span>
             </div>
@@ -1003,9 +1028,9 @@ export default function App() {
           const hasAnyProfile = !!(settings.business_name || settings.industry || settings.product || settings.audience || settings.goal);
 
           return (
-            <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
+            <section style={{ background: T.bgCard, borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.3)', padding: 32, border: `1px solid ${T.border}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#111827' }}>Business Information</h2>
+                <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: T.textPrimary }}>Business Information</h2>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     onClick={() => {
@@ -1030,7 +1055,7 @@ export default function App() {
                         .finally(() => setProfileRefreshing(false));
                     }}
                     disabled={profileRefreshing}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 14px', background: profileRefreshing ? '#e5e7eb' : '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: profileRefreshing ? 'wait' : 'pointer', transition: 'all 0.2s' }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 14px', background: T.btnGhost, color: T.textSecondary, border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: profileRefreshing ? 'wait' : 'pointer', transition: 'all 0.2s' }}
                   >
                     {profileRefreshing ? '⏳' : '↻'} {profileRefreshing ? 'Syncing…' : 'Refresh'}
                   </button>
@@ -1038,7 +1063,7 @@ export default function App() {
                     href="https://conversioniq-app.com/dashboard/profile"
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', color: '#fff', textDecoration: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, boxShadow: '0 2px 8px rgba(124,58,237,0.3)', whiteSpace: 'nowrap', transition: 'opacity 0.2s' }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: T.btnPrimary, color: T.btnPrimaryText, textDecoration: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, boxShadow: '0 2px 8px rgba(245,158,11,0.3)', whiteSpace: 'nowrap', transition: 'opacity 0.2s' }}
                     onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
                     onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
                   >
@@ -1046,7 +1071,7 @@ export default function App() {
                   </a>
                 </div>
               </div>
-              <p style={{ color: '#6b7280', marginBottom: 24, fontSize: 15 }}>
+              <p style={{ color: T.textSecondary, marginBottom: 24, fontSize: 15 }}>
                 This profile is used by the AI to deliver personalized audit recommendations. To update it, visit your account at conversioniq-app.com.
               </p>
 
@@ -1066,8 +1091,8 @@ export default function App() {
 
               {/* Group: Your Business */}
               <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#7c3aed', marginBottom: 12 }}>Your Business</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px 24px', padding: '20px 24px', background: '#f9fafb', borderRadius: 10, border: '1px solid #f3f4f6' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.primary, marginBottom: 12 }}>Your Business</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px 24px', padding: '20px 24px', background: T.bgSubtle, borderRadius: 10, border: `1px solid ${T.border}` }}>
                   {profileField('Business Name', settings.business_name)}
                   {profileField('Industry / Niche', settings.industry)}
                   {profileField('What You Sell', settings.product)}
@@ -1076,8 +1101,8 @@ export default function App() {
 
               {/* Group: Your Customers */}
               <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#7c3aed', marginBottom: 12 }}>Your Customers</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px 24px', padding: '20px 24px', background: '#f9fafb', borderRadius: 10, border: '1px solid #f3f4f6' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.primary, marginBottom: 12 }}>Your Customers</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px 24px', padding: '20px 24px', background: T.bgSubtle, borderRadius: 10, border: `1px solid ${T.border}` }}>
                   {profileField('Target Audience', settings.audience)}
                   {profileField('Customer Pain Points', settings.pain_points)}
                   {profileField('Key Competitors', settings.competitors)}
@@ -1086,8 +1111,8 @@ export default function App() {
 
               {/* Group: Goals & Market */}
               <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#7c3aed', marginBottom: 12 }}>Goals & Market</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px 24px', padding: '20px 24px', background: '#f9fafb', borderRadius: 10, border: '1px solid #f3f4f6' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.primary, marginBottom: 12 }}>Goals & Market</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px 24px', padding: '20px 24px', background: T.bgSubtle, borderRadius: 10, border: `1px solid ${T.border}` }}>
                   {profileField('Primary Conversion Goal', settings.goal)}
                   {profileField('Unique Selling Points', settings.unique_selling_points)}
                   {profileField('Target Geography', settings.target_geography)}
@@ -1096,20 +1121,20 @@ export default function App() {
 
               {/* Group: Positioning */}
               <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#7c3aed', marginBottom: 12 }}>Positioning</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px 24px', padding: '20px 24px', background: '#f9fafb', borderRadius: 10, border: '1px solid #f3f4f6' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.primary, marginBottom: 12 }}>Positioning</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px 24px', padding: '20px 24px', background: T.bgSubtle, borderRadius: 10, border: `1px solid ${T.border}` }}>
                   {profileField('Price Point', settings.price_point)}
                   {profileField('Primary Traffic Source', settings.primary_traffic_source)}
                   {settings.additional_info && (
                     <div style={{ gridColumn: '1 / -1', ...{ display: 'flex', flexDirection: 'column', gap: 4 } as any }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#9ca3af' }}>Additional Notes</span>
-                      <span style={{ fontSize: 14, color: '#111827', fontWeight: 500, lineHeight: 1.6 }}>{settings.additional_info}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: T.textMuted }}>Additional Notes</span>
+                      <span style={{ fontSize: 14, color: T.textPrimary, fontWeight: 500, lineHeight: 1.6 }}>{settings.additional_info}</span>
                     </div>
                   )}
                 </div>
               </div>
 
-              <div style={{ marginTop: 8, fontSize: 13, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ marginTop: 8, fontSize: 13, color: T.textMuted, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                 Profile syncs automatically when you activate your license. Use the Refresh button to pull the latest changes manually.
               </div>
@@ -1121,46 +1146,46 @@ export default function App() {
         {activeTab === 'audits' && (
           <>
             {/* Pages to Analyze Section */}
-            <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32, marginBottom: 24 }}>
+            <section style={{ background: T.bgCard, borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.3)', padding: 32, marginBottom: 24, border: `1px solid ${T.border}` }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 8 }}>
-                <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#111827' }}>Select Pages to Analyze</h2>
-                <span style={{ padding: '4px 12px', background: selectedPages.length >= maxPagesPerAudit ? '#fef3c7' : '#f3e8ff', color: selectedPages.length >= maxPagesPerAudit ? '#92400e' : '#5b21b6', borderRadius: 20, fontSize: 13, fontWeight: 600, border: `1px solid ${selectedPages.length >= maxPagesPerAudit ? '#fcd34d' : '#c4b5fd'}` }}>
+                <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: T.textPrimary }}>Select Pages to Analyze</h2>
+                <span style={{ padding: '4px 12px', background: selectedPages.length >= maxPagesPerAudit ? '#fef3c7' : T.primaryBg, color: selectedPages.length >= maxPagesPerAudit ? '#92400e' : T.primary, borderRadius: 20, fontSize: 13, fontWeight: 600, border: `1px solid ${selectedPages.length >= maxPagesPerAudit ? '#fcd34d' : T.primaryBorder}` }}>
                   {selectedPages.length} / {maxPagesPerAudit} pages selected
                 </span>
               </div>
               {/* Plan limits info strip — always visible */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 16, padding: '10px 16px', background: '#f5f3ff', border: '1px solid #ede9fe', borderRadius: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', fontSize: 13, color: '#5b21b6' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 16, padding: '10px 16px', background: T.primaryBg, border: `1px solid ${T.primaryBorder}`, borderRadius: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', fontSize: 13, color: T.primary }}>
                   <span>
                     <strong style={{ textTransform: 'capitalize' }}>{currentPlan}</strong> plan
                   </span>
-                  <span style={{ width: 1, height: 14, background: '#c4b5fd', display: 'inline-block' }} />
+                  <span style={{ width: 1, height: 14, background: T.primaryBorder, display: 'inline-block' }} />
                   <span>Up to <strong>{maxPagesPerAudit} page{maxPagesPerAudit !== 1 ? 's' : ''}</strong> per audit</span>
-                  <span style={{ width: 1, height: 14, background: '#c4b5fd', display: 'inline-block' }} />
+                  <span style={{ width: 1, height: 14, background: T.primaryBorder, display: 'inline-block' }} />
                   <span><strong>{(liveFeatures.audits_per_week as number) || 3} audits</strong> per week</span>
                 </div>
                 {currentPlan !== 'agency' && (
-                  <button onClick={() => setActiveTab('license')} style={{ background: 'none', color: '#7c3aed', border: '1px solid #c4b5fd', borderRadius: 6, padding: '4px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                  <button onClick={() => setActiveTab('license')} style={{ background: 'none', color: T.primary, border: `1px solid ${T.primaryBorder}`, borderRadius: 6, padding: '4px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                     Upgrade plan →
                   </button>
                 )}
               </div>
-              <p style={{ color: '#6b7280', marginBottom: selectedPages.length >= maxPagesPerAudit ? 12 : 20, fontSize: 15 }}>Choose which pages you want to audit now.</p>
+              <p style={{ color: T.textSecondary, marginBottom: selectedPages.length >= maxPagesPerAudit ? 12 : 20, fontSize: 15 }}>Choose which pages you want to audit now.</p>
               {selectedPages.length >= maxPagesPerAudit && (
                 <div style={{ marginBottom: 16, padding: '10px 16px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 13, color: '#92400e', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                   <span>🔒 Page limit reached for your <strong>{currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1)}</strong> plan.</span>
-                  <button onClick={() => setActiveTab('license')} style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Upgrade Plan →</button>
+                  <button onClick={() => setActiveTab('license')} style={{ background: T.primary, color: T.btnPrimaryText, border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Upgrade Plan →</button>
                 </div>
               )}
-              <div style={{ maxHeight: 240, overflow: 'auto', border: '1px solid #d1d5db', borderRadius: 8, padding: 16, background: '#f9fafb' }}>
+              <div style={{ maxHeight: 240, overflow: 'auto', border: `1px solid ${T.border}`, borderRadius: 8, padding: 16, background: T.bgSubtle }}>
                 {pages.length === 0 ? (
-                  <div style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>No pages found. Please publish some pages first.</div>
+                  <div style={{ color: T.textMuted, textAlign: 'center', padding: 20 }}>No pages found. Please publish some pages first.</div>
                 ) : (
                   pages.map(p => (
-                    <label key={p.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', marginBottom: 8, background: selectedPages.includes(p.id) ? '#f3e8ff' : '#fff', borderRadius: 6, cursor: 'pointer', transition: 'all 0.2s', border: '1px solid transparent' }} onMouseEnter={(e) => e.currentTarget.style.borderColor = '#a78bfa'} onMouseLeave={(e) => !selectedPages.includes(p.id) && (e.currentTarget.style.borderColor = 'transparent')}>
-                      <input type="checkbox" checked={selectedPages.includes(p.id)} onChange={() => handlePageSelect(p.id)} disabled={!selectedPages.includes(p.id) && selectedPages.length >= maxPagesPerAudit} style={{ marginRight: 12, width: 18, height: 18, cursor: !selectedPages.includes(p.id) && selectedPages.length >= maxPagesPerAudit ? 'not-allowed' : 'pointer', accentColor: '#7c3aed' }} />
-                      <span style={{ flex: 1, fontWeight: 500, color: '#111827' }}>{p.title}</span>
-                      <span style={{ color: '#9ca3af', fontSize: 13 }}>ID: {p.id}</span>
+                    <label key={p.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', marginBottom: 8, background: selectedPages.includes(p.id) ? T.primaryBg : T.bgCard, borderRadius: 6, cursor: 'pointer', transition: 'all 0.2s', border: `1px solid ${selectedPages.includes(p.id) ? T.primaryBorder : 'transparent'}` }} onMouseEnter={(e) => e.currentTarget.style.borderColor = T.primaryBorder} onMouseLeave={(e) => !selectedPages.includes(p.id) && (e.currentTarget.style.borderColor = 'transparent')}>
+                      <input type="checkbox" checked={selectedPages.includes(p.id)} onChange={() => handlePageSelect(p.id)} disabled={!selectedPages.includes(p.id) && selectedPages.length >= maxPagesPerAudit} style={{ marginRight: 12, width: 18, height: 18, cursor: !selectedPages.includes(p.id) && selectedPages.length >= maxPagesPerAudit ? 'not-allowed' : 'pointer', accentColor: T.primary }} />
+                      <span style={{ flex: 1, fontWeight: 500, color: T.textPrimary }}>{p.title}</span>
+                      <span style={{ color: T.textMuted, fontSize: 13 }}>ID: {p.id}</span>
                     </label>
                   ))
                 )}
@@ -1168,15 +1193,15 @@ export default function App() {
 
               {/* Selected Pages List */}
               {selectedPages.length > 0 && (
-                <div style={{ marginTop: 16, padding: 16, background: '#f3e8ff', borderRadius: 8, border: '1px solid #c4b5fd' }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#5b21b6', marginBottom: 8 }}>
+                <div style={{ marginTop: 16, padding: 16, background: T.primaryBg, borderRadius: 8, border: `1px solid ${T.primaryBorder}` }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: T.primary, marginBottom: 8 }}>
                     ✓ {selectedPages.length} page{selectedPages.length !== 1 ? 's' : ''} selected for audit:
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {selectedPages.map(pageId => {
                       const page = pages.find(p => p.id === pageId);
                       return page ? (
-                        <div key={pageId} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: '#fff', borderRadius: 6, fontSize: 13, fontWeight: 500, color: '#5b21b6', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', border: '1px solid #e9d5ff' }}>
+                        <div key={pageId} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: T.bgCard, borderRadius: 6, fontSize: 13, fontWeight: 500, color: T.primary, boxShadow: '0 1px 2px rgba(0,0,0,0.2)', border: `1px solid ${T.primaryBorder}` }}>
                           {page.title}
                           <button
                             onClick={() => handlePageSelect(pageId)}
@@ -1192,143 +1217,87 @@ export default function App() {
                 </div>
               )}
 
-              <button className="ciq-btn primary" style={{ marginTop: 20, padding: '14px 32px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, fontSize: 16, fontWeight: 600, cursor: loading || selectedPages.length === 0 ? 'not-allowed' : 'pointer', opacity: loading || selectedPages.length === 0 ? 0.6 : 1, transition: 'all 0.2s' }} onClick={handleRunAudit} disabled={loading || selectedPages.length === 0} onMouseEnter={(e) => !loading && selectedPages.length > 0 && (e.currentTarget.style.background = '#6d28d9')} onMouseLeave={(e) => !loading && selectedPages.length > 0 && (e.currentTarget.style.background = '#7c3aed')}>
+              <button className="ciq-btn primary" style={{ marginTop: 20, padding: '14px 32px', background: T.primary, color: T.btnPrimaryText, border: 'none', borderRadius: 8, fontSize: 16, fontWeight: 600, cursor: loading || selectedPages.length === 0 ? 'not-allowed' : 'pointer', opacity: loading || selectedPages.length === 0 ? 0.6 : 1, transition: 'all 0.2s' }} onClick={handleRunAudit} disabled={loading || selectedPages.length === 0} onMouseEnter={(e) => !loading && selectedPages.length > 0 && (e.currentTarget.style.background = T.primaryHover)} onMouseLeave={(e) => !loading && selectedPages.length > 0 && (e.currentTarget.style.background = T.primary)}>
                 {loading ? 'Running Audit...' : `Run Audit${selectedPages.length > 0 ? ` (${selectedPages.length} page${selectedPages.length !== 1 ? 's' : ''})` : ''}`}
               </button>
             </section>
 
             {/* Audit Results Section */}
-            <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
-              <h2 style={{ margin: '0 0 20px 0', fontSize: 24, fontWeight: 700, color: '#111827' }}>Audit Results</h2>
+            <section style={{ background: T.bgCard, borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.3)', padding: 32, border: `1px solid ${T.border}` }}>
               <div style={{ display: 'flex', alignItems: 'center', marginBottom: 24 }}>
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: T.btnPrimary, display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
                   <span style={{ fontSize: 20 }}>📊</span>
                 </div>
-                <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#1f2937' }}>Audit Results</h2>
+                <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: T.textPrimary }}>Audit Results</h2>
               </div>
               
               {audits.length > 0 && (
-                <div style={{ marginBottom: 24, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ marginBottom: 24 }}>
                   <input
                     type="text"
                     placeholder="🔍 Search by page title..."
                     value={auditSearchQuery}
                     onChange={(e) => setAuditSearchQuery(e.target.value)}
-                    style={{ flex: '1 1 300px', padding: '10px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, outline: 'none' }}
+                    style={{ width: '100%', boxSizing: 'border-box' as const, padding: '10px 16px', border: `1px solid ${T.border}`, background: T.bgInput, color: T.textPrimary, borderRadius: 8, fontSize: 14, outline: 'none' }}
                   />
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      onClick={() => setAuditFilter('all')}
-                      style={{
-                        padding: '10px 20px',
-                        border: 'none',
-                        borderRadius: 8,
-                        fontSize: 14,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        background: auditFilter === 'all' ? 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)' : '#f3f4f6',
-                        color: auditFilter === 'all' ? '#fff' : '#6b7280',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      All ({audits.length})
-                    </button>
-                    <button
-                      onClick={() => setAuditFilter('ai')}
-                      style={{
-                        padding: '10px 20px',
-                        border: 'none',
-                        borderRadius: 8,
-                        fontSize: 14,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        background: auditFilter === 'ai' ? 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)' : '#f3f4f6',
-                        color: auditFilter === 'ai' ? '#fff' : '#6b7280',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      AI Powered ({audits.filter(a => a.ai_used !== false).length})
-                    </button>
-                    <button
-                      onClick={() => setAuditFilter('fallback')}
-                      style={{
-                        padding: '10px 20px',
-                        border: 'none',
-                        borderRadius: 8,
-                        fontSize: 14,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        background: auditFilter === 'fallback' ? 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)' : '#f3f4f6',
-                        color: auditFilter === 'fallback' ? '#fff' : '#6b7280',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      Fallback ({audits.filter(a => a.ai_used === false).length})
-                    </button>
-                  </div>
                 </div>
               )}
               
               {(() => {
-                // Filter audits
-                let filteredAudits = audits.filter(a => {
-                  const matchesFilter = auditFilter === 'all' || 
-                    (auditFilter === 'ai' && a.ai_used !== false) ||
-                    (auditFilter === 'fallback' && a.ai_used === false);
-                  const matchesSearch = !auditSearchQuery || 
-                    (a.page_title || '').toLowerCase().includes(auditSearchQuery.toLowerCase());
-                  return matchesFilter && matchesSearch;
-                });
-                
-                // Group by date
-                const groupedByDate: { [key: string]: typeof audits } = {};
-                filteredAudits.forEach(audit => {
-                  const date = audit.created_at ? new Date(audit.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Unknown Date';
-                  if (!groupedByDate[date]) groupedByDate[date] = [];
-                  groupedByDate[date].push(audit);
-                });
-                
-                const dateGroups = Object.entries(groupedByDate).sort((a, b) => 
-                  new Date(b[0]).getTime() - new Date(a[0]).getTime()
+                // Filter by search
+                const filteredAudits = audits.filter(a =>
+                  !auditSearchQuery || (a.page_title || '').toLowerCase().includes(auditSearchQuery.toLowerCase())
                 );
+
+                // Group by page
+                const groupedByPage: { [key: string]: typeof audits } = {};
+                filteredAudits.forEach(audit => {
+                  const key = String(audit.page_id ?? audit.page_title ?? 'unknown');
+                  if (!groupedByPage[key]) groupedByPage[key] = [];
+                  groupedByPage[key].push(audit);
+                });
+
+                // Sort audits within each page by date (newest first), then sort groups by most recent
+                const pageGroups = Object.entries(groupedByPage).map(([key, pageAudits]) => ({
+                  key,
+                  title: pageAudits[0].page_title || 'Unknown Page',
+                  audits: [...pageAudits].sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()),
+                })).sort((a, b) => new Date(b.audits[0].created_at || 0).getTime() - new Date(a.audits[0].created_at || 0).getTime());
                 
                 if (filteredAudits.length === 0 && audits.length === 0) {
-                  return <div style={{ color: '#9ca3af', textAlign: 'center', padding: 40, background: '#f9fafb', borderRadius: 12 }}>No audits yet. Select pages above and run your first audit!</div>;
+                  return <div style={{ color: T.textMuted, textAlign: 'center', padding: 40, background: T.bgSubtle, borderRadius: 12 }}>No audits yet. Select pages above and run your first audit!</div>;
                 }
-                
+
                 if (filteredAudits.length === 0) {
-                  return <div style={{ color: '#9ca3af', textAlign: 'center', padding: 40, background: '#f9fafb', borderRadius: 12 }}>No audits match your filter criteria.</div>;
+                  return <div style={{ color: T.textMuted, textAlign: 'center', padding: 40, background: T.bgSubtle, borderRadius: 12 }}>No audits match your search.</div>;
                 }
-                
-                return dateGroups.map(([date, dateAudits]) => (
-                  <div key={date} style={{ marginBottom: 32 }}>
-                    <h3 style={{ fontSize: 16, fontWeight: 600, color: '#6b7280', marginBottom: 16, paddingBottom: 8, borderBottom: '2px solid #e5e7eb' }}>
-                      {date}
-                    </h3>
+
+                return pageGroups.map(({ key, title, audits: pageAudits }) => (
+                  <div key={key} style={{ marginBottom: 40 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, paddingBottom: 10, borderBottom: `2px solid ${T.border}` }}>
+                      <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: T.textPrimary }}>{title}</h3>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: T.textMuted, background: T.bgSubtle, padding: '3px 10px', borderRadius: 20, border: `1px solid ${T.border}` }}>
+                        {pageAudits.length} audit{pageAudits.length !== 1 ? 's' : ''}
+                      </span>
+                      <span style={{ fontSize: 12, color: T.textMuted, marginLeft: 'auto' }}>
+                        Latest: {new Date(pageAudits[0].created_at || '').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                    </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: 20 }}>
-                      {dateAudits.map((a, i) => (
-                  <div key={i} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, background: '#fff', transition: 'all 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#a78bfa'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(124, 58, 237, 0.15)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; }}>
+                      {pageAudits.map((a, i) => (
+                  <div key={i} style={{ border: `1px solid ${T.border}`, borderRadius: 12, padding: 20, background: T.bgCard, transition: 'all 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.primaryBorder; e.currentTarget.style.boxShadow = `0 4px 12px ${T.primaryBg}`; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.2)'; }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#111827' }}>{a.page_title || 'Unknown Page'}</h3>
-                  {a.created_at && (
-                    <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
-                      {new Date(a.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
-                    </div>
-                  )}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {a.content_changed === false && (
-                    <div title="Page content unchanged from previous audit - scores may vary due to AI analysis" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, padding: '6px 12px', borderRadius: 8, background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}>
-                      <span>⚠️</span>
-                      <span>Page Unchanged</span>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600, padding: '6px 12px', borderRadius: 8, background: a.ai_used === false ? '#fef3c7' : '#f3e8ff', color: a.ai_used === false ? '#92400e' : '#7c3aed' }}>
-                    <span>{a.ai_used === false ? '⚠' : '✓'}</span>
-                    <span>{a.ai_used === false ? 'Fallback' : 'AI Powered'}</span>
+                {a.created_at && (
+                  <div style={{ fontSize: 13, color: T.textSecondary }}>
+                    {new Date(a.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
                   </div>
-                </div>
+                )}
+                {a.content_changed === false && (
+                  <div title="Page content unchanged from previous audit - scores may vary due to AI analysis" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 8, background: T.primaryBg, color: T.primary, border: `1px solid ${T.primaryBorder}` }}>
+                    <span>⚠️</span>
+                    <span>Page Unchanged</span>
+                  </div>
+                )}
               </div>
               
               {/* Overall Score Hero */}
@@ -1336,13 +1305,13 @@ export default function App() {
                 const os = a.overall_score || Math.round(((a.clarity_score || 0) * 0.20 + (a.emotional_score || 0) * 0.15 + (a.cta_strength || 0) * 0.20 + (a.readability_score || 0) * 0.15 + (a.engagement_score || 0) * 0.15 + (a.trust_score || 0) * 0.15));
                 const scoreColor = os >= 75 ? '#10b981' : os >= 50 ? '#f59e0b' : '#ef4444';
                 return os > 0 ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16, padding: '16px 20px', background: `linear-gradient(135deg, ${scoreColor}10, ${scoreColor}08)`, borderRadius: 12, border: `1px solid ${scoreColor}30` }}>
-                    <div style={{ width: 56, height: 56, borderRadius: '50%', background: `conic-gradient(${scoreColor} ${os * 3.6}deg, #e5e7eb ${os * 3.6}deg)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: scoreColor }}>{os}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16, padding: '16px 20px', background: `${scoreColor}14`, borderRadius: 12, border: `1px solid ${scoreColor}30` }}>
+                    <div style={{ width: 56, height: 56, borderRadius: '50%', background: `conic-gradient(${scoreColor} ${os * 3.6}deg, ${T.border} ${os * 3.6}deg)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <div style={{ width: 44, height: 44, borderRadius: '50%', background: T.bgCard, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: scoreColor }}>{os}</div>
                     </div>
                     <div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>Overall Score</div>
-                      <div style={{ fontSize: 12, color: '#6b7280' }}>{os >= 75 ? 'Great — high conversion potential' : os >= 50 ? 'Needs work — room to improve' : 'Critical — significant issues found'}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: T.textPrimary }}>Overall Score</div>
+                      <div style={{ fontSize: 12, color: T.textSecondary }}>{os >= 75 ? 'Great — high conversion potential' : os >= 50 ? 'Needs work — room to improve' : 'Critical — significant issues found'}</div>
                     </div>
                   </div>
                 ) : null;
@@ -1375,14 +1344,7 @@ export default function App() {
                 </div>
               </div>
               
-              {a.recommendations?.priority && (
-                <div style={{ marginBottom: 16, padding: 16, background: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)', borderRadius: 10, borderLeft: '4px solid #f59e0b' }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>🔥 Priority Recommendation</div>
-                  <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.6, fontWeight: 500 }}>
-                    {typeof a.recommendations.priority === 'string' ? a.recommendations.priority : a.recommendations.priority.text}
-                  </div>
-                </div>
-              )}
+
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div style={{ display: 'flex', gap: 12 }}>
@@ -1442,7 +1404,7 @@ export default function App() {
                         href={`https://conversioniq-app.com/reports/${a.report_token}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: '14px 20px', background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', color: '#fff', borderRadius: 10, fontSize: 15, fontWeight: 600, textDecoration: 'none', boxShadow: '0 4px 12px rgba(124, 58, 237, 0.3)', transition: 'transform 0.2s' }}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: '14px 20px', background: T.btnPrimary, color: T.btnPrimaryText, borderRadius: 10, fontSize: 15, fontWeight: 600, textDecoration: 'none', boxShadow: '0 4px 12px rgba(245,158,11,0.3)', transition: 'transform 0.2s' }}
                         onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
                         onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
                       >
@@ -1464,24 +1426,24 @@ export default function App() {
 
         {/* KnockKnock Tab */}
         {activeTab === 'knockknock' && (
-          <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
+          <section style={{ background: T.bgCard, borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.3)', padding: 32, border: `1px solid ${T.border}` }}>
             <div style={{ marginBottom: 32 }}>
-              <h2 style={{ margin: '0 0 8px 0', fontSize: 28, fontWeight: 700, color: '#111827' }}>
-                KnockKnock
+              <h2 style={{ margin: '0 0 8px 0', fontSize: 28, fontWeight: 700, color: T.textPrimary }}>
+                Visitor Insights
               </h2>
-              <p style={{ color: '#6b7280', fontSize: 15, margin: 0 }}>
+              <p style={{ color: T.textSecondary, fontSize: 15, margin: 0 }}>
                 Track visitor engagement and lead conversion with advanced analytics and real-time insights
               </p>
             </div>
 
             {!canUse('knockknock') && (
-              <div style={{ textAlign: 'center', padding: '60px 40px', background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)', borderRadius: 16, border: '2px dashed #a78bfa' }}>
+              <div style={{ textAlign: 'center', padding: '60px 40px', background: T.primaryBg, borderRadius: 16, border: `2px dashed ${T.primaryBorder}` }}>
                 <div style={{ fontSize: 48, marginBottom: 16 }}>�</div>
-                <h3 style={{ margin: '0 0 12px 0', fontSize: 22, fontWeight: 700, color: '#4c1d95' }}>Know who's actually on your site</h3>
-                <p style={{ color: '#6d28d9', fontSize: 15, maxWidth: 520, margin: '0 auto 8px' }}>
-                  Right now you can see <strong>what's wrong</strong> with your pages. KnockKnock tells you <strong>who's reading them</strong> — real company names, job titles, and contact details for anonymous visitors.
+                <h3 style={{ margin: '0 0 12px 0', fontSize: 22, fontWeight: 700, color: T.textPrimary }}>Know who's actually on your site</h3>
+                <p style={{ color: T.textSecondary, fontSize: 15, maxWidth: 520, margin: '0 auto 8px' }}>
+                  Right now you can see <strong>what's wrong</strong> with your pages. Visitor Insights tells you <strong>who's reading them</strong> — real company names, job titles, and contact details for anonymous visitors.
                 </p>
-                <p style={{ color: '#7c3aed', fontSize: 14, maxWidth: 480, margin: '0 auto 24px', lineHeight: 1.6 }}>
+                <p style={{ color: T.textMuted, fontSize: 14, maxWidth: 480, margin: '0 auto 24px', lineHeight: 1.6 }}>
                   Instead of guessing who your traffic is, you'll know exactly which companies are considering you — and reach out before they go to a competitor.
                 </p>
                 <div style={{ display: 'flex', justifyContent: 'center', gap: 32, marginBottom: 28, flexWrap: 'wrap' }}>
@@ -1490,15 +1452,15 @@ export default function App() {
                     { icon: '👤', label: 'Visitor identification' },
                     { icon: '⚡', label: 'Real-time alerts' },
                   ].map(({ icon, label }) => (
-                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#5b21b6', fontSize: 14, fontWeight: 600 }}>
+                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, color: T.primary, fontSize: 14, fontWeight: 600 }}>
                       <span style={{ fontSize: 20 }}>{icon}</span> {label}
                     </div>
                   ))}
                 </div>
-                <button onClick={() => setActiveTab('license')} style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '14px 32px', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>
+                <button onClick={() => setActiveTab('license')} style={{ background: T.btnPrimary, color: T.btnPrimaryText, border: 'none', borderRadius: 8, padding: '14px 32px', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>
                   Unlock on Business or Agency →
                 </button>
-                <div style={{ marginTop: 12, fontSize: 12, color: '#8b5cf6' }}>Available on Business ($249/mo) and Agency ($449/mo)</div>
+                <div style={{ marginTop: 12, fontSize: 12, color: T.textMuted }}>Available on Business ($249/mo) and Agency ($449/mo)</div>
               </div>
             )}
 
@@ -1513,7 +1475,7 @@ export default function App() {
               const deltaLabel = (n: number) => n === 0 ? '— same as last month' : `${n > 0 ? '▲' : '▼'} ${Math.abs(n)} vs last month`;
               return (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20, marginBottom: 32 }}>
-                <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 12, padding: 24, color: '#fff' }}>
+                <div style={{ background: T.btnPrimary, borderRadius: 12, padding: 24, color: '#000' }}>
                   <div style={{ fontSize: 14, fontWeight: 600, opacity: 0.9, marginBottom: 8 }}>Total Interactions</div>
                   <div style={{ fontSize: 36, fontWeight: 700, marginBottom: 4 }}>{knockKnockLeads.length}</div>
                   <div style={{ fontSize: 13, opacity: 0.8 }}>All time tracking</div>
@@ -1543,42 +1505,42 @@ export default function App() {
             })()}
 
             {/* Configuration Section */}
-            <div style={{ background: '#f9fafb', borderRadius: 12, padding: 24, marginBottom: 32, border: '1px solid #e5e7eb' }}>
-              <h3 style={{ margin: '0 0 20px 0', fontSize: 20, fontWeight: 600, color: '#111827' }}>⚙️ Webhook Configuration</h3>
+            <div style={{ background: T.bgSubtle, borderRadius: 12, padding: 24, marginBottom: 32, border: `1px solid ${T.border}` }}>
+              <h3 style={{ margin: '0 0 20px 0', fontSize: 20, fontWeight: 600, color: T.textPrimary }}>⚙️ Webhook Configuration</h3>
               
               <div style={{ display: 'grid', gap: 20 }}>
                 {/* Company ID */}
                 <div>
-                  <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>
+                  <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: T.textPrimary, fontSize: 14 }}>
                     Client Company ID {!knockKnockWebhookSecret && <span style={{ color: '#ef4444' }}>*</span>}
                   </label>
                   <input
                     type="text"
-                    placeholder="Enter your KnockKnock Company ID"
+                    placeholder="Enter your Visitor Insights Company ID"
                     value={knockKnockCompanyId}
                     onChange={(e) => setKnockKnockCompanyId(e.target.value)}
                     style={{ 
                       width: '100%', 
                       padding: '12px 16px', 
-                      border: '1px solid #d1d5db', 
+                      border: `1px solid ${T.border}`, 
                       borderRadius: 8, 
                       fontSize: 14, 
                       outline: 'none', 
                       transition: 'border 0.2s',
-                      background: '#fff',
-                      color: '#111827'
+                      background: T.bgInput,
+                      color: T.textPrimary
                     }}
-                    onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
-                    onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                    onFocus={(e) => e.currentTarget.style.borderColor = T.primary}
+                    onBlur={(e) => e.currentTarget.style.borderColor = T.border}
                   />
-                  <p style={{ fontSize: 12, color: '#6b7280', marginTop: 6, marginBottom: 0 }}>
+                  <p style={{ fontSize: 12, color: T.textMuted, marginTop: 6, marginBottom: 0 }}>
                     Optional if webhook secret is configured
                   </p>
                 </div>
 
                 {/* Webhook Secret */}
                 <div>
-                  <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>
+                  <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: T.textPrimary, fontSize: 14 }}>
                     Webhook Secret Key {!knockKnockCompanyId && <span style={{ color: '#ef4444' }}>*</span>}
                   </label>
                   <div style={{ position: 'relative' }}>
@@ -1590,17 +1552,17 @@ export default function App() {
                       style={{ 
                         width: '100%', 
                         padding: '12px 40px 12px 16px', 
-                        border: '1px solid #d1d5db', 
+                        border: `1px solid ${T.border}`, 
                         borderRadius: 8, 
                         fontSize: 14, 
                         outline: 'none', 
                         transition: 'border 0.2s',
-                        background: '#fff',
-                        color: '#111827',
+                        background: T.bgInput,
+                        color: T.textPrimary,
                         fontFamily: showKnockKnockSecret ? 'monospace' : 'inherit'
                       }}
-                      onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
-                      onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                      onFocus={(e) => e.currentTarget.style.borderColor = T.primary}
+                      onBlur={(e) => e.currentTarget.style.borderColor = T.border}
                     />
                     <button
                       onClick={() => setShowKnockKnockSecret(!showKnockKnockSecret)}
@@ -1614,21 +1576,21 @@ export default function App() {
                         cursor: 'pointer',
                         padding: 4,
                         fontSize: 18,
-                        color: '#6b7280'
+                        color: T.textMuted
                       }}
                       title={showKnockKnockSecret ? 'Hide' : 'Show'}
                     >
                       {showKnockKnockSecret ? '👁️' : '👁️‍🗨️'}
                     </button>
                   </div>
-                  <p style={{ fontSize: 12, color: '#6b7280', marginTop: 6, marginBottom: 0 }}>
+                  <p style={{ fontSize: 12, color: T.textMuted, marginTop: 6, marginBottom: 0 }}>
                     <strong>Recommended:</strong> HMAC signature validation for secure webhooks
                   </p>
                 </div>
 
                 {/* Webhook URL */}
                 <div>
-                  <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>
+                  <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: T.textPrimary, fontSize: 14 }}>
                     Webhook Endpoint URL
                   </label>
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -1639,11 +1601,11 @@ export default function App() {
                       style={{ 
                         flex: 1, 
                         padding: '12px 16px', 
-                        border: '1px solid #d1d5db', 
+                        border: `1px solid ${T.border}`, 
                         borderRadius: 8, 
                         fontSize: 13, 
-                        background: '#f9fafb',
-                        color: '#111827',
+                        background: T.bgSubtle,
+                        color: T.textPrimary,
                         fontFamily: 'monospace'
                       }}
                     />
@@ -1651,8 +1613,8 @@ export default function App() {
                       onClick={copyKnockKnockUrl}
                       style={{
                         padding: '12px 20px',
-                        background: '#7c3aed',
-                        color: '#fff',
+                        background: T.primary,
+                        color: T.btnPrimaryText,
                         border: 'none',
                         borderRadius: 8,
                         fontSize: 14,
@@ -1661,14 +1623,14 @@ export default function App() {
                         whiteSpace: 'nowrap',
                         transition: 'background 0.2s'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = '#6d28d9'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = '#7c3aed'}
+                      onMouseEnter={(e) => e.currentTarget.style.background = T.primaryHover}
+                      onMouseLeave={(e) => e.currentTarget.style.background = T.primary}
                     >
                       📋 Copy
                     </button>
                   </div>
-                  <p style={{ fontSize: 12, color: '#6b7280', marginTop: 6, marginBottom: 0 }}>
-                    Configure this URL in your KnockKnock webhook settings
+                  <p style={{ fontSize: 12, color: T.textMuted, marginTop: 6, marginBottom: 0 }}>
+                    Configure this URL in your Visitor Insights webhook settings
                   </p>
                 </div>
 
@@ -1699,21 +1661,21 @@ export default function App() {
 
             {/* Leads & Visitors Data Section */}
             {(!knockKnockCompanyId && !knockKnockWebhookSecret) ? (
-              <div style={{ background: '#fef3c7', borderRadius: 12, padding: 32, textAlign: 'center', border: '1px solid #fde68a' }}>
+              <div style={{ background: 'rgba(251,191,36,0.08)', borderRadius: 12, padding: 32, textAlign: 'center', border: `1px solid rgba(251,191,36,0.2)` }}>
                 <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
-                <h3 style={{ fontSize: 20, fontWeight: 600, color: '#92400e', marginBottom: 8 }}>
+                <h3 style={{ fontSize: 20, fontWeight: 600, color: T.textPrimary, marginBottom: 8 }}>
                   Authentication Required
                 </h3>
-                <p style={{ fontSize: 15, color: '#78350f', marginBottom: 0 }}>
+                <p style={{ fontSize: 15, color: T.textSecondary, marginBottom: 0 }}>
                   Configure your Company ID or Webhook Secret above to start receiving webhook data
                 </p>
               </div>
             ) : (
-              <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb' }}>
+              <div style={{ background: T.bgCard, borderRadius: 12, border: `1px solid ${T.border}` }}>
                 {/* Header with Controls */}
-                <div style={{ padding: '20px 24px', borderBottom: '1px solid #e5e7eb' }}>
+                <div style={{ padding: '20px 24px', borderBottom: `1px solid ${T.border}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-                    <h3 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: '#111827' }}>
+                    <h3 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: T.textPrimary }}>
                       📊 Leads & Visitors
                     </h3>
                     
@@ -1726,14 +1688,16 @@ export default function App() {
                         onChange={(e) => setKnockKnockSearchQuery(e.target.value)}
                         style={{
                           padding: '8px 16px',
-                          border: '1px solid #d1d5db',
+                          border: `1px solid ${T.border}`,
+                          background: T.bgInput,
+                          color: T.textPrimary,
                           borderRadius: 8,
                           fontSize: 14,
                           outline: 'none',
                           minWidth: 200
                         }}
-                        onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
-                        onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                        onFocus={(e) => e.currentTarget.style.borderColor = T.primary}
+                        onBlur={(e) => e.currentTarget.style.borderColor = T.border}
                       />
                       
                       {/* Type Filter */}
@@ -1742,12 +1706,13 @@ export default function App() {
                         onChange={(e) => setKnockKnockTypeFilter(e.target.value as any)}
                         style={{
                           padding: '8px 16px',
-                          border: '1px solid #d1d5db',
+                          border: `1px solid ${T.border}`,
+                          background: T.bgInput,
+                          color: T.textPrimary,
                           borderRadius: 8,
                           fontSize: 14,
                           outline: 'none',
-                          cursor: 'pointer',
-                          background: '#fff'
+                          cursor: 'pointer'
                         }}
                       >
                         <option value="all">All Types</option>
@@ -1756,13 +1721,13 @@ export default function App() {
                       </select>
                       
                       {/* View Mode Toggle */}
-                      <div style={{ display: 'flex', border: '1px solid #d1d5db', borderRadius: 8, overflow: 'hidden' }}>
+                      <div style={{ display: 'flex', border: `1px solid ${T.border}`, borderRadius: 8, overflow: 'hidden' }}>
                         <button
                           onClick={() => setKnockKnockViewMode('table')}
                           style={{
                             padding: '8px 16px',
-                            background: knockKnockViewMode === 'table' ? '#7c3aed' : '#fff',
-                            color: knockKnockViewMode === 'table' ? '#fff' : '#6b7280',
+                            background: knockKnockViewMode === 'table' ? T.primary : T.bgCard,
+                            color: knockKnockViewMode === 'table' ? T.btnPrimaryText : T.textSecondary,
                             border: 'none',
                             fontSize: 14,
                             fontWeight: 600,
@@ -1775,10 +1740,10 @@ export default function App() {
                           onClick={() => setKnockKnockViewMode('cards')}
                           style={{
                             padding: '8px 16px',
-                            background: knockKnockViewMode === 'cards' ? '#7c3aed' : '#fff',
-                            color: knockKnockViewMode === 'cards' ? '#fff' : '#6b7280',
+                            background: knockKnockViewMode === 'cards' ? T.primary : T.bgCard,
+                            color: knockKnockViewMode === 'cards' ? T.btnPrimaryText : T.textSecondary,
                             border: 'none',
-                            borderLeft: '1px solid #d1d5db',
+                            borderLeft: `1px solid ${T.border}`,
                             fontSize: 14,
                             fontWeight: 600,
                             cursor: 'pointer'
@@ -1794,17 +1759,17 @@ export default function App() {
                         disabled={knockKnockLeadsLoading}
                         style={{
                           padding: '8px 16px',
-                          background: '#f3f4f6',
-                          color: '#6b7280',
-                          border: '1px solid #d1d5db',
+                          background: T.btnGhost,
+                          color: T.textSecondary,
+                          border: `1px solid ${T.border}`,
                           borderRadius: 8,
                           fontSize: 14,
                           fontWeight: 600,
                           cursor: knockKnockLeadsLoading ? 'not-allowed' : 'pointer',
                           transition: 'all 0.2s'
                         }}
-                        onMouseEnter={(e) => !knockKnockLeadsLoading && (e.currentTarget.style.background = '#e5e7eb')}
-                        onMouseLeave={(e) => !knockKnockLeadsLoading && (e.currentTarget.style.background = '#f3f4f6')}
+                        onMouseEnter={(e) => !knockKnockLeadsLoading && (e.currentTarget.style.background = T.btnGhostHover)}
+                        onMouseLeave={(e) => !knockKnockLeadsLoading && (e.currentTarget.style.background = T.btnGhost)}
                       >
                         {knockKnockLeadsLoading ? '⏳' : '🔄 Refresh'}
                       </button>
@@ -1815,7 +1780,7 @@ export default function App() {
                 {/* Data Display */}
                 <div style={{ padding: 24 }}>
                   {knockKnockLeadsLoading ? (
-                    <div style={{ textAlign: 'center', padding: 48, color: '#6b7280' }}>
+                    <div style={{ textAlign: 'center', padding: 48, color: T.textMuted }}>
                       <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
                       <div style={{ fontSize: 16 }}>Loading data...</div>
                     </div>
@@ -1845,7 +1810,7 @@ export default function App() {
                           </div>
                           <div style={{ fontSize: 14, color: '#3b82f6' }}>
                             {knockKnockLeads.length === 0 
-                              ? 'Send a test webhook from KnockKnock to get started'
+                              ? 'Send a test webhook from Visitor Insights to get started'
                               : 'Try adjusting your search or filter criteria'}
                           </div>
                         </div>
@@ -1859,12 +1824,12 @@ export default function App() {
                           <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                               <thead>
-                                <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
-                                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>Type</th>
-                                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>Name</th>
-                                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>Email</th>
-                                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>Source</th>
-                                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>Date</th>
+                                <tr style={{ background: T.bgSubtle, borderBottom: `2px solid ${T.border}` }}>
+                                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: T.textMuted }}>Type</th>
+                                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: T.textMuted }}>Name</th>
+                                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: T.textMuted }}>Email</th>
+                                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: T.textMuted }}>Source</th>
+                                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: T.textMuted }}>Date</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -1872,12 +1837,12 @@ export default function App() {
                                   <tr 
                                     key={item.id || idx} 
                                     style={{ 
-                                      borderBottom: '1px solid #e5e7eb',
+                                      borderBottom: `1px solid ${T.border}`,
                                       cursor: 'pointer',
                                       transition: 'background 0.2s'
                                     }}
                                     onClick={() => setSelectedLead(item)}
-                                    onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = T.bgHover}
                                     onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                                   >
                                     <td style={{ padding: '14px 16px' }}>
@@ -1887,19 +1852,19 @@ export default function App() {
                                         borderRadius: 6,
                                         fontSize: 12,
                                         fontWeight: 600,
-                                        background: item.type === 'lead' ? '#dcfce7' : '#dbeafe',
-                                        color: item.type === 'lead' ? '#166534' : '#1e40af'
+                                        background: item.type === 'lead' ? 'rgba(34,197,94,0.12)' : T.primaryBg,
+                                        color: item.type === 'lead' ? '#86efac' : T.primary
                                       }}>
                                         {item.type === 'lead' ? 'Lead' : 'Visitor'}
                                       </span>
                                     </td>
-                                    <td style={{ padding: '14px 16px', color: '#111827', fontWeight: 500 }}>
+                                    <td style={{ padding: '14px 16px', color: T.textPrimary, fontWeight: 500 }}>
                                       {item.first_name && item.last_name 
                                         ? `${item.first_name} ${item.last_name}` 
                                         : item.first_name || item.last_name || 'Anonymous'}
                                     </td>
-                                    <td style={{ padding: '14px 16px', color: '#111827' }}>
-                                      {item.email || <span style={{ color: '#9ca3af' }}>No email</span>}
+                                    <td style={{ padding: '14px 16px', color: T.textPrimary }}>
+                                      {item.email || <span style={{ color: T.textMuted }}>No email</span>}
                                     </td>
                                     <td style={{ padding: '14px 16px' }}>
                                       {item.initial_page_visit || item.page_url ? (
@@ -1907,7 +1872,7 @@ export default function App() {
                                           href={item.initial_page_visit || item.page_url} 
                                           target="_blank" 
                                           rel="noopener noreferrer"
-                                          style={{ color: '#7c3aed', textDecoration: 'none', fontWeight: 500 }}
+                                          style={{ color: T.primary, textDecoration: 'none', fontWeight: 500 }}
                                           onClick={(e) => e.stopPropagation()}
                                         >
                                           {(() => {
@@ -1920,9 +1885,9 @@ export default function App() {
                                             }
                                           })()}
                                         </a>
-                                      ) : <span style={{ color: '#9ca3af' }}>Unknown</span>}
+                                      ) : <span style={{ color: T.textMuted }}>Unknown</span>}
                                     </td>
-                                    <td style={{ padding: '14px 16px', color: '#6b7280', fontSize: 13 }}>
+                                    <td style={{ padding: '14px 16px', color: T.textSecondary, fontSize: 13 }}>
                                       {item.timestamp ? new Date(item.timestamp).toLocaleDateString('en-US', {
                                         month: 'short',
                                         day: 'numeric',
@@ -1946,15 +1911,15 @@ export default function App() {
                                 key={item.id || idx}
                                 onClick={() => setSelectedLead(item)}
                                 style={{
-                                  background: '#fff',
-                                  border: '1px solid #e5e7eb',
+                                  background: T.bgCard,
+                                  border: `1px solid ${T.border}`,
                                   borderRadius: 12,
                                   padding: 20,
                                   transition: 'all 0.2s',
                                   cursor: 'pointer'
                                 }}
                                 onMouseEnter={(e) => {
-                                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+                                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(245,158,11,0.15)';
                                   e.currentTarget.style.transform = 'translateY(-2px)';
                                 }}
                                 onMouseLeave={(e) => {
@@ -1968,29 +1933,29 @@ export default function App() {
                                     borderRadius: 6,
                                     fontSize: 12,
                                     fontWeight: 600,
-                                    background: item.type === 'lead' ? '#dcfce7' : '#dbeafe',
-                                    color: item.type === 'lead' ? '#166534' : '#1e40af'
+                                    background: item.type === 'lead' ? 'rgba(34,197,94,0.12)' : T.primaryBg,
+                                    color: item.type === 'lead' ? '#86efac' : T.primary
                                   }}>
                                     {item.type === 'lead' ? '🎯 Lead' : '👤 Visitor'}
                                   </span>
-                                  <span style={{ fontSize: 12, color: '#6b7280' }}>
+                                  <span style={{ fontSize: 12, color: T.textSecondary }}>
                                     {item.timestamp && new Date(item.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                   </span>
                                 </div>
                                 
                                 <div style={{ marginBottom: 16 }}>
-                                  <div style={{ fontSize: 18, fontWeight: 600, color: '#111827', marginBottom: 4 }}>
+                                  <div style={{ fontSize: 18, fontWeight: 600, color: T.textPrimary, marginBottom: 4 }}>
                                     {item.first_name && item.last_name 
                                       ? `${item.first_name} ${item.last_name}` 
                                       : item.first_name || item.last_name || 'Anonymous User'}
                                   </div>
-                                  <div style={{ fontSize: 14, color: '#6b7280' }}>
+                                  <div style={{ fontSize: 14, color: T.textSecondary }}>
                                     {item.email || 'No email provided'}
                                   </div>
                                 </div>
                                 
                                 {(item.initial_page_visit || item.page_url) && (
-                                  <div style={{ fontSize: 13, color: '#7c3aed', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <div style={{ fontSize: 13, color: T.primary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     🔗 {(() => {
                                       const url = item.initial_page_visit || item.page_url;
                                       try {
@@ -2015,9 +1980,9 @@ export default function App() {
                               disabled={knockKnockCurrentPage === 1}
                               style={{
                                 padding: '8px 16px',
-                                background: knockKnockCurrentPage === 1 ? '#f3f4f6' : '#fff',
-                                color: knockKnockCurrentPage === 1 ? '#9ca3af' : '#6b7280',
-                                border: '1px solid #d1d5db',
+                                background: knockKnockCurrentPage === 1 ? T.bgSubtle : T.btnGhost,
+                                color: knockKnockCurrentPage === 1 ? T.textMuted : T.textSecondary,
+                                border: `1px solid ${T.border}`,
                                 borderRadius: 6,
                                 fontSize: 14,
                                 fontWeight: 600,
@@ -2027,7 +1992,7 @@ export default function App() {
                               ← Previous
                             </button>
                             
-                            <span style={{ fontSize: 14, color: '#6b7280' }}>
+                            <span style={{ fontSize: 14, color: T.textSecondary }}>
                               Page {knockKnockCurrentPage} of {totalPages} ({filtered.length} total)
                             </span>
                             
@@ -2036,9 +2001,9 @@ export default function App() {
                               disabled={knockKnockCurrentPage === totalPages}
                               style={{
                                 padding: '8px 16px',
-                                background: knockKnockCurrentPage === totalPages ? '#f3f4f6' : '#fff',
-                                color: knockKnockCurrentPage === totalPages ? '#9ca3af' : '#6b7280',
-                                border: '1px solid #d1d5db',
+                                background: knockKnockCurrentPage === totalPages ? T.bgSubtle : T.btnGhost,
+                                color: knockKnockCurrentPage === totalPages ? T.textMuted : T.textSecondary,
+                                border: `1px solid ${T.border}`,
                                 borderRadius: 6,
                                 fontSize: 14,
                                 fontWeight: 600,
@@ -2079,16 +2044,16 @@ export default function App() {
 
         {/* License Tab */}
         {activeTab === 'license' && (
-          <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
-            <h2 style={{ margin: '0 0 8px 0', fontSize: 24, fontWeight: 700, color: '#111827' }}>License</h2>
-            <p style={{ color: '#6b7280', marginBottom: 32, fontSize: 15 }}>
+          <section style={{ background: T.bgCard, borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.3)', padding: 32, border: `1px solid ${T.border}` }}>
+            <h2 style={{ margin: '0 0 8px 0', fontSize: 24, fontWeight: 700, color: T.textPrimary }}>License</h2>
+            <p style={{ color: T.textSecondary, marginBottom: 32, fontSize: 15 }}>
               Activate your Conversion IQ license to enable all features.
             </p>
 
             {/* Status card */}
             <div style={{
-              background: licenseStatus === 'active' ? '#f0fdf4' : licenseStatus === 'checking' ? '#f9fafb' : '#fef2f2',
-              border: `1px solid ${licenseStatus === 'active' ? '#86efac' : licenseStatus === 'checking' ? '#e5e7eb' : '#fca5a5'}`,
+              background: licenseStatus === 'active' ? 'rgba(34,197,94,0.10)' : licenseStatus === 'checking' ? T.bgSubtle : 'rgba(239,68,68,0.10)',
+              border: `1px solid ${licenseStatus === 'active' ? 'rgba(34,197,94,0.30)' : licenseStatus === 'checking' ? T.border : 'rgba(239,68,68,0.30)'}`,
               borderRadius: 12,
               padding: 24,
               marginBottom: 24,
@@ -2100,10 +2065,10 @@ export default function App() {
                 {licenseStatus === 'active' ? '\u2705' : licenseStatus === 'checking' ? '\u23F3' : '\u274C'}
               </div>
               <div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: licenseStatus === 'active' ? '#166534' : licenseStatus === 'checking' ? '#374151' : '#991b1b' }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: licenseStatus === 'active' ? '#86efac' : licenseStatus === 'checking' ? T.textSecondary : '#fca5a5' }}>
                   {licenseStatus === 'active' ? 'License Active' : licenseStatus === 'checking' ? 'Checking...' : 'License Inactive'}
                 </div>
-                <div style={{ fontSize: 14, color: '#6b7280', marginTop: 2 }}>
+                <div style={{ fontSize: 14, color: T.textSecondary, marginTop: 2 }}>
                   {licenseStatus === 'active'
                     ? (licenseCustomer?.name ? `Licensed to ${licenseCustomer.name}` : 'Your license is valid and active')
                     : licenseStatus === 'checking'
@@ -2115,30 +2080,30 @@ export default function App() {
 
             {/* Customer info when active */}
             {licenseStatus === 'active' && licenseCustomer && (
-              <div style={{ background: '#f9fafb', borderRadius: 12, padding: 24, marginBottom: 24, border: '1px solid #e5e7eb' }}>
-                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 600, color: '#111827' }}>License Details</h3>
+              <div style={{ background: T.bgSubtle, borderRadius: 12, padding: 24, marginBottom: 24, border: `1px solid ${T.border}` }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 600, color: T.textPrimary }}>License Details</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                   {licenseCustomer.name && (
                     <div>
-                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Name</div>
-                      <div style={{ fontSize: 15, color: '#111827', fontWeight: 500 }}>{licenseCustomer.name}</div>
+                      <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 4, fontWeight: 500 }}>Name</div>
+                      <div style={{ fontSize: 15, color: T.textPrimary, fontWeight: 500 }}>{licenseCustomer.name}</div>
                     </div>
                   )}
                   {licenseCustomer.email && (
                     <div>
-                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Email</div>
-                      <div style={{ fontSize: 15, color: '#111827', fontWeight: 500 }}>{licenseCustomer.email}</div>
+                      <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 4, fontWeight: 500 }}>Email</div>
+                      <div style={{ fontSize: 15, color: T.textPrimary, fontWeight: 500 }}>{licenseCustomer.email}</div>
                     </div>
                   )}
                   {licenseCustomer.company && (
                     <div>
-                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Company</div>
-                      <div style={{ fontSize: 15, color: '#111827', fontWeight: 500 }}>{licenseCustomer.company}</div>
+                      <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 4, fontWeight: 500 }}>Company</div>
+                      <div style={{ fontSize: 15, color: T.textPrimary, fontWeight: 500 }}>{licenseCustomer.company}</div>
                     </div>
                   )}
                   {licenseCustomer.plan && (
                     <div>
-                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Plan</div>
+                      <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 4, fontWeight: 500 }}>Plan</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{
                           display: 'inline-block',
@@ -2146,17 +2111,17 @@ export default function App() {
                           borderRadius: 20,
                           fontSize: 13,
                           fontWeight: 600,
-                          background: currentPlan === 'agency' ? '#7c3aed' : currentPlan === 'professional' ? '#2563eb' : '#6b7280',
-                          color: '#fff',
+                          background: currentPlan === 'agency' ? T.primary : currentPlan === 'professional' ? T.blue : T.textMuted,
+                          color: currentPlan === 'agency' ? T.btnPrimaryText : '#fff',
                           textTransform: 'capitalize',
                         }}>{licenseCustomer.plan}</span>
                         <button
                           onClick={handleLicenseRefresh}
                           disabled={licenseLoading}
                           title="Re-validate your license to pull the latest plan from the server"
-                          style={{ padding: '4px 10px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#374151', cursor: licenseLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 5, opacity: licenseLoading ? 0.5 : 1, transition: 'all 0.2s' }}
-                          onMouseEnter={(e) => { if (!licenseLoading) { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.color = '#7c3aed'; }}}
-                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#374151'; }}
+                          style={{ padding: '4px 10px', background: T.btnGhost, border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 12, fontWeight: 600, color: T.textSecondary, cursor: licenseLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 5, opacity: licenseLoading ? 0.5 : 1, transition: 'all 0.2s' }}
+                          onMouseEnter={(e) => { if (!licenseLoading) { e.currentTarget.style.borderColor = T.primary; e.currentTarget.style.color = T.primary; }}}
+                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textSecondary; }}
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.56"/></svg>
                           {licenseLoading ? 'Refreshing...' : 'Refresh Plan'}
@@ -2165,22 +2130,22 @@ export default function App() {
                     </div>
                   )}
                   <div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Status</div>
+                    <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 4, fontWeight: 500 }}>Status</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
-                      <span style={{ fontSize: 15, color: '#059669', fontWeight: 500 }}>Active</span>
+                      <span style={{ fontSize: 15, color: '#22c55e', fontWeight: 500 }}>Active</span>
                     </div>
                   </div>
                   {licenseValidatedAt > 0 && (
                     <div>
-                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Activated</div>
-                      <div style={{ fontSize: 15, color: '#111827', fontWeight: 500 }}>{new Date(licenseValidatedAt * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+                      <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 4, fontWeight: 500 }}>Activated</div>
+                      <div style={{ fontSize: 15, color: T.textPrimary, fontWeight: 500 }}>{new Date(licenseValidatedAt * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
                     </div>
                   )}
                   {licenseValidatedAt > 0 && (
                     <div>
-                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Last Verified</div>
-                      <div style={{ fontSize: 15, color: '#111827', fontWeight: 500 }}>{new Date(licenseValidatedAt * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</div>
+                      <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 4, fontWeight: 500 }}>Last Verified</div>
+                      <div style={{ fontSize: 15, color: T.textPrimary, fontWeight: 500 }}>{new Date(licenseValidatedAt * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</div>
                     </div>
                   )}
                 </div>
@@ -2190,7 +2155,7 @@ export default function App() {
                     free: { label: 'Free', price: '$0', color: '#9ca3af', features: ['1 site', '1 page per audit', 'AI conversion audit', '6 conversion scores'] },
                     starter: { label: 'Starter', price: '$89/mo', color: '#6b7280', features: ['1 site', '2 pages per audit', 'AI conversion audit', '6 conversion scores', 'AI copy suggestions', 'Priority quick wins', 'Automated PDF reports'] },
                     professional: { label: 'Professional', price: '$179/mo', color: '#2563eb', features: ['1 site', '4 pages per audit', 'Everything in Starter', 'Priority support'] },
-                    business: { label: 'Business', price: '$249/mo', color: '#7c3aed', features: ['1 site', '6 pages per audit', 'Everything in Professional', 'KnockKnock visitor intelligence'] },
+                    business: { label: 'Business', price: '$249/mo', color: '#7c3aed', features: ['1 site', '6 pages per audit', 'Everything in Professional', 'Visitor Insights'] },
                     agency: { label: 'Agency', price: '$449/mo', color: '#f59e0b', features: ['100 sites', '15 pages per audit', 'Everything in Business', 'Full white-label branding'] },
                   };
                   const order = ['free', 'starter', 'professional', 'business', 'agency'];
@@ -2203,14 +2168,14 @@ export default function App() {
                     <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: next ? '1fr 1fr' : '1fr', gap: 16 }}>
                       {/* Current plan */}
                       <div style={{ border: `2px solid ${current.color}`, borderRadius: 12, padding: 20, position: 'relative' }}>
-                        <div style={{ position: 'absolute', top: -11, left: 16, background: '#f9fafb', padding: '0 8px', fontSize: 11, fontWeight: 700, color: current.color, textTransform: 'uppercase', letterSpacing: 1 }}>Current Plan</div>
+                        <div style={{ position: 'absolute', top: -11, left: 16, background: T.bgCard, padding: '0 8px', fontSize: 11, fontWeight: 700, color: current.color, textTransform: 'uppercase', letterSpacing: 1 }}>Current Plan</div>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
-                          <span style={{ fontSize: 20, fontWeight: 700, color: '#111827' }}>{current.label}</span>
-                          <span style={{ fontSize: 14, color: '#6b7280' }}>{current.price}</span>
+                          <span style={{ fontSize: 20, fontWeight: 700, color: T.textPrimary }}>{current.label}</span>
+                          <span style={{ fontSize: 14, color: T.textSecondary }}>{current.price}</span>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                           {current.features.map((f, i) => (
-                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151' }}>
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: T.textSecondary }}>
                               <span style={{ color: '#10b981', fontWeight: 700, fontSize: 14 }}>✓</span>
                               <span>{f}</span>
                             </div>
@@ -2219,15 +2184,15 @@ export default function App() {
                       </div>
                       {/* Next plan up */}
                       {next && nextKey && (
-                        <div style={{ border: '2px solid #e5e7eb', borderRadius: 12, padding: 20, position: 'relative', background: '#fafafa' }}>
-                          <div style={{ position: 'absolute', top: -11, left: 16, background: '#fafafa', padding: '0 8px', fontSize: 11, fontWeight: 700, color: next.color, textTransform: 'uppercase', letterSpacing: 1 }}>Upgrade Available</div>
+                        <div style={{ border: `2px solid ${T.border}`, borderRadius: 12, padding: 20, position: 'relative', background: T.bgSubtle }}>
+                          <div style={{ position: 'absolute', top: -11, left: 16, background: T.bgCard, padding: '0 8px', fontSize: 11, fontWeight: 700, color: next.color, textTransform: 'uppercase', letterSpacing: 1 }}>Upgrade Available</div>
                           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
-                            <span style={{ fontSize: 20, fontWeight: 700, color: '#111827' }}>{next.label}</span>
-                            <span style={{ fontSize: 14, color: '#6b7280' }}>{next.price}</span>
+                            <span style={{ fontSize: 20, fontWeight: 700, color: T.textPrimary }}>{next.label}</span>
+                            <span style={{ fontSize: 14, color: T.textSecondary }}>{next.price}</span>
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
                             {next.features.map((f, i) => (
-                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151' }}>
+                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: T.textSecondary }}>
                                 <span style={{ color: next.color, fontWeight: 700, fontSize: 14 }}>✓</span>
                                 <span>{f}</span>
                               </div>
@@ -2255,14 +2220,14 @@ export default function App() {
             {licenseStatus === 'active' ? (
               <div style={{ marginBottom: 24 }}>
                 {/* Site Management */}
-                <div style={{ background: '#f9fafb', borderRadius: 12, padding: 24, marginBottom: 24, border: '1px solid #e5e7eb' }}>
+                <div style={{ background: T.bgSubtle, borderRadius: 12, padding: 24, marginBottom: 24, border: `1px solid ${T.border}` }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: licenseSites !== null ? 16 : 0 }}>
                     <div>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>Active Sites</div>
-                      <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: T.textPrimary }}>Active Sites</div>
+                      <div style={{ fontSize: 13, color: T.textSecondary, marginTop: 2 }}>
                         Sites currently using this license key
                         {licenseMaxSites !== null && (
-                          <span style={{ marginLeft: 8, padding: '2px 8px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 20, fontSize: 11, fontWeight: 600, color: '#374151' }}>
+                          <span style={{ marginLeft: 8, padding: '2px 8px', background: T.bgSubtle, border: `1px solid ${T.border}`, borderRadius: 20, fontSize: 11, fontWeight: 600, color: T.textSecondary }}>
                             {licenseSites?.length ?? '?'} / {licenseMaxSites} sites used
                           </span>
                         )}
@@ -2271,9 +2236,9 @@ export default function App() {
                     <button
                       onClick={handleFetchSites}
                       disabled={licenseSitesLoading}
-                      style={{ padding: '8px 16px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#374151', cursor: licenseSitesLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}
-                      onMouseEnter={(e) => { if (!licenseSitesLoading) { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.color = '#7c3aed'; }}}
-                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#374151'; }}
+                      style={{ padding: '8px 16px', background: T.btnGhost, border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, fontWeight: 600, color: T.textSecondary, cursor: licenseSitesLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}
+                      onMouseEnter={(e) => { if (!licenseSitesLoading) { e.currentTarget.style.borderColor = T.primary; e.currentTarget.style.color = T.primary; }}}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textSecondary; }}
                     >
                       {licenseSitesLoading ? (
                         <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Loading...</>
@@ -2286,20 +2251,20 @@ export default function App() {
                   {licenseSites !== null && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {licenseSites.length === 0 ? (
-                        <div style={{ fontSize: 13, color: '#6b7280', textAlign: 'center', padding: '12px 0' }}>No active site activations found.</div>
+                      <div style={{ fontSize: 13, color: T.textSecondary, textAlign: 'center', padding: '12px 0' }}>No active site activations found.</div>
                       ) : licenseSites.map((site, i) => {
                         const isCurrentSite = site.site_url.replace(/\/$/, '') === (window as any).location?.origin?.replace(/\/$/, '');
                         const isRemoving = deactivatingUrl === site.site_url;
                         return (
-                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#fff', borderRadius: 8, border: `1px solid ${isCurrentSite ? '#a5b4fc' : '#e5e7eb'}` }}>
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: T.bgCard, borderRadius: 8, border: `1px solid ${isCurrentSite ? T.primaryBorder : T.border}` }}>
                             <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', flexShrink: 0 }} />
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 14, fontWeight: 600, color: '#111827', display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: T.textPrimary, display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{site.site_url}</span>
-                                {isCurrentSite && <span style={{ flexShrink: 0, padding: '2px 8px', background: '#ede9fe', border: '1px solid #c4b5fd', borderRadius: 20, fontSize: 11, fontWeight: 600, color: '#6d28d9' }}>This site</span>}
+                                {isCurrentSite && <span style={{ flexShrink: 0, padding: '2px 8px', background: T.primaryBg, border: `1px solid ${T.primaryBorder}`, borderRadius: 20, fontSize: 11, fontWeight: 600, color: T.primary }}>This site</span>}
                               </div>
                               {site.activated_at && (
-                                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                                <div style={{ fontSize: 12, color: T.textSecondary, marginTop: 2 }}>
                                   Activated {new Date(site.activated_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
                                 </div>
                               )}
@@ -2307,9 +2272,9 @@ export default function App() {
                             <button
                               onClick={() => isCurrentSite ? handleLicenseDeactivate() : handleRemoveSite(site.site_url)}
                               disabled={isRemoving || licenseLoading}
-                              style={{ flexShrink: 0, padding: '6px 14px', background: '#fff', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#dc2626', cursor: (isRemoving || licenseLoading) ? 'not-allowed' : 'pointer', opacity: (isRemoving || licenseLoading) ? 0.5 : 1, transition: 'all 0.2s' }}
-                              onMouseEnter={(e) => { if (!isRemoving && !licenseLoading) { e.currentTarget.style.background = '#fef2f2'; }}}
-                              onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
+                              style={{ flexShrink: 0, padding: '6px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.30)', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#ef4444', cursor: (isRemoving || licenseLoading) ? 'not-allowed' : 'pointer', opacity: (isRemoving || licenseLoading) ? 0.5 : 1, transition: 'all 0.2s' }}
+                              onMouseEnter={(e) => { if (!isRemoving && !licenseLoading) { e.currentTarget.style.background = 'rgba(239,68,68,0.15)'; }}}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
                             >
                               {isRemoving ? 'Removing...' : 'Remove'}
                             </button>
@@ -2317,7 +2282,7 @@ export default function App() {
                         );
                       })}
                       {licenseMaxSites !== null && licenseSites.length < licenseMaxSites && (
-                        <div style={{ fontSize: 12, color: '#6b7280', textAlign: 'center', padding: '8px 0', borderTop: '1px solid #f3f4f6', marginTop: 4 }}>
+                        <div style={{ fontSize: 12, color: T.textSecondary, textAlign: 'center', padding: '8px 0', borderTop: `1px solid ${T.border}`, marginTop: 4 }}>
                           {licenseMaxSites - licenseSites.length} site slot{licenseMaxSites - licenseSites.length !== 1 ? 's' : ''} available — install the plugin on another site and enter this key to activate it.
                         </div>
                       )}
@@ -2325,19 +2290,19 @@ export default function App() {
                   )}
                 </div>
 
-                <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>
+                <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: T.textPrimary, fontSize: 14 }}>
                   License Key
                 </label>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                   <div style={{
                     flex: 1,
                     padding: '12px 16px',
-                    border: '1px solid #d1d5db',
+                    border: `1px solid ${T.border}`,
                     borderRadius: 8,
                     fontSize: 14,
                     fontFamily: 'monospace',
-                    color: '#111827',
-                    background: '#f9fafb',
+                    color: T.textPrimary,
+                    background: T.bgSubtle,
                     letterSpacing: showLicenseKey ? 0 : 2,
                   }}>
                     {showLicenseKey ? fullLicenseKey : licenseKey}
@@ -2346,9 +2311,9 @@ export default function App() {
                     onClick={() => setShowLicenseKey(!showLicenseKey)}
                     style={{
                       padding: '12px 20px',
-                      background: '#fff',
-                      color: '#374151',
-                      border: '1px solid #d1d5db',
+                      background: T.btnGhost,
+                      color: T.textSecondary,
+                      border: `1px solid ${T.border}`,
                       borderRadius: 8,
                       fontSize: 13,
                       fontWeight: 600,
@@ -2359,8 +2324,8 @@ export default function App() {
                       alignItems: 'center',
                       gap: 6,
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.color = '#7c3aed'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#374151'; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.primary; e.currentTarget.style.color = T.primary; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textSecondary; }}
                   >
                     {showLicenseKey ? '🙈 Hide' : '👁 Reveal'}
                   </button>
@@ -2369,9 +2334,9 @@ export default function App() {
                       onClick={() => { navigator.clipboard.writeText(fullLicenseKey); showSuccess('License key copied!'); }}
                       style={{
                         padding: '12px 20px',
-                        background: '#fff',
-                        color: '#374151',
-                        border: '1px solid #d1d5db',
+                        background: T.btnGhost,
+                        color: T.textSecondary,
+                        border: `1px solid ${T.border}`,
                         borderRadius: 8,
                         fontSize: 13,
                         fontWeight: 600,
@@ -2379,8 +2344,8 @@ export default function App() {
                         transition: 'all 0.2s',
                         whiteSpace: 'nowrap',
                       }}
-                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.color = '#7c3aed'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#374151'; }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.primary; e.currentTarget.style.color = T.primary; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textSecondary; }}
                     >
                       📋 Copy
                     </button>
@@ -2389,7 +2354,7 @@ export default function App() {
               </div>
             ) : (
               <div style={{ marginBottom: 24 }}>
-                <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#111827', fontSize: 14 }}>
+                <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: T.textPrimary, fontSize: 14 }}>
                   License Key
                 </label>
                 <div style={{ display: 'flex', gap: 12 }}>
@@ -2401,24 +2366,24 @@ export default function App() {
                     style={{
                       flex: 1,
                       padding: '12px 16px',
-                      border: '1px solid #d1d5db',
+                      border: `1px solid ${T.border}`,
                       borderRadius: 8,
                       fontSize: 14,
                       outline: 'none',
                       fontFamily: 'monospace',
-                      color: '#111827',
-                      background: '#fff'
+                      color: T.textPrimary,
+                      background: T.bgInput
                     }}
-                    onFocus={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
-                    onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                    onFocus={(e) => e.currentTarget.style.borderColor = T.primary}
+                    onBlur={(e) => e.currentTarget.style.borderColor = T.border}
                   />
                   <button
                     onClick={handleLicenseActivate}
                     disabled={licenseLoading}
                     style={{
                       padding: '12px 24px',
-                      background: licenseLoading ? '#d1d5db' : '#7c3aed',
-                      color: '#fff',
+                      background: licenseLoading ? T.btnPrimaryDisabled : T.btnPrimary,
+                      color: T.btnPrimaryText,
                       border: 'none',
                       borderRadius: 8,
                       fontSize: 14,
@@ -2427,15 +2392,15 @@ export default function App() {
                       transition: 'all 0.2s',
                       whiteSpace: 'nowrap'
                     }}
-                    onMouseEnter={(e) => !licenseLoading && (e.currentTarget.style.background = '#6d28d9')}
-                    onMouseLeave={(e) => !licenseLoading && (e.currentTarget.style.background = '#7c3aed')}
+                    onMouseEnter={(e) => !licenseLoading && (e.currentTarget.style.background = T.primaryDark)}
+                    onMouseLeave={(e) => !licenseLoading && (e.currentTarget.style.background = T.primary)}
                   >
                     {licenseLoading ? 'Activating...' : 'Activate License'}
                   </button>
                 </div>
-                <p style={{ margin: '8px 0 0 0', fontSize: 13, color: '#6b7280' }}>
+                <p style={{ margin: '8px 0 0 0', fontSize: 13, color: T.textSecondary }}>
                   Your license key was emailed to you when you purchased {B.product}. Keys follow the format CIQ-XXXXX-XXXXX-XXXXX-XXXXX.{' '}
-                  <a href={`mailto:${B.supportEmail}`} style={{ color: '#7c3aed', textDecoration: 'none', fontWeight: 500 }}>
+                  <a href={`mailto:${B.supportEmail}`} style={{ color: T.primary, textDecoration: 'none', fontWeight: 500 }}>
                     Contact support
                   </a>{' '}
                   if you need help.
@@ -2463,21 +2428,22 @@ export default function App() {
           backdropFilter: 'blur(4px)'
         }}>
           <div style={{
-            background: '#fff',
+            background: T.bgCard,
             borderRadius: 16,
             padding: 40,
             maxWidth: 500,
             width: '90%',
-            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.3)',
-            textAlign: 'center'
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+            textAlign: 'center',
+            border: `1px solid ${T.border}`
           }}>
             {/* Animated Spinner */}
             <div style={{
               width: 80,
               height: 80,
               margin: '0 auto 24px',
-              border: '4px solid #e5e7eb',
-              borderTop: '4px solid #7c3aed',
+              border: `4px solid ${T.border}`,
+              borderTop: `4px solid ${T.primary}`,
               borderRadius: '50%',
               animation: 'spin 1s linear infinite'
             }} />
@@ -2492,7 +2458,7 @@ export default function App() {
               margin: '0 0 12px 0',
               fontSize: 24,
               fontWeight: 700,
-              color: '#111827'
+              color: T.textPrimary
             }}>
               Running Audit Analysis
             </h3>
@@ -2500,7 +2466,7 @@ export default function App() {
             <p style={{
               margin: '0 0 20px 0',
               fontSize: 16,
-              color: '#6b7280',
+              color: T.textSecondary,
               lineHeight: 1.6
             }}>
               {auditProgress.message}
@@ -2509,7 +2475,7 @@ export default function App() {
             <p style={{
               marginTop: 20,
               fontSize: 13,
-              color: '#9ca3af',
+              color: T.textMuted,
               fontStyle: 'italic'
             }}>
               This may take a minute depending on page complexity...
@@ -2537,25 +2503,26 @@ export default function App() {
         onClick={() => setSelectedLead(null)}
         >
           <div style={{
-            background: '#fff',
+            background: T.bgCard,
             borderRadius: 16,
             maxWidth: 700,
             width: '100%',
             maxHeight: '90vh',
             overflow: 'auto',
-            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.3)'
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+            border: `1px solid ${T.border}`
           }}
           onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
             <div style={{
               padding: '24px 32px',
-              borderBottom: '1px solid #e5e7eb',
+              borderBottom: `1px solid ${T.border}`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)',
-              color: '#fff',
+              background: T.gradHeader,
+              color: T.textPrimary,
               borderRadius: '16px 16px 0 0'
             }}>
               <div>
@@ -2591,25 +2558,25 @@ export default function App() {
             <div style={{ padding: 32 }}>
               {/* Contact Information */}
               <div style={{ marginBottom: 32 }}>
-                <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600, color: '#111827', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600, color: T.textPrimary, display: 'flex', alignItems: 'center', gap: 8 }}>
                   📧 Contact Information
                 </h3>
                 <div style={{ display: 'grid', gap: 16 }}>
-                  <div style={{ display: 'flex', padding: 16, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                  <div style={{ display: 'flex', padding: 16, background: T.bgSubtle, borderRadius: 8, border: `1px solid ${T.border}` }}>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Full Name</div>
-                      <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>
+                      <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 4, fontWeight: 500 }}>Full Name</div>
+                      <div style={{ fontSize: 16, color: T.textPrimary, fontWeight: 500 }}>
                         {selectedLead.first_name && selectedLead.last_name 
                           ? `${selectedLead.first_name} ${selectedLead.last_name}` 
                           : selectedLead.first_name || selectedLead.last_name || 'Not provided'}
                       </div>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', padding: 16, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                  <div style={{ display: 'flex', padding: 16, background: T.bgSubtle, borderRadius: 8, border: `1px solid ${T.border}` }}>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Email Address</div>
-                      <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>
-                        {selectedLead.email || <span style={{ color: '#9ca3af' }}>Not provided</span>}
+                      <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 4, fontWeight: 500 }}>Email Address</div>
+                      <div style={{ fontSize: 16, color: T.textPrimary, fontWeight: 500 }}>
+                        {selectedLead.email || <span style={{ color: T.textMuted }}>Not provided</span>}
                       </div>
                     </div>
                     {selectedLead.email && (
@@ -2617,26 +2584,26 @@ export default function App() {
                         href={`mailto:${selectedLead.email}`}
                         style={{
                           padding: '8px 16px',
-                          background: '#7c3aed',
-                          color: '#fff',
+                          background: T.btnPrimary,
+                          color: T.btnPrimaryText,
                           borderRadius: 6,
                           fontSize: 14,
                           fontWeight: 600,
                           textDecoration: 'none',
                           transition: 'all 0.2s'
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = '#6d28d9'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = '#7c3aed'}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = '0.85'}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
                       >
                         Send Email
                       </a>
                     )}
                   </div>
                   {selectedLead.phone && (
-                    <div style={{ display: 'flex', padding: 16, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                    <div style={{ display: 'flex', padding: 16, background: T.bgSubtle, borderRadius: 8, border: `1px solid ${T.border}` }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Phone Number</div>
-                        <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>{selectedLead.phone}</div>
+                        <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 4, fontWeight: 500 }}>Phone Number</div>
+                        <div style={{ fontSize: 16, color: T.textPrimary, fontWeight: 500 }}>{selectedLead.phone}</div>
                       </div>
                       <a
                         href={`tel:${selectedLead.phone}`}
@@ -2662,27 +2629,27 @@ export default function App() {
 
               {/* Activity Information */}
               <div style={{ marginBottom: 32 }}>
-                <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600, color: '#111827', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600, color: T.textPrimary, display: 'flex', alignItems: 'center', gap: 8 }}>
                   📊 Activity Details
                 </h3>
                 <div style={{ display: 'grid', gap: 16 }}>
-                  <div style={{ padding: 16, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Type</div>
+                  <div style={{ padding: 16, background: T.bgSubtle, borderRadius: 8, border: `1px solid ${T.border}` }}>
+                    <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 4, fontWeight: 500 }}>Type</div>
                     <span style={{
                       display: 'inline-block',
                       padding: '6px 12px',
                       borderRadius: 6,
                       fontSize: 14,
                       fontWeight: 600,
-                      background: selectedLead.type === 'lead' ? '#dcfce7' : '#dbeafe',
-                      color: selectedLead.type === 'lead' ? '#166534' : '#1e40af'
+                      background: selectedLead.type === 'lead' ? 'rgba(34,197,94,0.12)' : T.primaryBg,
+                      color: selectedLead.type === 'lead' ? '#86efac' : T.primary
                     }}>
                       {selectedLead.type === 'lead' ? '🎯 Lead (Converted)' : '👤 Visitor (Identified)'}
                     </span>
                   </div>
                   {selectedLead.initial_page_visit && (
-                    <div style={{ padding: 16, background: '#fef3c7', borderRadius: 8, border: '1px solid #fde68a' }}>
-                      <div style={{ fontSize: 12, color: '#92400e', marginBottom: 8, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ padding: 16, background: T.primaryBg, borderRadius: 8, border: `1px solid ${T.primaryBorder}` }}>
+                      <div style={{ fontSize: 12, color: T.primary, marginBottom: 8, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                         🚪 Initial Landing Page
                       </div>
                       <a 
@@ -2690,7 +2657,7 @@ export default function App() {
                         target="_blank" 
                         rel="noopener noreferrer"
                         style={{ 
-                          color: '#7c3aed', 
+                          color: T.primary, 
                           fontSize: 14, 
                           fontWeight: 500,
                           textDecoration: 'none',
@@ -2701,14 +2668,14 @@ export default function App() {
                       >
                         {selectedLead.initial_page_visit}
                       </a>
-                      <p style={{ fontSize: 12, color: '#78350f', margin: '8px 0 0 0' }}>
+                      <p style={{ fontSize: 12, color: T.textSecondary, margin: '8px 0 0 0' }}>
                         This is the first page they visited before {selectedLead.type === 'lead' ? 'converting' : 'being identified'}
                       </p>
                     </div>
                   )}
                   {selectedLead.page_url && (
-                    <div style={{ padding: 16, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8, fontWeight: 500 }}>
+                    <div style={{ padding: 16, background: T.bgSubtle, borderRadius: 8, border: `1px solid ${T.border}` }}>
+                      <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 8, fontWeight: 500 }}>
                         {selectedLead.type === 'lead' ? 'Conversion Page' : 'Current Page'}
                       </div>
                       <a 
@@ -2716,7 +2683,7 @@ export default function App() {
                         target="_blank" 
                         rel="noopener noreferrer"
                         style={{ 
-                          color: '#7c3aed', 
+                          color: T.primary, 
                           fontSize: 14, 
                           fontWeight: 500,
                           textDecoration: 'none',
@@ -2727,9 +2694,9 @@ export default function App() {
                       </a>
                     </div>
                   )}
-                  <div style={{ padding: 16, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>Date & Time</div>
-                    <div style={{ fontSize: 16, color: '#111827', fontWeight: 500 }}>
+                  <div style={{ padding: 16, background: T.bgSubtle, borderRadius: 8, border: `1px solid ${T.border}` }}>
+                    <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 4, fontWeight: 500 }}>Date & Time</div>
+                    <div style={{ fontSize: 16, color: T.textPrimary, fontWeight: 500 }}>
                       {selectedLead.timestamp ? new Date(selectedLead.timestamp).toLocaleDateString('en-US', {
                         weekday: 'long',
                         year: 'numeric',
@@ -2751,8 +2718,8 @@ export default function App() {
                     href={`mailto:${selectedLead.email}?subject=Follow up from ${location.hostname}`}
                     style={{
                       padding: '12px 24px',
-                      background: '#7c3aed',
-                      color: '#fff',
+                      background: T.btnPrimary,
+                      color: T.btnPrimaryText,
                       borderRadius: 8,
                       fontSize: 15,
                       fontWeight: 600,
@@ -2762,8 +2729,8 @@ export default function App() {
                       alignItems: 'center',
                       gap: 8
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#6d28d9'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = '#7c3aed'}
+                    onMouseEnter={(e) => e.currentTarget.style.opacity = '0.85'}
+                    onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
                   >
                     📧 Send Follow-Up Email
                   </a>
@@ -2772,17 +2739,17 @@ export default function App() {
                   onClick={() => setSelectedLead(null)}
                   style={{
                     padding: '12px 24px',
-                    background: '#f3f4f6',
-                    color: '#6b7280',
-                    border: '1px solid #d1d5db',
+                    background: T.btnGhost,
+                    color: T.textSecondary,
+                    border: `1px solid ${T.border}`,
                     borderRadius: 8,
                     fontSize: 15,
                     fontWeight: 600,
                     cursor: 'pointer',
                     transition: 'all 0.2s'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#e5e7eb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#f3f4f6'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = T.btnGhostHover}
+                  onMouseLeave={(e) => e.currentTarget.style.background = T.btnGhost}
                 >
                   Close
                 </button>

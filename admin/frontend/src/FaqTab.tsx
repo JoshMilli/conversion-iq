@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Branding } from './types';
+import { T } from './theme';
 
 interface FaqTabProps {
   B: Branding;
@@ -52,10 +53,10 @@ export default function FaqTab({ B }: FaqTabProps) {
   const faqs = B.faqItems.length > 0 ? B.faqItems : defaultFaqs;
 
   return (
-    <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 32 }}>
+    <section style={{ background: T.bgCard, borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.3)', padding: 32 }}>
       <div style={{ marginBottom: 32, textAlign: 'center' }}>
-        <h2 style={{ margin: '0 0 12px 0', fontSize: 28, fontWeight: 700, color: '#111827' }}>Frequently Asked Questions</h2>
-        <p style={{ color: '#6b7280', fontSize: 16, maxWidth: 700, margin: '0 auto' }}>
+        <h2 style={{ margin: '0 0 12px 0', fontSize: 28, fontWeight: 700, color: T.textPrimary }}>Frequently Asked Questions</h2>
+        <p style={{ color: T.textSecondary, fontSize: 16, maxWidth: 700, margin: '0 auto' }}>
           Everything you need to know about {B.product} and how {B.company} can help you maximize your website's performance.
         </p>
       </div>
@@ -64,23 +65,23 @@ export default function FaqTab({ B }: FaqTabProps) {
         {faqs.map((faq: any, i: number) => (
           <div
             key={i}
-            style={{ background: '#f9fafb', borderRadius: 12, padding: 24, border: '1px solid #e5e7eb', transition: 'all 0.2s' }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(124, 58, 237, 0.1)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.boxShadow = 'none'; }}
+            style={{ background: T.bgSubtle, borderRadius: 12, padding: 24, border: `1px solid ${T.border}`, transition: 'all 0.2s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.primary; e.currentTarget.style.boxShadow = '0 4px 12px rgba(245,158,11,0.15)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = 'none'; }}
           >
-            <h3 style={{ margin: '0 0 12px 0', fontSize: 18, fontWeight: 700, color: '#111827' }}>{faq.q}</h3>
-            <p style={{ margin: 0, color: '#374151', lineHeight: 1.7, fontSize: 15 }}>{faq.a}</p>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: 18, fontWeight: 700, color: T.textPrimary }}>{faq.q}</h3>
+            <p style={{ margin: 0, color: T.textSecondary, lineHeight: 1.7, fontSize: 15 }}>{faq.a}</p>
           </div>
         ))}
 
-        <div style={{ marginTop: 32, padding: 32, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 16, textAlign: 'center', color: '#fff' }}>
+        <div style={{ marginTop: 32, padding: 32, background: T.btnPrimary, borderRadius: 16, textAlign: 'center', color: T.btnPrimaryText }}>
           <h3 style={{ margin: '0 0 12px 0', fontSize: 24, fontWeight: 700 }}>Still Have Questions?</h3>
           <p style={{ margin: '0 0 20px 0', fontSize: 16, opacity: 0.95 }}>
             Our team is here to help. Schedule your FREE expert review or reach out with any questions.
           </p>
           <a
             href={`mailto:${B.supportEmail}?subject=${B.product} Question&body=Hi! I have a question about ${B.product}:%0D%0A%0D%0A[Your question here]`}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 32px', background: '#fff', color: '#7c3aed', textDecoration: 'none', borderRadius: 10, fontSize: 16, fontWeight: 600, transition: 'all 0.2s', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 32px', background: T.bgCard, color: T.primary, textDecoration: 'none', borderRadius: 10, fontSize: 16, fontWeight: 600, transition: 'all 0.2s', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)' }}
             onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.3)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.2)'; }}
           >

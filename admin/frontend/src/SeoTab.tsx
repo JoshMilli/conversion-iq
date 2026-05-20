@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import { T } from './theme';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -96,21 +97,21 @@ const CATEGORY_WEIGHTS: Record<string, number> = {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function scoreColor(score: number): string {
-  if (score >= 80) return '#16a34a';
-  if (score >= 60) return '#d97706';
-  return '#dc2626';
+  if (score >= 80) return '#22c55e';
+  if (score >= 60) return '#f59e0b';
+  return '#ef4444';
 }
 
 function scoreBg(score: number): string {
-  if (score >= 80) return '#f0fdf4';
-  if (score >= 60) return '#fffbeb';
-  return '#fef2f2';
+  if (score >= 80) return 'rgba(34,197,94,0.10)';
+  if (score >= 60) return 'rgba(245,158,11,0.10)';
+  return 'rgba(239,68,68,0.10)';
 }
 
 function scoreBorder(score: number): string {
-  if (score >= 80) return '#bbf7d0';
-  if (score >= 60) return '#fde68a';
-  return '#fecaca';
+  if (score >= 80) return 'rgba(34,197,94,0.30)';
+  if (score >= 60) return 'rgba(245,158,11,0.30)';
+  return 'rgba(239,68,68,0.30)';
 }
 
 function scoreLabel(score: number): string {
@@ -120,10 +121,10 @@ function scoreLabel(score: number): string {
 }
 
 function cwvColor(status?: string): string {
-  if (status === 'good') return '#16a34a';
-  if (status === 'needs_improvement') return '#d97706';
-  if (status === 'poor') return '#dc2626';
-  return '#9ca3af';
+  if (status === 'good') return '#22c55e';
+  if (status === 'needs_improvement') return '#f59e0b';
+  if (status === 'poor') return '#ef4444';
+  return T.textMuted;
 }
 
 function cwvLabel(status?: string): string {
@@ -145,7 +146,7 @@ function ScoreGauge({ score, size = 72 }: { score: number; size?: number }) {
 
   return (
     <svg width={size} height={size} style={{ flexShrink: 0, display: 'block' }}>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#f1f5f9" strokeWidth={strokeW} />
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={T.border} strokeWidth={strokeW} />
       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={strokeW}
         strokeDasharray={`${filled} ${circ - filled}`} strokeLinecap="round"
         transform={`rotate(-90 ${size/2} ${size/2})`} />
@@ -160,7 +161,7 @@ function ScoreGauge({ score, size = 72 }: { score: number; size?: number }) {
 function SectionLabel({ text }: { text: string }) {
   return (
     <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em',
-      textTransform: 'uppercase' as const, color: '#94a3b8', marginBottom: 14 }}>
+      textTransform: 'uppercase' as const, color: T.textMuted, marginBottom: 14 }}>
       {text}
     </div>
   );
@@ -168,8 +169,8 @@ function SectionLabel({ text }: { text: string }) {
 
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.04)', ...style }}>
+    <div style={{ background: T.bgCard, borderRadius: 10, border: `1px solid ${T.border}`,
+      boxShadow: '0 1px 3px rgba(0,0,0,0.2)', ...style }}>
       {children}
     </div>
   );
@@ -179,7 +180,7 @@ function StatusDot({ pass }: { pass: boolean }) {
   return (
     <span style={{
       display: 'inline-block', width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-      background: pass ? '#16a34a' : '#dc2626',
+      background: pass ? '#22c55e' : '#ef4444',
       marginTop: 3,
     }} />
   );
@@ -187,9 +188,9 @@ function StatusDot({ pass }: { pass: boolean }) {
 
 function PriorityTag({ priority }: { priority: string }) {
   const map: Record<string, { color: string; bg: string; border: string }> = {
-    high:   { color: '#b91c1c', bg: '#fef2f2', border: '#fecaca' },
-    medium: { color: '#92400e', bg: '#fffbeb', border: '#fde68a' },
-    low:    { color: '#166534', bg: '#f0fdf4', border: '#bbf7d0' },
+    high:   { color: '#fca5a5', bg: 'rgba(239,68,68,0.10)', border: 'rgba(239,68,68,0.30)' },
+    medium: { color: '#fcd34d', bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.30)' },
+    low:    { color: '#86efac', bg: 'rgba(34,197,94,0.10)',  border: 'rgba(34,197,94,0.30)' },
   };
   const s = map[priority] || map.low;
   return (
@@ -204,9 +205,9 @@ function PriorityTag({ priority }: { priority: string }) {
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-      gap: 12, padding: '6px 0', borderBottom: '1px solid #f8fafc' }}>
-      <span style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 12, fontWeight: 500, color: '#1e293b',
+      gap: 12, padding: '6px 0', borderBottom: `1px solid ${T.bgSubtle}` }}>
+      <span style={{ fontSize: 12, color: T.textSecondary, flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 500, color: T.textPrimary,
         textAlign: 'right' as const, wordBreak: 'break-word' as const }}>
         {value}
       </span>
@@ -216,9 +217,9 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 
 function DetailBlock({ title, items }: { title: string; items: { label: string; value: string }[] }) {
   return (
-    <div style={{ padding: '16px 20px', borderRight: '1px solid #f1f5f9' }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 10,
-        paddingBottom: 8, borderBottom: '2px solid #f1f5f9' }}>{title}</div>
+    <div style={{ padding: '16px 20px', borderRight: `1px solid ${T.border}` }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: T.textSecondary, marginBottom: 10,
+        paddingBottom: 8, borderBottom: `2px solid ${T.border}` }}>{title}</div>
       {items.map(({ label, value }) => (
         <DetailRow key={label} label={label} value={value} />
       ))}
@@ -327,7 +328,7 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
   // ── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ fontFamily: 'inherit', color: '#1e293b' }}>
+    <div style={{ fontFamily: 'inherit', color: T.textPrimary }}>
 
       {/* ── Top toolbar ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
@@ -339,23 +340,23 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
             <select
               value={selectedPageId ?? ''}
               onChange={e => setSelectedPageId(Number(e.target.value))}
-              style={{ flex: 1, padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 7,
-                fontSize: 13, color: '#1e293b', background: '#f8fafc', outline: 'none',
+              style={{ flex: 1, padding: '9px 12px', border: `1px solid ${T.border}`, borderRadius: 7,
+                fontSize: 13, color: T.textPrimary, background: T.bgInput, outline: 'none',
                 cursor: 'pointer', minWidth: 0 }}>
               <option value="" disabled>Select a page...</option>
               {pages.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
             </select>
             <button onClick={runAudit} disabled={loading || !selectedPageId}
-              style={{ padding: '9px 20px', background: loading ? '#a78bfa' : '#7c3aed',
-                color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600,
+              style={{ padding: '9px 20px', background: loading ? T.primaryDark : T.btnPrimary,
+                color: T.btnPrimaryText, border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600,
                 cursor: loading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' as const,
                 transition: 'background 0.15s', flexShrink: 0 }}>
               {loading ? 'Analysing...' : 'Run Audit'}
             </button>
           </div>
           {error && (
-            <div style={{ marginTop: 10, padding: '8px 12px', background: '#fef2f2',
-              border: '1px solid #fecaca', borderRadius: 6, color: '#dc2626', fontSize: 12 }}>
+            <div style={{ marginTop: 10, padding: '8px 12px', background: 'rgba(239,68,68,0.10)',
+              border: '1px solid rgba(239,68,68,0.30)', borderRadius: 6, color: '#fca5a5', fontSize: 12 }}>
               {error}
             </div>
           )}
@@ -365,21 +366,21 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
         <Card style={{ padding: '20px 24px' }}>
           <SectionLabel text="Full Site Audit" />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ flex: 1, fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
+            <div style={{ flex: 1, fontSize: 13, color: T.textSecondary, lineHeight: 1.5 }}>
               Audit all {pages.length} page{pages.length !== 1 ? 's' : ''} and sync results to your dashboard.
             </div>
             <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
               {siteRunning && (
                 <button onClick={() => { cancelRef.current = true; }}
-                  style={{ padding: '9px 16px', background: '#fff', color: '#dc2626',
-                    border: '1px solid #fecaca', borderRadius: 7, fontSize: 13,
+                  style={{ padding: '9px 16px', background: T.btnGhost, color: '#ef4444',
+                    border: '1px solid rgba(239,68,68,0.30)', borderRadius: 7, fontSize: 13,
                     fontWeight: 600, cursor: 'pointer' }}>
                   Cancel
                 </button>
               )}
               <button onClick={runSiteAudit} disabled={siteRunning || pages.length === 0}
-                style={{ padding: '9px 20px', background: siteRunning ? '#a78bfa' : '#7c3aed',
-                  color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600,
+                style={{ padding: '9px 20px', background: siteRunning ? T.primaryDark : T.btnPrimary,
+                  color: T.btnPrimaryText, border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600,
                   cursor: siteRunning || pages.length === 0 ? 'not-allowed' : 'pointer',
                   whiteSpace: 'nowrap' as const, transition: 'background 0.15s' }}>
                 {siteRunning ? 'Running...' : siteDone ? 'Re-run' : 'Audit Entire Site'}
@@ -390,13 +391,13 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
           {siteRunning && siteProgress && (
             <div style={{ marginTop: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11,
-                color: '#94a3b8', marginBottom: 5 }}>
+                color: T.textMuted, marginBottom: 5 }}>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const,
                   maxWidth: '70%' }}>{siteProgress.title}</span>
                 <span>{siteProgress.current} / {siteProgress.total}</span>
               </div>
-              <div style={{ height: 4, background: '#f1f5f9', borderRadius: 99, overflow: 'hidden' }}>
-                <div style={{ height: '100%', borderRadius: 99, background: '#7c3aed',
+              <div style={{ height: 4, background: T.bgSubtle, borderRadius: 99, overflow: 'hidden' }}>
+                <div style={{ height: '100%', borderRadius: 99, background: T.btnPrimary,
                   width: `${Math.round((siteProgress.current / siteProgress.total) * 100)}%`,
                   transition: 'width 0.3s ease' }} />
               </div>
@@ -408,18 +409,18 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
       {/* ── Site audit results table ── */}
       {siteResults.length > 0 && (
         <Card style={{ marginBottom: 16, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9',
+          <div style={{ padding: '14px 20px', borderBottom: `1px solid ${T.border}`,
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             <SectionLabel text="Site Audit Results" />
             {siteDone && (
               <div style={{ display: 'flex', gap: 16, fontSize: 12, marginBottom: 14 }}>
-                <span style={{ color: '#16a34a', fontWeight: 600 }}>
+                <span style={{ color: '#22c55e', fontWeight: 600 }}>
                   {siteResults.filter(r => r.score !== null && r.score >= 80).length} Good
                 </span>
-                <span style={{ color: '#d97706', fontWeight: 600 }}>
+                <span style={{ color: '#f59e0b', fontWeight: 600 }}>
                   {siteResults.filter(r => r.score !== null && r.score >= 60 && r.score < 80).length} Needs Work
                 </span>
-                <span style={{ color: '#dc2626', fontWeight: 600 }}>
+                <span style={{ color: '#ef4444', fontWeight: 600 }}>
                   {siteResults.filter(r => r.score !== null && r.score < 60).length} Poor
                 </span>
               </div>
@@ -428,12 +429,12 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
-                <tr style={{ background: '#f8fafc' }}>
-                  <th style={{ textAlign: 'left', padding: '9px 20px', color: '#64748b', fontWeight: 600, borderBottom: '1px solid #e2e8f0' }}>Page</th>
-                  <th style={{ textAlign: 'center', padding: '9px 12px', color: '#64748b', fontWeight: 600, borderBottom: '1px solid #e2e8f0' }}>Score</th>
+                <tr style={{ background: T.bgSubtle }}>
+                  <th style={{ textAlign: 'left', padding: '9px 20px', color: T.textSecondary, fontWeight: 600, borderBottom: `1px solid ${T.border}` }}>Page</th>
+                  <th style={{ textAlign: 'center', padding: '9px 12px', color: T.textSecondary, fontWeight: 600, borderBottom: `1px solid ${T.border}` }}>Score</th>
                   {Object.entries(CATEGORY_LABELS).map(([cat, label]) => (
-                    <th key={cat} style={{ textAlign: 'center', padding: '9px 10px', color: '#94a3b8',
-                      fontWeight: 500, fontSize: 11, borderBottom: '1px solid #e2e8f0',
+                    <th key={cat} style={{ textAlign: 'center', padding: '9px 10px', color: T.textMuted,
+                      fontWeight: 500, fontSize: 11, borderBottom: `1px solid ${T.border}`,
                       whiteSpace: 'nowrap' as const }}>
                       {label}
                     </th>
@@ -442,20 +443,20 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
               </thead>
               <tbody>
                 {[...siteResults].sort((a, b) => (a.score ?? -1) - (b.score ?? -1)).map((row, i) => (
-                  <tr key={row.id} style={{ borderBottom: '1px solid #f8fafc',
-                    background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                  <tr key={row.id} style={{ borderBottom: `1px solid ${T.bgSubtle}`,
+                    background: i % 2 === 0 ? T.bgCard : T.bgSubtle }}>
                     <td style={{ padding: '9px 20px', maxWidth: 280, overflow: 'hidden',
                       textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
                       <a href={row.url} target="_blank" rel="noreferrer"
-                        style={{ color: '#334155', textDecoration: 'none', fontWeight: 500 }}
+                        style={{ color: T.textPrimary, textDecoration: 'none', fontWeight: 500 }}
                         title={row.url}>{row.title}</a>
                     </td>
                     <td style={{ textAlign: 'center', padding: '9px 12px' }}>
                       {row.error
-                        ? <span style={{ color: '#94a3b8', fontSize: 11 }}>Error</span>
+                        ? <span style={{ color: T.textMuted, fontSize: 11 }}>Error</span>
                         : row.score !== null
                           ? <span style={{ fontWeight: 700, color: scoreColor(row.score), fontSize: 13 }}>{row.score}</span>
-                          : <span style={{ color: '#cbd5e1' }}>-</span>}
+                          : <span style={{ color: T.border }}>-</span>}
                     </td>
                     {Object.keys(CATEGORY_LABELS).map(cat => {
                       const s = row.categoryScores?.[cat] ?? null;
@@ -463,7 +464,7 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
                         <td key={cat} style={{ textAlign: 'center', padding: '9px 10px' }}>
                           {s !== null
                             ? <span style={{ fontWeight: 600, color: scoreColor(s), fontSize: 12 }}>{s}</span>
-                            : <span style={{ color: '#e2e8f0' }}>-</span>}
+                            : <span style={{ color: T.border }}>-</span>}
                         </td>
                       );
                     })}
@@ -473,7 +474,7 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
             </table>
           </div>
           {siteDone && (
-            <div style={{ padding: '10px 20px', fontSize: 11, color: '#94a3b8', borderTop: '1px solid #f1f5f9' }}>
+            <div style={{ padding: '10px 20px', fontSize: 11, color: T.textMuted, borderTop: `1px solid ${T.bgSubtle}` }}>
               All results synced to SaaS dashboard &middot; sorted by lowest score
             </div>
           )}
@@ -483,11 +484,11 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
       {/* ── Loading state ── */}
       {cacheLoading && !audit && (
         <Card style={{ padding: '14px 20px', marginBottom: 16,
-          display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 14, height: 14, border: '2px solid #e2e8f0',
-            borderTopColor: '#7c3aed', borderRadius: '50%',
+          display: 'flex', alignItems: 'center', gap: 10, border: `1px solid ${T.border}` }}>
+          <div style={{ width: 14, height: 14, border: `2px solid ${T.border}`,
+            borderTopColor: T.primary, borderRadius: '50%',
             animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
-          <span style={{ fontSize: 13, color: '#94a3b8' }}>Loading last audit result...</span>
+          <span style={{ fontSize: 13, color: T.textMuted }}>Loading last audit result...</span>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </Card>
       )}
@@ -495,11 +496,11 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
       {/* ── Loading state ── */}
       {loading && (
         <Card style={{ padding: 48, textAlign: 'center', marginBottom: 16 }}>
-          <div style={{ width: 36, height: 36, border: '3px solid #e2e8f0',
-            borderTopColor: '#7c3aed', borderRadius: '50%', margin: '0 auto 16px',
+          <div style={{ width: 36, height: 36, border: `3px solid ${T.border}`,
+            borderTopColor: T.primary, borderRadius: '50%', margin: '0 auto 16px',
             animation: 'spin 0.8s linear infinite' }} />
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#334155' }}>Analysing page...</div>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: T.textSecondary }}>Analysing page...</div>
+          <div style={{ fontSize: 12, color: T.textMuted, marginTop: 4 }}>
             Checking meta tags, headings, keywords, structured data, and Core Web Vitals
           </div>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -511,13 +512,13 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
         <>
           {/* Last-audited bar */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '8px 14px', background: '#f8fafc', border: '1px solid #e2e8f0',
+            padding: '8px 14px', background: T.bgSubtle, border: `1px solid ${T.border}`,
             borderRadius: 8, marginBottom: 12, fontSize: 12 }}>
-            <span style={{ color: '#64748b' }}>
+            <span style={{ color: T.textSecondary }}>
               Last audited {new Date(audit.analyzed_at).toLocaleString()}
             </span>
             <button onClick={runAudit} disabled={loading}
-              style={{ fontSize: 12, fontWeight: 600, color: '#7c3aed', background: 'none',
+              style={{ fontSize: 12, fontWeight: 600, color: T.primary, background: 'none',
                 border: 'none', cursor: loading ? 'not-allowed' : 'pointer', padding: 0 }}>
               Re-run audit
             </button>
@@ -534,8 +535,8 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
                 <div style={{ fontSize: 13, fontWeight: 700, color: scoreColor(audit.overall_score) }}>
                   {scoreLabel(audit.overall_score)}
                 </div>
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Overall SEO Score</div>
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
+                <div style={{ fontSize: 11, color: T.textMuted, marginTop: 2 }}>Overall SEO Score</div>
+                <div style={{ fontSize: 11, color: T.textMuted, marginTop: 6 }}>
                   {failCount} issue{failCount !== 1 ? 's' : ''} &middot; {passCount} passing
                 </div>
               </div>
@@ -551,10 +552,10 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
                     background: '#f8fafc', border: '1px solid #f1f5f9' }}>
                     <ScoreGauge score={score} size={44} />
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: '#475569', lineHeight: 1.3 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: T.textSecondary, lineHeight: 1.3 }}>
                         {CATEGORY_LABELS[cat]}
                       </div>
-                      <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
+                      <div style={{ fontSize: 10, color: T.textMuted, marginTop: 2 }}>
                         {CATEGORY_WEIGHTS[cat]}% wt
                       </div>
                     </div>
@@ -566,15 +567,15 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
 
           {/* Core Web Vitals */}
           <Card style={{ marginBottom: 16, overflow: 'hidden' }}>
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9',
+            <div style={{ padding: '14px 20px', borderBottom: `1px solid ${T.border}`,
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
               <div>
                 <SectionLabel text="Core Web Vitals" />
-                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: -8 }}>Real User Metrics - last 30 days</div>
+                <div style={{ fontSize: 12, color: T.textMuted, marginTop: -8 }}>Real User Metrics - last 30 days</div>
               </div>
               {audit.core_web_vitals?.sample_size != null && (
-                <span style={{ fontSize: 11, color: '#94a3b8', background: '#f8fafc',
-                  border: '1px solid #e2e8f0', borderRadius: 6, padding: '3px 10px', flexShrink: 0 }}>
+                <span style={{ fontSize: 11, color: T.textMuted, background: T.bgSubtle,
+                  border: `1px solid ${T.border}`, borderRadius: 6, padding: '3px 10px', flexShrink: 0 }}>
                   {audit.core_web_vitals.sample_size} session{audit.core_web_vitals.sample_size !== 1 ? 's' : ''}
                 </span>
               )}
@@ -582,13 +583,13 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
 
             {!audit.core_web_vitals ? (
               <div style={{ padding: '24px 20px', display: 'flex', alignItems: 'flex-start', gap: 12,
-                color: '#64748b', fontSize: 13 }}>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: '#f8fafc',
-                  border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center',
+                color: T.textSecondary, fontSize: 13 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: T.bgSubtle,
+                  border: `1px solid ${T.border}`, display: 'flex', alignItems: 'center',
                   justifyContent: 'center', flexShrink: 0, fontSize: 14 }}>i</div>
                 <div>
-                  <div style={{ fontWeight: 600, color: '#334155', marginBottom: 3 }}>No Real User Metrics yet</div>
-                  <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5 }}>
+                  <div style={{ fontWeight: 600, color: T.textPrimary, marginBottom: 3 }}>No Real User Metrics yet</div>
+                  <div style={{ fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
                     Core Web Vitals will appear once the heatmap tracker has collected sessions on this page.
                   </div>
                 </div>
@@ -606,10 +607,10 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
                   const col = cwvColor(status);
                   return (
                     <div key={key} style={{ padding: '18px 20px',
-                      borderRight: i < arr.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                      borderRight: i < arr.length - 1 ? `1px solid ${T.border}` : 'none' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         marginBottom: 8 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', letterSpacing: '0.02em' }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: T.textSecondary, letterSpacing: '0.02em' }}>
                           {label}
                         </span>
                         {status && (
@@ -622,8 +623,8 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
                       </div>
                       <div style={{ fontSize: 22, fontWeight: 700, color: col, letterSpacing: '-0.02em',
                         marginBottom: 6 }}>{value}</div>
-                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{desc}</div>
-                      <div style={{ fontSize: 10, color: '#cbd5e1', marginTop: 2 }}>Good: {threshold}</div>
+                      <div style={{ fontSize: 11, color: T.textMuted }}>{desc}</div>
+                      <div style={{ fontSize: 10, color: T.border, marginTop: 2 }}>Good: {threshold}</div>
                     </div>
                   );
                 })}
@@ -635,28 +636,28 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
 
             {/* Action items */}
-            <Card style={{ overflow: 'hidden' }}>
-              <div style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9' }}>
+            <Card style={{ overflow: 'hidden', border: `1px solid ${T.border}` }}>
+              <div style={{ padding: '14px 20px', borderBottom: `1px solid ${T.border}` }}>
                 <SectionLabel text="Recommended Actions" />
-                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: -8 }}>
+                <div style={{ fontSize: 12, color: T.textMuted, marginTop: -8 }}>
                   {audit.actions.length} item{audit.actions.length !== 1 ? 's' : ''}, sorted by priority
                 </div>
               </div>
               {audit.actions.length === 0 ? (
-                <div style={{ padding: '20px', fontSize: 13, color: '#94a3b8' }}>No actions - great work.</div>
+                <div style={{ padding: '20px', fontSize: 13, color: T.textMuted }}>No actions - great work.</div>
               ) : (
                 <div style={{ maxHeight: 380, overflowY: 'auto' }}>
                   {audit.actions.map((action, idx) => (
-                    <div key={idx} style={{ padding: '12px 20px', borderBottom: '1px solid #f8fafc',
-                      borderLeft: `3px solid ${action.priority === 'high' ? '#dc2626' : action.priority === 'medium' ? '#d97706' : '#16a34a'}` }}>
+                    <div key={idx} style={{ padding: '12px 20px', borderBottom: `1px solid ${T.bgSubtle}`,
+                      borderLeft: `3px solid ${action.priority === 'high' ? '#ef4444' : action.priority === 'medium' ? '#f59e0b' : '#22c55e'}` }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
                         <PriorityTag priority={action.priority} />
-                        <span style={{ fontSize: 11, color: '#94a3b8' }}>{CATEGORY_LABELS[action.category]}</span>
+                        <span style={{ fontSize: 11, color: T.textMuted }}>{CATEGORY_LABELS[action.category]}</span>
                       </div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 3 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: T.textPrimary, marginBottom: 3 }}>
                         {action.label}
                       </div>
-                      <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5 }}>{action.fix}</div>
+                      <div style={{ fontSize: 11, color: T.textSecondary, lineHeight: 1.5 }}>{action.fix}</div>
                     </div>
                   ))}
                 </div>
@@ -664,17 +665,17 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
             </Card>
 
             {/* Checklist */}
-            <Card style={{ overflow: 'hidden' }}>
-              <div style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9' }}>
+            <Card style={{ overflow: 'hidden', border: `1px solid ${T.border}` }}>
+              <div style={{ padding: '14px 20px', borderBottom: `1px solid ${T.border}` }}>
                 <SectionLabel text="SEO Checklist" />
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' as const, marginTop: 4 }}>
                   {(['all', ...Object.keys(CATEGORY_LABELS)] as string[]).map(cat => (
                     <button key={cat} onClick={() => setActiveCategory(cat)}
                       style={{ padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 500,
                         border: '1px solid', cursor: 'pointer', transition: 'all 0.1s',
-                        borderColor: activeCategory === cat ? '#7c3aed' : '#e2e8f0',
-                        background: activeCategory === cat ? '#7c3aed' : '#fff',
-                        color: activeCategory === cat ? '#fff' : '#64748b' }}>
+                        borderColor: activeCategory === cat ? T.primary : T.border,
+                        background: activeCategory === cat ? T.btnPrimary : T.btnGhost,
+                        color: activeCategory === cat ? T.btnPrimaryText : T.textSecondary }}>
                       {cat === 'all' ? 'All' : CATEGORY_LABELS[cat]}
                     </button>
                   ))}
@@ -682,19 +683,19 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
               </div>
               <div style={{ maxHeight: 380, overflowY: 'auto' }}>
                 {filteredChecklist.length === 0 && (
-                  <div style={{ padding: '20px', fontSize: 13, color: '#94a3b8' }}>No items.</div>
+                  <div style={{ padding: '20px', fontSize: 13, color: T.textMuted }}>No items.</div>
                 )}
                 {filteredChecklist.map((item, idx) => (
                   <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 10,
-                    padding: '10px 20px', borderBottom: '1px solid #f8fafc' }}>
+                    padding: '10px 20px', borderBottom: `1px solid ${T.bgSubtle}` }}>
                     <StatusDot pass={item.pass} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 500, color: '#334155' }}>{item.label}</div>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: T.textPrimary }}>{item.label}</div>
                       {!item.pass && item.fix && (
-                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2, lineHeight: 1.5 }}>{item.fix}</div>
+                        <div style={{ fontSize: 11, color: T.textSecondary, marginTop: 2, lineHeight: 1.5 }}>{item.fix}</div>
                       )}
                     </div>
-                    <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 500, color: '#94a3b8',
+                    <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 500, color: T.textMuted,
                       alignSelf: 'flex-start', marginTop: 1, whiteSpace: 'nowrap' as const }}>
                       {CATEGORY_LABELS[item.category]}
                     </span>
@@ -705,8 +706,8 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
           </div>
 
           {/* Details panel */}
-          <Card style={{ marginBottom: 16, overflow: 'hidden' }}>
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9' }}>
+          <Card style={{ marginBottom: 16, overflow: 'hidden', border: `1px solid ${T.border}` }}>
+            <div style={{ padding: '14px 20px', borderBottom: `1px solid ${T.border}` }}>
               <SectionLabel text="Page Details" />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)' }}>
@@ -735,24 +736,24 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
 
               {/* Images, Links, Schema, Technical */}
               <div style={{ padding: '16px 20px' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 10,
-                  paddingBottom: 8, borderBottom: '2px solid #f1f5f9' }}>Images</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T.textSecondary, marginBottom: 10,
+                  paddingBottom: 8, borderBottom: `2px solid ${T.border}` }}>Images</div>
                 <DetailRow label="Total images" value={String(audit.details.images.total)} />
                 <DetailRow label="With alt text" value={`${audit.details.images.with_alt} / ${audit.details.images.total}`} />
                 <DetailRow label="Alt coverage" value={`${audit.details.images.coverage_pct}%`} />
 
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', margin: '14px 0 10px',
-                  paddingBottom: 8, borderBottom: '2px solid #f1f5f9' }}>Links</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T.textSecondary, margin: '14px 0 10px',
+                  paddingBottom: 8, borderBottom: `2px solid ${T.border}` }}>Links</div>
                 <DetailRow label="Internal" value={String(audit.details.links.internal)} />
                 <DetailRow label="External" value={String(audit.details.links.external)} />
 
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', margin: '14px 0 10px',
-                  paddingBottom: 8, borderBottom: '2px solid #f1f5f9' }}>Structured Data</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T.textSecondary, margin: '14px 0 10px',
+                  paddingBottom: 8, borderBottom: `2px solid ${T.border}` }}>Structured Data</div>
                 <DetailRow label="JSON-LD" value={audit.details.schema.has_json_ld ? 'Present' : 'Missing'} />
                 <DetailRow label="Schema types" value={audit.details.schema.types?.length > 0 ? audit.details.schema.types.join(', ') : 'None'} />
 
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', margin: '14px 0 10px',
-                  paddingBottom: 8, borderBottom: '2px solid #f1f5f9' }}>Technical</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T.textSecondary, margin: '14px 0 10px',
+                  paddingBottom: 8, borderBottom: `2px solid ${T.border}` }}>Technical</div>
                 <DetailRow label="HTTPS" value={audit.details.technical.is_https ? 'Yes' : 'No'} />
                 <DetailRow label="Slug" value={`/${audit.details.technical.slug}`} />
                 <DetailRow label="Stop words in slug" value={audit.details.technical.slug_has_stop_words ? 'Yes' : 'No'} />
@@ -761,7 +762,7 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
           </Card>
 
           {/* Footer */}
-          <div style={{ fontSize: 11, color: '#cbd5e1', paddingBottom: 4 }}>
+          <div style={{ fontSize: 11, color: T.textMuted, paddingBottom: 4 }}>
             Analysed {new Date(audit.analyzed_at).toLocaleString()} &middot; {audit.page_url}
           </div>
         </>
@@ -770,15 +771,15 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
       {/* Empty state */}
       {!audit && !loading && !error && siteResults.length === 0 && (
         <Card style={{ padding: 48, textAlign: 'center' }}>
-          <div style={{ width: 44, height: 44, borderRadius: 10, background: '#f3f0ff',
-            border: '1px solid #e9d5ff', display: 'flex', alignItems: 'center',
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: T.primaryBg,
+            border: `1px solid ${T.primaryBorder}`, display: 'flex', alignItems: 'center',
             justifyContent: 'center', margin: '0 auto 16px', fontSize: 20 }}>
             S
           </div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: T.textPrimary, marginBottom: 6 }}>
             Select a page and run an audit
           </div>
-          <div style={{ fontSize: 13, color: '#94a3b8', maxWidth: 380, margin: '0 auto', lineHeight: 1.6 }}>
+          <div style={{ fontSize: 13, color: T.textMuted, maxWidth: 380, margin: '0 auto', lineHeight: 1.6 }}>
             On-page SEO analysis covering meta tags, headings, keywords, images, links,
             structured data, technical factors, and Core Web Vitals from real visitors.
           </div>

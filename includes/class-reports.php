@@ -116,9 +116,9 @@ class ConversionIQ_Reports
             } else {
                 // Starter plan: always use default branding
                 $branding = array(
-                    'primary_color'  => '#1e3a5f',
-                    'accent_color'   => '#2563eb',
-                    'light_color'    => '#dbeafe',
+                    'primary_color'  => '#09090b',
+                    'accent_color'   => '#f59e0b',
+                    'light_color'    => '#1a1100',
                     'company_name'   => 'Webtec',
                     'product_name'   => 'Conversion IQ',
                     'support_email'  => 'support@trywebtec.com',

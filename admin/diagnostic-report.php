@@ -211,14 +211,29 @@ if ( ! function_exists( 'get_option' ) ) {
     }
     ?>
 
-    <h2>8. Test API Endpoint</h2>
+    <h2>8. External Cron Sync</h2>
+    <?php
+    $sync_secret = conversioniq_get_sync_secret();
+    $sync_url    = rest_url( 'conversioniq/v1/sync-daily' ) . '?secret=' . urlencode( $sync_secret );
+    ?>
+    <div class="status pass">
+        <strong>External cron endpoint is ready.</strong><br>
+        Set up a daily cron job (e.g. via <a href="https://cron-job.org" target="_blank">cron-job.org</a>) to send a <strong>GET</strong> request to this URL once per day (recommended: 02:00 UTC):<br><br>
+        <code><?php echo esc_html( $sync_url ); ?></code>
+        <br><br>
+        <strong>Keep this URL private</strong> — anyone with it can trigger a Supabase sync.
+    </div>
+    <p>To regenerate the secret key, delete the <code>conversioniq_sync_secret_key</code> option from the WordPress database and reload this page.</p>
+
+    <h2>9. Test API Endpoint</h2>
     <p>
         <button class="action-button" onclick="testAPI()">Test API Endpoint</button>
         <button class="action-button" onclick="clearCache()">Clear Cache</button>
+        <button class="action-button" onclick="testSaasConnectivity()" style="background:#2271b1;">Test SaaS Connectivity</button>
     </p>
     <div id="test-results"></div>
 
-    <h2>9. Quick Actions</h2>
+    <h2>10. Quick Actions</h2>
     <p>
         <button class="action-button" onclick="goToPlugin()">Go to Plugin</button>
         <button class="action-button" onclick="reloadPage()">Reload Page</button>
@@ -276,6 +291,46 @@ function goToPlugin() {
 
 function reloadPage() {
     location.reload();
+}
+
+function testSaasConnectivity() {
+    const results = document.getElementById('test-results');
+    results.innerHTML = '<p>Testing outbound connection from WP server to conversioniq-app.com/api/ai-proxy... (10s timeout)</p>';
+
+    fetch('<?php echo rest_url('conversioniq/v1/connectivity-test'); ?>', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-WP-Nonce': '<?php echo wp_create_nonce('wp_rest'); ?>'
+        },
+        body: '{}'
+    })
+    .then(r => r.json())
+    .then(data => {
+        const ok = data.ok;
+        const color = ok ? 'green' : 'red';
+        let html = '<p style="color:' + color + '"><strong>' + (ok ? '✅ Connection succeeded' : '❌ Connection failed') + '</strong></p>';
+        html += '<pre style="background:#f0f0f0;padding:10px;font-size:12px">' + JSON.stringify(data, null, 2) + '</pre>';
+        if (!ok) {
+            html += '<p><strong>Diagnosis:</strong><br>';
+            if (data.error_code === 'http_request_failed') {
+                if (data.error_msg && data.error_msg.indexOf('timed out') !== -1) {
+                    html += '⏱ The WP server opened a connection but got no response. The SaaS route may not be deployed, or a firewall is resetting the connection after TCP handshake.';
+                } else if (data.error_msg && data.error_msg.indexOf('Could not resolve') !== -1) {
+                    html += '🔍 DNS failure — the WP server cannot resolve conversioniq-app.com. Check if the hosting provider blocks external DNS lookups.';
+                } else if (data.error_msg && data.error_msg.indexOf('refused') !== -1) {
+                    html += '🚫 Connection refused — the server is not listening on port 443. Check deployment status.';
+                } else {
+                    html += '🌐 Network-level error — the WP hosting provider may be blocking outbound HTTPS to external domains. Contact your host.';
+                }
+            }
+            html += '</p>';
+        }
+        results.innerHTML = html;
+    })
+    .catch(err => {
+        results.innerHTML = '<p style="color:red">Fetch error: ' + err.message + '</p>';
+    });
 }
 </script>
 

@@ -213,7 +213,7 @@ class ConversionIQ_Automated_Reports
 
         $overall_score = $total_pages > 0 ? round($total_score / $total_pages) : 0;
         $status = $overall_score >= 85 ? 'Excellent' : ($overall_score >= 75 ? 'Good' : ($overall_score >= 60 ? 'Fair' : 'Needs Improvement'));
-        $status_color = $overall_score >= 85 ? '#10b981' : ($overall_score >= 75 ? '#2563eb' : ($overall_score >= 60 ? '#f59e0b' : '#ef4444'));
+        $status_color = $overall_score >= 85 ? '#10b981' : ($overall_score >= 75 ? '#f59e0b' : ($overall_score >= 60 ? '#f59e0b' : '#ef4444'));
 
         // Branding from config manager — only apply custom branding if plan allows it
         if (ConversionIQ_Config_Manager::can('white_label_emails')) {
@@ -278,7 +278,7 @@ class ConversionIQ_Automated_Reports
             $page_list_html .= sprintf(
                 '<tr>
                     <td style="padding: 12px 16px; border-bottom: 1px solid #e5e7eb;">
-                        <a href="%s" style="color: #2563eb; text-decoration: none; font-weight: 500;">%s</a>
+                        <a href="%s" style="color: #f59e0b; text-decoration: none; font-weight: 500;">%s</a>
                     </td>
                     <td style="padding: 12px 16px; border-bottom: 1px solid #e5e7eb; text-align: center;">
                         <span style="color: %s; font-weight: 700; font-size: 16px;">%d</span><span style="color: #6b7280; font-size: 14px;">/100</span>
@@ -311,7 +311,7 @@ class ConversionIQ_Automated_Reports
                     
                     <!-- Header -->
                     <tr>
-                        <td style="background: linear-gradient(135deg, #1e3a5f 0%%, #2563eb 100%%); padding: 40px 32px; text-align: center;">
+                        <td style="background: linear-gradient(135deg, #09090b 0%%, #0c0c10 100%%); padding: 40px 32px; text-align: center;">
                             %s
                             <h1 style="margin: 16px 0 0 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
                                 ' . $brand_product . ' Audit Report
@@ -336,7 +336,7 @@ class ConversionIQ_Automated_Reports
                             </p>
                             
                             <p style="margin: 0 0 12px; color: #4b5563; font-size: 15px;">
-                                Feel free to book a quick chat if you have any questions: <a href="' . $brand_booking_url . '" style="color: #2563eb; text-decoration: none;">' . $brand_booking_url . '</a>
+                                Feel free to book a quick chat if you have any questions: <a href="' . $brand_booking_url . '" style="color: #f59e0b; text-decoration: none;">' . $brand_booking_url . '</a>
                             </p>
                             
                             <p style="margin: 0 0 24px; color: #4b5563; font-size: 15px;">
@@ -408,7 +408,7 @@ class ConversionIQ_Automated_Reports
                                     </td>
                                 </tr>
                             </table>
-                            <p style="margin: 16px 0 0 0; color: #4b5563; font-size: 14px; padding: 12px 16px; background-color: #eff6ff; border-radius: 4px; border-left: 3px solid #2563eb;">
+                            <p style="margin: 16px 0 0 0; color: #fafafa; font-size: 14px; padding: 12px 16px; background-color: rgba(245,158,11,0.10); border-radius: 4px; border-left: 3px solid #f59e0b;">
                                 Click <strong>View Report</strong> next to each page above to open the full interactive report with recommendations, copy rewrites, CRO checklist, and more.
                             </p>
                             
@@ -422,7 +422,7 @@ class ConversionIQ_Automated_Reports
                                         <table width="100%%" cellpadding="0" cellspacing="0" border="0">
                                             <tr>
                                                 <td width="32" style="vertical-align: top;">
-                                                    <div style="width: 24px; height: 24px; background-color: #2563eb; color: #ffffff; border-radius: 50%%; text-align: center; line-height: 24px; font-weight: 700; font-size: 12px;">1</div>
+                                                    <div style="width: 24px; height: 24px; background-color: #f59e0b; color: #000000; border-radius: 50%%; text-align: center; line-height: 24px; font-weight: 700; font-size: 12px;">1</div>
                                                 </td>
                                                 <td style="padding-left: 12px; color: #4b5563; font-size: 14px;">
                                                     Click the <strong>View Report</strong> link next to each page above to access your full interactive report
@@ -436,7 +436,7 @@ class ConversionIQ_Automated_Reports
                                         <table width="100%%" cellpadding="0" cellspacing="0" border="0">
                                             <tr>
                                                 <td width="32" style="vertical-align: top;">
-                                                    <div style="width: 24px; height: 24px; background-color: #2563eb; color: #ffffff; border-radius: 50%%; text-align: center; line-height: 24px; font-weight: 700; font-size: 12px;">2</div>
+                                                    <div style="width: 24px; height: 24px; background-color: #f59e0b; color: #000000; border-radius: 50%%; text-align: center; line-height: 24px; font-weight: 700; font-size: 12px;">2</div>
                                                 </td>
                                                 <td style="padding-left: 12px; color: #4b5563; font-size: 14px;">
                                                     Prioritize changes based on the scores and suggestions provided
@@ -450,7 +450,7 @@ class ConversionIQ_Automated_Reports
                                         <table width="100%%" cellpadding="0" cellspacing="0" border="0">
                                             <tr>
                                                 <td width="32" style="vertical-align: top;">
-                                                    <div style="width: 24px; height: 24px; background-color: #2563eb; color: #ffffff; border-radius: 50%%; text-align: center; line-height: 24px; font-weight: 700; font-size: 12px;">3</div>
+                                                    <div style="width: 24px; height: 24px; background-color: #f59e0b; color: #000000; border-radius: 50%%; text-align: center; line-height: 24px; font-weight: 700; font-size: 12px;">3</div>
                                                 </td>
                                                 <td style="padding-left: 12px; color: #4b5563; font-size: 14px;">
                                                     Schedule implementation - Reach out to ' . $brand_company . ' for a call to discuss and help implement the recommendations
@@ -475,7 +475,7 @@ class ConversionIQ_Automated_Reports
                             </p>') . '
                             <p style="margin: 12px 0 0; color: #9ca3af; font-size: 12px; text-align: center;">
                                 Need help implementing changes or have questions?<br>
-                                Contact us at <a href="mailto:' . esc_attr($brand_support_email) . '" style="color: #2563eb; text-decoration: none;">' . esc_html($brand_support_email) . '</a>
+                                Contact us at <a href="mailto:' . esc_attr($brand_support_email) . '" style="color: #f59e0b; text-decoration: none;">' . esc_html($brand_support_email) . '</a>
                             </p>
                         </td>
                     </tr>

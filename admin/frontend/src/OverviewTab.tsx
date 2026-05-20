@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Audit, Page } from './types';
+import { T } from './theme';
 
 interface OverviewTabProps {
   scoreHistory: any[];
@@ -99,33 +100,33 @@ export default function OverviewTab({ scoreHistory, overviewPageFilter, setOverv
       {/* Summary Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
         {[
-          { label: 'Avg Score', value: avgScore, icon: '\u{1F4CA}', sub: avgScore >= 80 ? 'Great' : avgScore >= 60 ? 'Good' : 'Needs Work', gradient: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', white: true },
-          { label: 'Pages Audited', value: latestByPage.size, icon: '\u{1F4C4}', sub: `of ${pages.length} pages`, gradient: 'linear-gradient(135deg, #fff 0%, #f9fafb 100%)', white: false },
-          { label: 'Total Audits', value: scoreHistory.length, icon: '\u{1F50D}', sub: 'all time', gradient: 'linear-gradient(135deg, #fff 0%, #f9fafb 100%)', white: false },
-          { label: 'Trend', value: `${avgDelta >= 0 ? '+' : ''}${avgDelta}`, icon: avgDelta >= 0 ? '\u{1F4C8}' : '\u{1F4C9}', sub: 'pts since last audit', gradient: avgDelta >= 0 ? 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)' : 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)', white: false }
+          { label: 'Avg Score', value: avgScore, icon: '\u{1F4CA}', sub: avgScore >= 80 ? 'Great' : avgScore >= 60 ? 'Good' : 'Needs Work', gradient: T.btnPrimary, white: true },
+          { label: 'Pages Audited', value: latestByPage.size, icon: '\u{1F4C4}', sub: `of ${pages.length} pages`, gradient: T.bgCard, white: false },
+          { label: 'Total Audits', value: scoreHistory.length, icon: '\u{1F50D}', sub: 'all time', gradient: T.bgCard, white: false },
+          { label: 'Trend', value: `${avgDelta >= 0 ? '+' : ''}${avgDelta}`, icon: avgDelta >= 0 ? '\u{1F4C8}' : '\u{1F4C9}', sub: 'pts since last audit', gradient: avgDelta >= 0 ? 'rgba(34,197,94,0.10)' : 'rgba(239,68,68,0.10)', white: false }
         ].map((card, i) => (
-          <div key={i} style={{ background: card.gradient, borderRadius: 16, padding: '24px 20px', border: card.white ? 'none' : '1px solid #e5e7eb', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', transition: 'transform 0.2s' }} onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
+          <div key={i} style={{ background: card.gradient, borderRadius: 16, padding: '24px 20px', border: card.white ? 'none' : `1px solid ${T.border}`, boxShadow: '0 2px 12px rgba(0,0,0,0.3)', transition: 'transform 0.2s' }} onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: card.white ? 'rgba(255,255,255,0.8)' : '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{card.label}</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: card.white ? 'rgba(0,0,0,0.7)' : T.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{card.label}</span>
               <span style={{ fontSize: 20 }}>{card.icon}</span>
             </div>
-            <div style={{ fontSize: 36, fontWeight: 800, color: card.white ? '#fff' : '#111827', lineHeight: 1 }}>{card.value}</div>
-            <div style={{ fontSize: 13, color: card.white ? 'rgba(255,255,255,0.7)' : '#9ca3af', marginTop: 6 }}>{card.sub}</div>
+            <div style={{ fontSize: 36, fontWeight: 800, color: card.white ? T.btnPrimaryText : T.textPrimary, lineHeight: 1 }}>{card.value}</div>
+            <div style={{ fontSize: 13, color: card.white ? 'rgba(0,0,0,0.6)' : T.textMuted, marginTop: 6 }}>{card.sub}</div>
           </div>
         ))}
       </div>
 
       {/* Score History Chart */}
-      <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #e5e7eb', padding: 32 }}>
+      <section style={{ background: T.bgCard, borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.3)', border: `1px solid ${T.border}`, padding: 32 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#111827' }}>Score History</h2>
-            <p style={{ margin: '4px 0 0', fontSize: 14, color: '#6b7280' }}>Track your conversion scores over time</p>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: T.textPrimary }}>Score History</h2>
+            <p style={{ margin: '4px 0 0', fontSize: 14, color: T.textSecondary }}>Track your conversion scores over time</p>
           </div>
           <select
             value={overviewPageFilter}
             onChange={e => setOverviewPageFilter(e.target.value)}
-            style={{ padding: '10px 16px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, color: '#374151', cursor: 'pointer', background: '#f9fafb', outline: 'none', minWidth: 180 }}
+            style={{ padding: '10px 16px', borderRadius: 10, border: `1px solid ${T.border}`, fontSize: 14, color: T.textPrimary, cursor: 'pointer', background: T.bgInput, outline: 'none', minWidth: 180 }}
           >
             <option value="all">All Pages</option>
             {uniquePages.map(([id, title]) => (
@@ -134,18 +135,18 @@ export default function OverviewTab({ scoreHistory, overviewPageFilter, setOverv
           </select>
         </div>
         {chartData.length < 2 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', background: 'linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%)', borderRadius: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', background: T.bgSubtle, borderRadius: 12 }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>📈</div>
-            <div style={{ fontSize: 18, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Not enough data yet</div>
-            <div style={{ fontSize: 14, color: '#6b7280', textAlign: 'center', maxWidth: 400 }}>Run at least 2 audits to see your score trend. Go to the Audits tab to analyze your pages!</div>
-            <button onClick={() => setActiveTab('audits')} style={{ marginTop: 20, padding: '10px 24px', background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 12px rgba(124,58,237,0.25)' }}>Run Your First Audit</button>
+            <div style={{ fontSize: 18, fontWeight: 600, color: T.textSecondary, marginBottom: 8 }}>Not enough data yet</div>
+            <div style={{ fontSize: 14, color: T.textSecondary, textAlign: 'center', maxWidth: 400 }}>Run at least 2 audits to see your score trend. Go to the Audits tab to analyze your pages!</div>
+            <button onClick={() => setActiveTab('audits')} style={{ marginTop: 20, padding: '10px 24px', background: T.btnPrimary, color: T.btnPrimaryText, border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 12px rgba(245,158,11,0.25)' }}>Run Your First Audit</button>
           </div>
         ) : (
           <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', maxHeight: 300 }}>
             <defs>
               <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#7c3aed" stopOpacity="0.2" />
-                <stop offset="100%" stopColor="#7c3aed" stopOpacity="0.02" />
+                <stop offset="0%" stopColor={T.primary} stopOpacity="0.2" />
+                <stop offset="100%" stopColor={T.primary} stopOpacity="0.02" />
               </linearGradient>
               <filter id="glow">
                 <feGaussianBlur stdDeviation="2" result="blur" />
@@ -154,18 +155,18 @@ export default function OverviewTab({ scoreHistory, overviewPageFilter, setOverv
             </defs>
             {yTicks.map(v => (
               <g key={v}>
-                <line x1={PAD.l} y1={toY(v)} x2={W - PAD.r} y2={toY(v)} stroke="#f3f4f6" strokeWidth="1" />
-                <text x={PAD.l - 8} y={toY(v) + 4} textAnchor="end" fill="#9ca3af" fontSize="11" fontFamily="Inter,system-ui,sans-serif">{v}</text>
+                <line x1={PAD.l} y1={toY(v)} x2={W - PAD.r} y2={toY(v)} stroke={T.border} strokeWidth="1" />
+                <text x={PAD.l - 8} y={toY(v) + 4} textAnchor="end" fill={T.textMuted} fontSize="11" fontFamily="Inter,system-ui,sans-serif">{v}</text>
               </g>
             ))}
             {areaPath && <path d={areaPath} fill="url(#areaGrad)" />}
-            <path d={linePath} fill="none" stroke="#7c3aed" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" filter="url(#glow)" />
+            <path d={linePath} fill="none" stroke={T.primary} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" filter="url(#glow)" />
             {chartData.map((d, i) => (
               <g key={i}>
-                <circle cx={toX(i)} cy={toY(d.score)} r="5" fill="#fff" stroke="#7c3aed" strokeWidth="2.5" />
-                <text x={toX(i)} y={toY(d.score) - 12} textAnchor="middle" fill="#7c3aed" fontSize="12" fontWeight="700" fontFamily="Inter,system-ui,sans-serif">{d.score}</text>
+                <circle cx={toX(i)} cy={toY(d.score)} r="5" fill={T.bgCard} stroke={T.primary} strokeWidth="2.5" />
+                <text x={toX(i)} y={toY(d.score) - 12} textAnchor="middle" fill={T.primary} fontSize="12" fontWeight="700" fontFamily="Inter,system-ui,sans-serif">{d.score}</text>
                 {(chartData.length <= 12 || i % Math.ceil(chartData.length / 12) === 0) && (
-                  <text x={toX(i)} y={H - 8} textAnchor="middle" fill="#9ca3af" fontSize="11" fontFamily="Inter,system-ui,sans-serif">{d.label}</text>
+                  <text x={toX(i)} y={H - 8} textAnchor="middle" fill={T.textMuted} fontSize="11" fontFamily="Inter,system-ui,sans-serif">{d.label}</text>
                 )}
               </g>
             ))}
@@ -174,17 +175,17 @@ export default function OverviewTab({ scoreHistory, overviewPageFilter, setOverv
       </section>
 
       {/* Score Breakdown by Category */}
-      <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #e5e7eb', padding: 32 }}>
-        <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 700, color: '#111827' }}>Score Breakdown</h2>
-        <p style={{ margin: '0 0 24px', fontSize: 14, color: '#6b7280' }}>Average across all audited pages</p>
+      <section style={{ background: T.bgCard, borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.3)', border: `1px solid ${T.border}`, padding: 32 }}>
+        <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 700, color: T.textPrimary }}>Score Breakdown</h2>
+        <p style={{ margin: '0 0 24px', fontSize: 14, color: T.textSecondary }}>Average across all audited pages</p>
         {latestAudits.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px 20px', background: '#f9fafb', borderRadius: 12, color: '#9ca3af' }}>No audit data yet</div>
+          <div style={{ textAlign: 'center', padding: '40px 20px', background: T.bgSubtle, borderRadius: 12, color: T.textMuted }}>No audit data yet</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {catAvgs.map(c => (
               <div key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div style={{ width: 100, fontSize: 14, fontWeight: 600, color: '#374151', flexShrink: 0 }}>{c.label}</div>
-                <div style={{ flex: 1, position: 'relative', height: 32, background: '#f3f4f6', borderRadius: 16, overflow: 'hidden' }}>
+                <div style={{ width: 100, fontSize: 14, fontWeight: 600, color: T.textSecondary, flexShrink: 0 }}>{c.label}</div>
+                <div style={{ flex: 1, position: 'relative', height: 32, background: T.bgSubtle, borderRadius: 16, overflow: 'hidden' }}>
                   <div style={{
                     height: '100%',
                     width: `${c.avg}%`,
@@ -211,29 +212,29 @@ export default function OverviewTab({ scoreHistory, overviewPageFilter, setOverv
       </section>
 
       {/* Pages Needing Attention */}
-      <section style={{ background: '#fff', borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #e5e7eb', padding: 32 }}>
-        <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 700, color: '#111827' }}>Page Performance</h2>
-        <p style={{ margin: '0 0 24px', fontSize: 14, color: '#6b7280' }}>Your pages ranked by conversion score — lowest first</p>
+      <section style={{ background: T.bgCard, borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.3)', border: `1px solid ${T.border}`, padding: 32 }}>
+        <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 700, color: T.textPrimary }}>Page Performance</h2>
+        <p style={{ margin: '0 0 24px', fontSize: 14, color: T.textSecondary }}>Your pages ranked by conversion score — lowest first</p>
         {pagesRanked.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px 20px', background: '#f9fafb', borderRadius: 12, color: '#9ca3af' }}>No pages audited yet. Run an audit to see results here.</div>
+          <div style={{ textAlign: 'center', padding: '40px 20px', background: T.bgSubtle, borderRadius: 12, color: T.textMuted }}>No pages audited yet. Run an audit to see results here.</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 1, borderRadius: 12, overflow: 'hidden', border: '1px solid #e5e7eb' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px 140px', gap: 0, padding: '12px 20px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Page</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>Score</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>Change</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>Status</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>Action</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1, borderRadius: 12, overflow: 'hidden', border: `1px solid ${T.border}` }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px 140px', gap: 0, padding: '12px 20px', background: T.bgSubtle, borderBottom: `1px solid ${T.border}` }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Page</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>Score</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>Change</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>Status</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>Action</span>
             </div>
             {pagesRanked.map((p: any, i: number) => {
               const prev = previousByPage.get(p.page_id);
               const delta = prev ? (p.overall_score || 0) - (prev.overall_score || 0) : null;
               const sc = p.overall_score || 0;
               return (
-                <div key={p.page_id} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px 140px', gap: 0, padding: '16px 20px', background: i % 2 === 0 ? '#fff' : '#fafafa', alignItems: 'center', transition: 'background 0.15s' }} onMouseEnter={e => e.currentTarget.style.background = '#f5f3ff'} onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? '#fff' : '#fafafa'}>
+                <div key={p.page_id} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px 140px', gap: 0, padding: '16px 20px', background: i % 2 === 0 ? T.bgCard : T.bgSubtle, alignItems: 'center', transition: 'background 0.15s' }} onMouseEnter={e => e.currentTarget.style.background = T.primaryBgHover} onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? T.bgCard : T.bgSubtle}>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>{p.page_title}</div>
-                    <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: T.textPrimary }}>{p.page_title}</div>
+                    <div style={{ fontSize: 12, color: T.textMuted, marginTop: 2 }}>
                       {new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </div>
                   </div>
@@ -256,9 +257,9 @@ export default function OverviewTab({ scoreHistory, overviewPageFilter, setOverv
                           setActiveTab('audits');
                         }
                       }}
-                      style={{ padding: '8px 16px', background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s', boxShadow: '0 2px 8px rgba(124,58,237,0.2)' }}
-                      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(124,58,237,0.35)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(124,58,237,0.2)'; }}
+                      style={{ padding: '8px 16px', background: T.btnPrimary, color: T.btnPrimaryText, border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s', boxShadow: '0 2px 8px rgba(245,158,11,0.2)' }}
+                      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(245,158,11,0.35)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(245,158,11,0.2)'; }}
                     >
                       View Report
                     </button>
