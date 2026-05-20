@@ -142,7 +142,7 @@ class ConversionIQ_AI
                 $messages[] = array('role' => 'user', 'content' => array(
                     array('type' => 'text',      'text'      => $user_prompt),
                     array('type' => 'text',      'text'      => $visual_instruction),
-                    array('type' => 'image_url', 'image_url' => array('url' => $chunk_shot, 'detail' => 'high')),
+                    array('type' => 'image_url', 'image_url' => array('url' => $chunk_shot, 'detail' => 'low')),
                 ));
             } else {
                 $messages[] = array('role' => 'user', 'content' => $user_prompt);
@@ -153,6 +153,7 @@ class ConversionIQ_AI
                 'messages'   => $messages,
                 'max_tokens' => $max_tokens,
                 'temperature'=> 0.1,
+                'has_image'  => ( $is_first && ! empty( $chunk_shot ) ),  // only first chunk may have a screenshot
             );
             $section_meta[] = array(
                 'name'     => $section_name,
@@ -1653,7 +1654,7 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
                 array('type' => 'text', 'text' => $visual_instruction),
                 array('type' => 'image_url', 'image_url' => array(
                     'url'    => $screenshot_url,
-                    'detail' => 'high',
+                    'detail' => 'low',  // 'low' = fixed 85 tokens; 'high' tiles the full image (expensive)
                 )),
             ));
         } else {
@@ -1661,10 +1662,11 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
         }
 
         $body = array(
-            'model'       => 'gpt-4o',
-            'messages'    => $messages,
-            'max_tokens'  => $max_tokens,
-            'temperature' => 0.1,
+            'model'     => 'gpt-4o',
+            'messages'  => $messages,
+            'max_tokens'=> $max_tokens,
+            'temperature'=> 0.1,
+            'has_image' => ! empty( $screenshot_url ),  // tell SaaS to keep a vision-capable model
         );
 
         $submit_args = array(
