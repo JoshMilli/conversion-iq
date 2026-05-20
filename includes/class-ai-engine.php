@@ -1860,6 +1860,7 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
 
         ciq_log('✅ Returning success=true with data (overall_score: ' . $parsed['overall_score'] . ')');
         return array('success' => true, 'data' => $parsed);
+    }
 
     /**
      * Fallback mock response if AI fails
