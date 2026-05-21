@@ -75,6 +75,7 @@ interface SeoTabProps {
   nonce: string;
   apiBase: string;
   pages: Page[];
+  features?: Record<string, any>;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -229,7 +230,9 @@ function DetailBlock({ title, items }: { title: string; items: { label: string; 
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
-export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
+export default function SeoTab({ nonce, apiBase, pages, features = {} }: SeoTabProps) {
+  const hasSeo = !!features.seo;
+
   const [selectedPageId, setSelectedPageId] = useState<number | null>(
     pages.length > 0 ? pages[0].id : null
   );
@@ -326,6 +329,52 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
   const passCount = audit ? audit.checklist.filter(i => i.pass).length : 0;
 
   // ── Render ──────────────────────────────────────────────────────────────
+
+  if (!hasSeo) {
+    const upgradeUrl = (window as any).ConversionIQData?.branding?.website_url || 'https://trywebtec.com';
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 24px' }}>
+        <div style={{ maxWidth: 480, textAlign: 'center' }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
+          <h2 style={{ margin: '0 0 10px', fontSize: 22, fontWeight: 700, color: T.textPrimary }}>
+            SEO Analysis
+          </h2>
+          <p style={{ margin: '0 0 28px', fontSize: 15, color: T.textSecondary, lineHeight: 1.6 }}>
+            Audit your pages for meta tags, headings, keywords, structured data, Core Web Vitals, and more.
+            Available on the <strong style={{ color: T.textPrimary }}>Starter plan</strong> and above.
+          </p>
+          <div style={{ background: T.bgSubtle, border: `1px solid ${T.border}`, borderRadius: 12,
+            padding: '20px 24px', marginBottom: 28, textAlign: 'left' }}>
+            {[
+              'Per-page SEO score with 7-category breakdown',
+              'Meta tag, heading & keyword analysis',
+              'Structured data & schema detection',
+              'Image alt text & internal link audit',
+              'Core Web Vitals (LCP, CLS, INP, FCP, TTFB)',
+              'Prioritised action list with fix instructions',
+            ].map(item => (
+              <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 10,
+                padding: '7px 0', borderBottom: `1px solid ${T.border}`, fontSize: 14,
+                color: T.textSecondary }}>
+                <span style={{ color: '#22c55e', flexShrink: 0 }}>✓</span>
+                {item}
+              </div>
+            ))}
+          </div>
+          <a
+            href={upgradeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: 'inline-block', padding: '12px 32px', background: T.primary,
+              color: T.btnPrimaryText, borderRadius: 10, fontWeight: 700, fontSize: 15,
+              textDecoration: 'none' }}
+          >
+            Upgrade to Starter
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ fontFamily: 'inherit', color: T.textPrimary }}>

@@ -2016,6 +2016,7 @@ export default function App() {
             nonce={nonce}
             apiBase={(window as any).ConversionIQData?.restUrl || '/wp-json/conversioniq/v1/'}
             pages={pages}
+            features={liveFeatures}
           />
         )}
 

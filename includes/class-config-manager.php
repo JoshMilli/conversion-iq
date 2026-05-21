@@ -99,6 +99,7 @@ class ConversionIQ_Config_Manager
                 'heatmap'                => true,
                 'heatmap_scroll'         => false,
                 'heatmap_history_days'   => 7,
+                'seo'                    => false,
             ),
             'starter' => array(
                 'max_sites'              => 1,
@@ -121,6 +122,7 @@ class ConversionIQ_Config_Manager
                 'heatmap'                => true,
                 'heatmap_scroll'         => false,
                 'heatmap_history_days'   => 7,
+                'seo'                    => true,
             ),
             'professional' => array(
                 'max_sites'              => 1,
@@ -143,6 +145,7 @@ class ConversionIQ_Config_Manager
                 'heatmap'                => true,
                 'heatmap_scroll'         => true,
                 'heatmap_history_days'   => 30,
+                'seo'                    => true,
             ),
             'business' => array(
                 'max_sites'              => 1,
@@ -165,6 +168,7 @@ class ConversionIQ_Config_Manager
                 'heatmap'                => true,
                 'heatmap_scroll'         => true,
                 'heatmap_history_days'   => 90,
+                'seo'                    => true,
             ),
             'agency' => array(
                 'max_sites'              => 100,
@@ -187,6 +191,7 @@ class ConversionIQ_Config_Manager
                 'heatmap'                => true,
                 'heatmap_scroll'         => true,
                 'heatmap_history_days'   => 90,
+                'seo'                    => true,
             ),
         );
 
