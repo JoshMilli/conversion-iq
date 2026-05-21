@@ -549,13 +549,13 @@ export default function SeoTab({ nonce, apiBase, pages }: SeoTabProps) {
                 {Object.entries(audit.category_scores).map(([cat, score]) => (
                   <div key={cat} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
                     gap: 8, padding: '12px 6px', borderRadius: 8,
-                    background: '#f8fafc', border: '1px solid #f1f5f9' }}>
+                    background: '#f8fafc', border: '1px solid #e2e8f0' }}>
                     <ScoreGauge score={score} size={44} />
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: T.textSecondary, lineHeight: 1.3 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: '#111827', lineHeight: 1.3 }}>
                         {CATEGORY_LABELS[cat]}
                       </div>
-                      <div style={{ fontSize: 10, color: T.textMuted, marginTop: 2 }}>
+                      <div style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>
                         {CATEGORY_WEIGHTS[cat]}% wt
                       </div>
                     </div>
