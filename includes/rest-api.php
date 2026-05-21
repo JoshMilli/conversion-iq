@@ -1633,6 +1633,38 @@ $results = array();
         ciq_log( 'Competitors: analysis registered for post-response execution' );
     }
 
+    // Run SEO audit for each successfully audited page in the background,
+    // after the REST response is returned to the client.
+    if ( ConversionIQ_Config_Manager::can( 'seo' ) ) {
+        $seo_page_ids = [];
+        foreach ( $results as $r ) {
+            if ( empty( $r['failed'] ) && ! empty( $r['page_id'] ) ) {
+                $seo_page_ids[] = (int) $r['page_id'];
+            }
+        }
+        if ( ! empty( $seo_page_ids ) ) {
+            register_shutdown_function( function() use ( $seo_page_ids ) {
+                if ( function_exists( 'fastcgi_finish_request' ) ) {
+                    fastcgi_finish_request();
+                }
+                @set_time_limit( 120 );
+                ciq_log( 'SEO background: starting for ' . count( $seo_page_ids ) . ' page(s)' );
+                $supabase = new ConversionIQ_Supabase_Sync();
+                foreach ( $seo_page_ids as $pid ) {
+                    $seo_result = ConversionIQ_SEO_Analyzer::analyze( $pid );
+                    if ( is_wp_error( $seo_result ) ) {
+                        ciq_log( 'SEO background: error page_id=' . $pid . ' — ' . $seo_result->get_error_message() );
+                        continue;
+                    }
+                    $supabase->send_seo_audit( $seo_result );
+                    set_transient( 'ciq_seo_last_' . $pid, $seo_result, 7 * DAY_IN_SECONDS );
+                    ciq_log( 'SEO background: ✅ page_id=' . $pid . ' score=' . $seo_result['overall_score'] );
+                }
+            } );
+            ciq_log( 'SEO background: registered for post-response execution (' . count( $seo_page_ids ) . ' page(s))' );
+        }
+    }
+
     return rest_ensure_response(array('success' => true, 'results' => $results));
 }
 
