@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 2.0.94
+ * Version: 2.0.95
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'CONVERSION_IQ_VERSION', '2.0.94' );
+define( 'CONVERSION_IQ_VERSION', '2.0.95' );
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
@@ -111,10 +111,17 @@ add_action( 'init', function() {
         wp_schedule_event( time() + DAY_IN_SECONDS, 'weekly', 'conversioniq_prune_db' );
     }
 
-    // Heatmap sync: remove old-style scheduled event if it exists (replaced by admin_init fallback)
-    $heatmap_cron = wp_next_scheduled( 'conversioniq_heatmap_sync' );
-    if ( $heatmap_cron ) {
-        wp_unschedule_event( $heatmap_cron, 'conversioniq_heatmap_sync' );
+    // Heatmap sync: ensure the daily WP-Cron event is scheduled.
+    // Belt-and-suspenders alongside the admin_init fallback — WP-Cron fires
+    // on any frontend page load after the scheduled time, so data syncs even
+    // on days when no admin visits the dashboard.
+    if ( ! wp_next_scheduled( 'conversioniq_heatmap_sync' ) ) {
+        // Schedule for 02:00 UTC tonight so it runs after midnight rollover
+        $next_run = strtotime( gmdate( 'Y-m-d' ) . ' 02:00:00 UTC' );
+        if ( $next_run <= time() ) {
+            $next_run += DAY_IN_SECONDS; // already past 2am UTC today — schedule for tomorrow
+        }
+        wp_schedule_event( $next_run, 'daily', 'conversioniq_heatmap_sync' );
     }
 
     // Schedule 2-minute audit-job poller if not already scheduled

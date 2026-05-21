@@ -1687,6 +1687,7 @@ class ConversionIQ_Supabase_Sync {
             "SELECT session_id, page_url, device_type, browser,
                     screen_w, screen_h, pixel_ratio,
                     lcp_ms, cls, fcp_ms, ttfb_ms, inp_ms,
+                    time_on_page_sec, referrer, utm_source, utm_medium, utm_campaign,
                     recorded_at
              FROM {$sessions_table}
              WHERE recorded_at BETWEEN %s AND %s
@@ -1707,12 +1708,17 @@ class ConversionIQ_Supabase_Sync {
                     'screen_w'        => $row['screen_w'] ? (int) $row['screen_w'] : null,
                     'screen_h'        => $row['screen_h'] ? (int) $row['screen_h'] : null,
                     'pixel_ratio'     => $row['pixel_ratio'] ? (float) $row['pixel_ratio'] : null,
-                    'lcp_ms'          => $row['lcp_ms']  ? (int) $row['lcp_ms']  : null,
-                    'cls'             => $row['cls']     !== null && $row['cls'] !== '' ? (float) $row['cls'] : null,
-                    'fcp_ms'          => $row['fcp_ms']  ? (int) $row['fcp_ms']  : null,
-                    'ttfb_ms'         => $row['ttfb_ms'] ? (int) $row['ttfb_ms'] : null,
-                    'inp_ms'          => $row['inp_ms']  ? (int) $row['inp_ms']  : null,
-                    'recorded_at'     => str_replace( ' ', 'T', $row['recorded_at'] ) . 'Z',
+                    'lcp_ms'           => $row['lcp_ms']  ? (int) $row['lcp_ms']  : null,
+                    'cls'              => $row['cls']     !== null && $row['cls'] !== '' ? (float) $row['cls'] : null,
+                    'fcp_ms'           => $row['fcp_ms']  ? (int) $row['fcp_ms']  : null,
+                    'ttfb_ms'          => $row['ttfb_ms'] ? (int) $row['ttfb_ms'] : null,
+                    'inp_ms'           => $row['inp_ms']  ? (int) $row['inp_ms']  : null,
+                    'time_on_page_sec' => isset( $row['time_on_page_sec'] ) && $row['time_on_page_sec'] !== null ? (int) $row['time_on_page_sec'] : null,
+                    'referrer'         => $row['referrer'] ?: null,
+                    'utm_source'       => $row['utm_source'] ?: null,
+                    'utm_medium'       => $row['utm_medium'] ?: null,
+                    'utm_campaign'     => $row['utm_campaign'] ?: null,
+                    'recorded_at'      => str_replace( ' ', 'T', $row['recorded_at'] ) . 'Z',
                 );
             }, $sessions );
 
@@ -1723,7 +1729,8 @@ class ConversionIQ_Supabase_Sync {
             ) );
             $code = is_wp_error( $resp ) ? $resp->get_error_message() : wp_remote_retrieve_response_code( $resp );
             $sessions_ok = ( $code === 201 || $code === 200 );
-            ciq_log( 'Enrichment sync sessions → Supabase ciq_heatmap_sessions: ' . count( $rows ) . ' rows, HTTP ' . $code . ( $sessions_ok ? ' ✅' : ' ❌ body=' . ( is_wp_error( $resp ) ? '' : substr( wp_remote_retrieve_body( $resp ), 0, 200 ) ) ) );
+            $resp_body   = is_wp_error( $resp ) ? '' : substr( wp_remote_retrieve_body( $resp ), 0, 400 );
+            ciq_log( 'Enrichment sync sessions → Supabase ciq_heatmap_sessions: ' . count( $rows ) . ' rows, HTTP ' . $code . ( $sessions_ok ? ' ✅' : ' ❌' ) . ( $resp_body ? ' body=' . $resp_body : '' ) );
         }
 
         // ── 2. Form analytics ─────────────────────────────────────────────
@@ -1760,8 +1767,9 @@ class ConversionIQ_Supabase_Sync {
                 'timeout' => 20,
             ) );
             $code = is_wp_error( $resp ) ? $resp->get_error_message() : wp_remote_retrieve_response_code( $resp );
-            $forms_ok = ( $code === 201 || $code === 200 );
-            ciq_log( 'Enrichment sync form_analytics → Supabase ciq_form_analytics: ' . count( $rows ) . ' rows, HTTP ' . $code . ( $forms_ok ? ' ✅' : ' ❌ body=' . ( is_wp_error( $resp ) ? '' : substr( wp_remote_retrieve_body( $resp ), 0, 200 ) ) ) );
+            $forms_ok  = ( $code === 201 || $code === 200 );
+            $resp_body = is_wp_error( $resp ) ? '' : substr( wp_remote_retrieve_body( $resp ), 0, 400 );
+            ciq_log( 'Enrichment sync form_analytics → Supabase ciq_form_analytics: ' . count( $rows ) . ' rows, HTTP ' . $code . ( $forms_ok ? ' ✅' : ' ❌' ) . ( $resp_body ? ' body=' . $resp_body : '' ) );
         }
 
         // ── 3. Above-the-fold snapshots ───────────────────────────────────
@@ -1871,5 +1879,94 @@ class ConversionIQ_Supabase_Sync {
 
         ciq_log( 'Competitor upsert failed (' . $name . '): HTTP ' . $status . ' — ' . substr( wp_remote_retrieve_body( $response ), 0, 200 ) );
         return false;
+    }
+
+    /**
+     * Fetch open suggestion sprints for a page.
+     *
+     * "Open" = marked done by the user (marked_done_at IS NOT NULL) but not yet
+     * closed by a post-sprint audit (post_audit_id IS NULL).
+     *
+     * @param string $page_url Exact page URL to match.
+     * @return array Array of sprint rows (may be empty).
+     */
+    public function fetch_open_sprints( $page_url ) {
+        if ( ! $this->supabase_anon_key || ! $this->organization_id ) {
+            return [];
+        }
+
+        $url = add_query_arg( array(
+            'organization_id' => 'eq.' . $this->organization_id,
+            'page_url'        => 'eq.' . $page_url,
+            'post_audit_id'   => 'is.null',
+            'marked_done_at'  => 'not.is.null',
+            'order'           => 'created_at.asc',
+        ), $this->supabase_url . '/rest/v1/suggestion_sprints' );
+
+        ciq_log( 'fetch_open_sprints: GET ' . $url );
+
+        $response = wp_remote_get( $url, array(
+            'headers' => array(
+                'apikey'        => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                'X-API-Key'     => $this->api_key,
+            ),
+            'timeout' => 10,
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            ciq_log( 'fetch_open_sprints: wp_error — ' . $response->get_error_message() );
+            return [];
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        $body = wp_remote_retrieve_body( $response );
+
+        if ( $code !== 200 ) {
+            ciq_log( 'fetch_open_sprints: HTTP ' . $code . ' — ' . substr( $body, 0, 200 ) );
+            return [];
+        }
+
+        $rows = json_decode( $body, true );
+        return is_array( $rows ) ? $rows : [];
+    }
+
+    /**
+     * Close a suggestion sprint with post-audit results.
+     *
+     * @param string $sprint_id UUID of the suggestion_sprints row.
+     * @param array  $data      Fields to PATCH (post_audit_id, score_delta, etc.).
+     * @return bool
+     */
+    public function close_sprint( $sprint_id, $data ) {
+        if ( ! $this->supabase_anon_key ) {
+            return false;
+        }
+
+        $url = $this->supabase_url . '/rest/v1/suggestion_sprints?id=eq.' . urlencode( $sprint_id );
+
+        ciq_log( 'close_sprint: PATCH sprint_id=' . $sprint_id );
+
+        $response = wp_remote_request( $url, array(
+            'method'  => 'PATCH',
+            'headers' => array(
+                'apikey'        => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                'Content-Type'  => 'application/json',
+                'X-API-Key'     => $this->api_key,
+                'Prefer'        => 'return=minimal',
+            ),
+            'body'    => wp_json_encode( $data ),
+            'timeout' => 10,
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            ciq_log( 'close_sprint: wp_error — ' . $response->get_error_message() );
+            return false;
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        ciq_log( 'close_sprint: HTTP ' . $code . ' sprint_id=' . $sprint_id );
+        return ( $code >= 200 && $code < 300 );
     }
 }

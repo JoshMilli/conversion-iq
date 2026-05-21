@@ -49,6 +49,22 @@
 
     if (!endpoint || !pageUrl) { return; }
 
+    // ── Page load timing & traffic source ────────────────────────────────
+    var pageLoadTime = Date.now();
+    var trafficSource = (function () {
+        try {
+            var u = new URL(pageUrl);
+            return {
+                referrer:     (document.referrer || '').slice(0, 500),
+                utm_source:   u.searchParams.get('utm_source')   || '',
+                utm_medium:   u.searchParams.get('utm_medium')   || '',
+                utm_campaign: u.searchParams.get('utm_campaign') || ''
+            };
+        } catch (e) {
+            return { referrer: '', utm_source: '', utm_medium: '', utm_campaign: '' };
+        }
+    }());
+
     // Stable session ID per browser tab (not stored in cookies — GDPR-friendlier)
     var sessionId = (function () {
         try {
@@ -263,10 +279,11 @@
         if (queue.length === 0 && !hasUnsentAtf) { return; }
         var events = queue.splice(0, queue.length);
         var batch = {
-            page_url:    pageUrl,
-            session_id:  sessionId,
-            events:      events,
-            device_info: deviceInfo
+            page_url:       pageUrl,
+            session_id:     sessionId,
+            events:         events,
+            device_info:    deviceInfo,
+            traffic_source: trafficSource
         };
         // Attach above-fold snapshot once per page load (first flush only)
         if (!aboveFoldSent && aboveFoldData) {
@@ -461,13 +478,15 @@
         if ((formList.length > 0 || hasCwv || hasAtf) && navigator.sendBeacon) {
             if (hasAtf) { aboveFoldSent = true; }
             var faBatch = JSON.stringify({
-                page_url:       pageUrl,
-                session_id:     sessionId,
-                events:         [],
-                device_info:    deviceInfo,
-                form_analytics: formList,
-                cwv:            hasCwv ? rumCwv : undefined,
-                above_fold:     hasAtf ? aboveFoldData : undefined
+                page_url:         pageUrl,
+                session_id:       sessionId,
+                events:           [],
+                device_info:      deviceInfo,
+                form_analytics:   formList,
+                cwv:              hasCwv ? rumCwv : undefined,
+                above_fold:       hasAtf ? aboveFoldData : undefined,
+                time_on_page_sec: Math.min(7200, Math.round((Date.now() - pageLoadTime) / 1000)),
+                traffic_source:   trafficSource
             });
             navigator.sendBeacon(endpoint, new Blob([faBatch], { type: 'application/json' }));
         }

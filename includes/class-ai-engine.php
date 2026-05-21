@@ -32,7 +32,8 @@ class ConversionIQ_AI
         $word_count = isset($payload['page']['word_count']) ? $payload['page']['word_count'] : 0;
         $html_structure = isset($payload['page']['html_structure']) ? $payload['page']['html_structure'] : '';
         $business = isset($payload['business']) ? $payload['business'] : array();
-        $screenshot_url = isset($payload['page']['screenshot_url']) ? $payload['page']['screenshot_url'] : null;
+        $screenshot_url  = isset($payload['page']['screenshot_url'])  ? $payload['page']['screenshot_url']  : null;
+        $sprint_context  = isset($payload['page']['sprint_context'])   ? $payload['page']['sprint_context']   : '';
 
         // Check if content is too long and needs chunking
         if (strlen($page_content) > 15000) {
@@ -42,7 +43,7 @@ class ConversionIQ_AI
 
         // Build the AI prompts (system = rubric/persona, user = page content)
         $system_prompt = self::build_system_prompt();
-        $user_prompt = self::build_user_prompt($page_title, $page_content, $page_url, $word_count, $html_structure, $business, $screenshot_url);
+        $user_prompt = self::build_user_prompt($page_title, $page_content, $page_url, $word_count, $html_structure, $business, $screenshot_url, $sprint_context);
 
         // Call Abacus.ai API
         $start_time = microtime(true);
@@ -88,9 +89,10 @@ class ConversionIQ_AI
      */
     private static function analyze_chunked($payload)
     {
-        $page_title     = isset($payload['page']['title'])         ? $payload['page']['title']         : 'Unknown Page';
-        $content        = isset($payload['page']['content'])       ? $payload['page']['content']       : '';
-        $screenshot_url = isset($payload['page']['screenshot_url'])? $payload['page']['screenshot_url']: null;
+        $page_title     = isset($payload['page']['title'])          ? $payload['page']['title']          : 'Unknown Page';
+        $content        = isset($payload['page']['content'])        ? $payload['page']['content']        : '';
+        $screenshot_url = isset($payload['page']['screenshot_url']) ? $payload['page']['screenshot_url'] : null;
+        $sprint_context = isset($payload['page']['sprint_context']) ? $payload['page']['sprint_context'] : '';
 
         ciq_log('🔍 Starting chunked analysis (batch) for: ' . $page_title);
 
@@ -125,7 +127,8 @@ class ConversionIQ_AI
                 str_word_count($compressed),
                 isset($payload['page']['html_structure']) ? $payload['page']['html_structure'] : '',
                 isset($payload['business'])               ? $payload['business']               : array(),
-                $chunk_shot
+                $chunk_shot,
+                $is_first ? $sprint_context : ''
             );
 
             $messages = array();
@@ -1481,7 +1484,7 @@ Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact struc
      * Build the user prompt — page content, business context, lead intelligence.
      * This changes for every audit.
      */
-    private static function build_user_prompt($title, $content, $url, $word_count, $html_structure, $business, $screenshot_url = null)
+    private static function build_user_prompt($title, $content, $url, $word_count, $html_structure, $business, $screenshot_url = null, $sprint_context = '')
     {
         $industry = isset($business['industry']) ? $business['industry'] : 'Not specified';
         $product = isset($business['product']) ? $business['product'] : 'Not specified';
@@ -1594,6 +1597,10 @@ HTML STRUCTURE:
 {$html_structure}{$leads_context}
 
 Score this page using the rubric from your instructions. Apply the SCORING EMPHASIS above when calibrating scores — it overrides generic rubric defaults for this specific page type. Audit every EXPECTED STRUCTURAL ELEMENT listed above and incorporate missing-element findings into your weaknesses, suggestions, or quick_wins. Provide all suggestions referencing SPECIFIC page elements. Connect recommendations to actual weaknesses (cite scores). Compute overall_score using the weights specified.{$lead_json_fragment}";
+
+        if ( $sprint_context !== '' ) {
+            $prompt .= $sprint_context;
+        }
 
         return $prompt;
     }

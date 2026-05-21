@@ -1087,6 +1087,55 @@ function conversioniq_fetch_core_web_vitals( $page_url ) {
     return conversioniq_get_rum_cwv( $page_url );
 }
 
+/**
+ * Compute bounce rate and average time-on-page for a URL within a date window.
+ *
+ * "Bounce" = a heatmap session with zero recorded events.
+ *
+ * @param string $page_url   Exact page URL.
+ * @param string $from_date  UTC datetime 'Y-m-d H:i:s'.
+ * @param string $to_date    UTC datetime 'Y-m-d H:i:s'.
+ * @return array {bounce_rate: float|null, avg_time_on_page_sec: float|null, session_count: int}
+ */
+function conversioniq_get_behavioral_metrics( $page_url, $from_date, $to_date ) {
+    global $wpdb;
+    $sessions_table = $wpdb->prefix . 'conversioniq_heatmap_sessions';
+    $events_table   = $wpdb->prefix . 'conversioniq_heatmap_events';
+
+    $total = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$sessions_table}
+         WHERE page_url = %s AND created_at >= %s AND created_at <= %s",
+        $page_url, $from_date, $to_date
+    ) );
+
+    if ( $total === 0 ) {
+        return array( 'bounce_rate' => null, 'avg_time_on_page_sec' => null, 'session_count' => 0 );
+    }
+
+    // Bounced = no events recorded for that session
+    $bounced = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$sessions_table} s
+         WHERE s.page_url = %s AND s.created_at >= %s AND s.created_at <= %s
+           AND NOT EXISTS (
+               SELECT 1 FROM {$events_table} e WHERE e.session_id = s.session_id
+           )",
+        $page_url, $from_date, $to_date
+    ) );
+
+    $avg_time = (float) $wpdb->get_var( $wpdb->prepare(
+        "SELECT AVG(time_on_page_sec) FROM {$sessions_table}
+         WHERE page_url = %s AND created_at >= %s AND created_at <= %s
+           AND time_on_page_sec IS NOT NULL AND time_on_page_sec > 0",
+        $page_url, $from_date, $to_date
+    ) );
+
+    return array(
+        'bounce_rate'          => round( $bounced / $total, 4 ),
+        'avg_time_on_page_sec' => $avg_time > 0 ? round( $avg_time, 1 ) : null,
+        'session_count'        => $total,
+    );
+}
+
 function conversioniq_run_audit(WP_REST_Request $request)
 {
     // Rate limiting: one audit request per 30 seconds per user
@@ -1233,6 +1282,90 @@ $results = array();
             ciq_log( 'CIQ Audit: no screenshot available, proceeding with text-only analysis' );
         }
 
+        // ── Sprint feedback loop: fetch open sprints before building AI payload ──
+        $open_sprints   = [];
+        $sprint_context = '';
+        $sprint_metrics = []; // keyed by sprint id => ['before' => [...], 'after' => [...]]
+        try {
+            $sprint_sync  = new ConversionIQ_Supabase_Sync();
+            $open_sprints = $sprint_sync->fetch_open_sprints( $page_url );
+        } catch ( Exception $e ) {
+            ciq_log( 'Sprint fetch error: ' . $e->getMessage() );
+        }
+
+        if ( ! empty( $open_sprints ) ) {
+            ciq_log( 'Sprint feedback: ' . count( $open_sprints ) . ' open sprint(s) found for ' . $page_url );
+            $sprint_lines = [];
+
+            foreach ( $open_sprints as $sprint ) {
+                $sprint_id = $sprint['id'] ?? null;
+                $done_at   = $sprint['marked_done_at'] ?? null;
+                $pre_score = isset( $sprint['pre_score'] ) ? (int) $sprint['pre_score'] : null;
+                $behavioral_note = '';
+
+                if ( $sprint_id && $done_at ) {
+                    $done_ts     = strtotime( $done_at );
+                    $before_from = gmdate( 'Y-m-d H:i:s', $done_ts - 30 * DAY_IN_SECONDS );
+                    $before_to   = gmdate( 'Y-m-d H:i:s', $done_ts );
+                    $after_from  = gmdate( 'Y-m-d H:i:s', $done_ts );
+                    $after_to    = gmdate( 'Y-m-d H:i:s' );
+
+                    $mb = conversioniq_get_behavioral_metrics( $page_url, $before_from, $before_to );
+                    $ma = conversioniq_get_behavioral_metrics( $page_url, $after_from, $after_to );
+                    $sprint_metrics[ $sprint_id ] = [ 'before' => $mb, 'after' => $ma ];
+
+                    if ( $mb['session_count'] >= 5 && $ma['session_count'] >= 5 ) {
+                        $br_delta = ( $ma['bounce_rate'] !== null && $mb['bounce_rate'] !== null )
+                            ? round( ( $ma['bounce_rate'] - $mb['bounce_rate'] ) * 100, 1 ) : null;
+                        $tp_delta = ( $ma['avg_time_on_page_sec'] !== null && $mb['avg_time_on_page_sec'] !== null )
+                            ? round( $ma['avg_time_on_page_sec'] - $mb['avg_time_on_page_sec'] ) : null;
+                        if ( $br_delta !== null ) {
+                            $behavioral_note .= 'bounce rate ' . ( $br_delta > 0 ? '+' : '' ) . $br_delta . '%. ';
+                        }
+                        if ( $tp_delta !== null ) {
+                            $behavioral_note .= 'avg time on page ' . ( $tp_delta > 0 ? '+' : '' ) . $tp_delta . 's. ';
+                        }
+                        if ( ! $behavioral_note ) {
+                            $behavioral_note = 'no measurable behavioral change detected yet.';
+                        }
+                    } else {
+                        $behavioral_note = 'insufficient post-change sessions (<5) — data still accumulating.';
+                    }
+                }
+
+                $suggestions = $sprint['suggestions_implemented'] ?? [];
+                if ( is_string( $suggestions ) ) {
+                    $suggestions = json_decode( $suggestions, true ) ?: [];
+                }
+                $sug_texts = [];
+                foreach ( (array) $suggestions as $sug ) {
+                    $text = is_array( $sug )
+                        ? ( $sug['suggestion_text'] ?? $sug['text'] ?? '' )
+                        : (string) $sug;
+                    if ( $text ) {
+                        $sug_texts[] = '  - ' . $text;
+                    }
+                }
+
+                $done_label    = $done_at ? gmdate( 'Y-m-d', strtotime( $done_at ) ) : 'recently';
+                $sprint_lines[] = 'Sprint (implemented ' . $done_label
+                    . ( $pre_score !== null ? ", pre-sprint score: {$pre_score}" : '' ) . '):'
+                    . "\n" . ( $sug_texts ? implode( "\n", $sug_texts ) : '  (no suggestions listed)' )
+                    . ( $behavioral_note ? "\n  Behavioral delta: {$behavioral_note}" : '' );
+            }
+
+            $sprint_context = "\n\nSPRINT FEEDBACK CONTEXT:\n"
+                . "The user previously implemented the following CRO suggestions on this page. "
+                . "Factor these changes into your re-audit and reflect any score improvements. "
+                . "Include a \"sprint_assessment\" field in your JSON output: 1–3 sentences "
+                . "assessing whether the implemented changes improved the page and what to prioritise next. "
+                . "If behavioral data is insufficient, note that more time is needed.\n\n"
+                . implode( "\n\n", $sprint_lines );
+
+            ciq_log( 'Sprint context built (' . strlen( $sprint_context ) . ' chars)' );
+        }
+        // ── End sprint fetch ──────────────────────────────────────────────────
+
         $payload = array(
             'business' => $business,
             'page' => array(
@@ -1243,6 +1376,7 @@ $results = array();
                 'html_structure' => $html_structure,
                 'screenshot_url' => $screenshot_url,
                 'core_web_vitals' => $core_web_vitals,
+                'sprint_context' => $sprint_context,
             ),
         );
 
@@ -1415,6 +1549,46 @@ $results = array();
                 } else {
                     ciq_log('Supabase sync: ❌ send_audit() returned false — audit NOT in Supabase, CWV trigger will NOT fire');
                 }
+
+                // ── Sprint close: write post-audit results back to open sprints ──
+                if ( ! empty( $open_sprints ) && $sync_success ) {
+                    $post_audit_id  = is_string( $sync_success ) ? $sync_success : ( $ai['report_token'] ?? '' );
+                    $post_score     = isset( $ai['overall_score'] ) ? (int) $ai['overall_score'] : null;
+                    $sprint_assess  = isset( $ai['sprint_assessment'] ) ? $ai['sprint_assessment'] : null;
+
+                    foreach ( $open_sprints as $sprint ) {
+                        $sprint_id = $sprint['id'] ?? null;
+                        if ( ! $sprint_id ) continue;
+
+                        $pre_score_val = isset( $sprint['pre_score'] ) ? (int) $sprint['pre_score'] : null;
+                        $score_delta   = ( $post_score !== null && $pre_score_val !== null )
+                            ? ( $post_score - $pre_score_val ) : null;
+
+                        $metrics = $sprint_metrics[ $sprint_id ] ?? [];
+                        $mb      = $metrics['before'] ?? [];
+                        $ma      = $metrics['after']  ?? [];
+
+                        $close_data = array_filter( [
+                            'post_audit_id'        => $post_audit_id ?: null,
+                            'post_score'           => $post_score,
+                            'score_delta'          => $score_delta,
+                            'bounce_rate_before'   => $mb['bounce_rate'] ?? null,
+                            'bounce_rate_after'    => $ma['bounce_rate'] ?? null,
+                            'time_on_page_before'  => isset( $mb['avg_time_on_page_sec'] ) ? (int) $mb['avg_time_on_page_sec'] : null,
+                            'time_on_page_after'   => isset( $ma['avg_time_on_page_sec'] ) ? (int) $ma['avg_time_on_page_sec'] : null,
+                            'session_count_before' => $mb['session_count'] ?? null,
+                            'session_count_after'  => $ma['session_count'] ?? null,
+                            'ai_assessment'        => $sprint_assess,
+                            'completed_at'         => gmdate( 'c' ),
+                        ], fn( $v ) => $v !== null );
+
+                        $closed = $supabase_sync->close_sprint( $sprint_id, $close_data );
+                        ciq_log( 'Sprint close: ' . ( $closed ? '✅' : '❌' )
+                            . ' sprint_id=' . $sprint_id
+                            . ' score_delta=' . ( $score_delta !== null ? $score_delta : 'n/a' ) );
+                    }
+                }
+                // ── End sprint close ──────────────────────────────────────────
             }
             catch (Exception $e) {
                 ciq_log('Supabase sync exception - ' . $e->getMessage());
@@ -3339,6 +3513,8 @@ function conversioniq_heatmap_record( WP_REST_Request $request ) {
     $form_analytics = isset( $body['form_analytics'] ) && is_array( $body['form_analytics'] ) ? $body['form_analytics'] : array();
     $above_fold     = isset( $body['above_fold'] )     && is_array( $body['above_fold'] )     ? $body['above_fold']     : null;
     $cwv            = isset( $body['cwv'] )            && is_array( $body['cwv'] )            ? $body['cwv']            : null;
+    $time_on_page_sec = isset( $body['time_on_page_sec'] ) ? min( 7200, absint( $body['time_on_page_sec'] ) ) : null;
+    $traffic_source   = isset( $body['traffic_source'] )   && is_array( $body['traffic_source'] )   ? $body['traffic_source']   : null;
 
     // Validate URL — must be a valid http/https URL
     if ( ! $raw_url || ! preg_match( '/^https?:\/\//i', $raw_url ) ) {
@@ -3415,7 +3591,7 @@ function conversioniq_heatmap_record( WP_REST_Request $request ) {
 
     // Persist device info, above-fold snapshot, form analytics, and RUM CWV
     if ( $effective_session && ( $device_info || $above_fold || ! empty( $form_analytics ) || $cwv ) ) {
-        conversioniq_heatmap_store_enrichment( $raw_url, $effective_session, $device_info, $above_fold, $form_analytics, $cwv );
+        conversioniq_heatmap_store_enrichment( $raw_url, $effective_session, $device_info, $above_fold, $form_analytics, $cwv, $time_on_page_sec, $traffic_source );
     }
 
     return new WP_REST_Response( array( 'success' => true, 'inserted' => $inserted ), 200 );
@@ -3431,7 +3607,7 @@ function conversioniq_heatmap_record( WP_REST_Request $request ) {
  * @param array|null $above_fold    Above-the-fold element snapshot.
  * @param array $form_analytics     Array of per-form tracking objects.
  */
-function conversioniq_heatmap_store_enrichment( $raw_url, $session_id, $device_info, $above_fold, $form_analytics, $cwv = null ) {
+function conversioniq_heatmap_store_enrichment( $raw_url, $session_id, $device_info, $above_fold, $form_analytics, $cwv = null, $time_on_page_sec = null, $traffic_source = null ) {
     global $wpdb;
 
     if ( ! $session_id ) { return; }
@@ -3463,8 +3639,28 @@ function conversioniq_heatmap_store_enrichment( $raw_url, $session_id, $device_i
                 $row['inp_ms']  = isset( $cwv['inp_ms']  ) ? absint( $cwv['inp_ms']  ) : null;
                 array_push( $fmt, '%d', '%f', '%d', '%d', '%d' );
             }
-            $wpdb->insert( $sessions_table, $row, $fmt );
+            if ( $traffic_source ) {
+                $row['referrer']     = isset( $traffic_source['referrer'] ) ? esc_url_raw( substr( $traffic_source['referrer'], 0, 500 ) ) : null;
+                $row['utm_source']   = isset( $traffic_source['utm_source'] ) ? sanitize_text_field( substr( $traffic_source['utm_source'], 0, 100 ) ) : null;
+                $row['utm_medium']   = isset( $traffic_source['utm_medium'] ) ? sanitize_text_field( substr( $traffic_source['utm_medium'], 0, 100 ) ) : null;
+                $row['utm_campaign'] = isset( $traffic_source['utm_campaign'] ) ? sanitize_text_field( substr( $traffic_source['utm_campaign'], 0, 100 ) ) : null;
+                array_push( $fmt, '%s', '%s', '%s', '%s' );
+            }
+            if ( $time_on_page_sec !== null ) {
+                $row['time_on_page_sec'] = $time_on_page_sec;
+                $fmt[] = '%d';
+            }
+            $result = $wpdb->insert( $sessions_table, $row, $fmt );
+            if ( $result === false ) {
+                ciq_log( 'Heatmap session INSERT failed: session=' . $session_id . ' url=' . $raw_url . ' error=' . $wpdb->last_error );
+            } else {
+                ciq_log( 'Heatmap session INSERT ok: session=' . $session_id . ' url=' . $raw_url );
+            }
+        } else {
+            ciq_log( 'Heatmap session already exists, skipping INSERT: session=' . $session_id );
         }
+    } else {
+        ciq_log( 'Heatmap session: no device_info in batch, skipping session INSERT for session=' . $session_id . ' url=' . $raw_url );
     }
 
     // ── Update RUM CWV on existing session row ────────────────────────────
@@ -3489,6 +3685,17 @@ function conversioniq_heatmap_store_enrichment( $raw_url, $session_id, $device_i
                 array( '%s' )
             );
         }
+    }
+
+    // ── Update time_on_page_sec when provided (arrives in pagehide batch) ────────
+    if ( $time_on_page_sec !== null ) {
+        $wpdb->update(
+            $sessions_table,
+            array( 'time_on_page_sec' => $time_on_page_sec ),
+            array( 'session_id' => $session_id ),
+            array( '%d' ),
+            array( '%s' )
+        );
     }
 
     // ── Above-the-fold snapshot ──────────────────────────────────────────
@@ -3544,15 +3751,23 @@ function conversioniq_heatmap_store_enrichment( $raw_url, $session_id, $device_i
                     'drop_off_field' => $insert_row['drop_off_field'],
                     'recorded_at'    => $insert_row['recorded_at'],
                 );
-                $wpdb->update(
+                $result = $wpdb->update(
                     $form_table,
                     $update_data,
                     array( 'session_id' => $session_id, 'form_id' => $form_id ),
                     array( '%d', '%d', '%s', '%s', '%s' ),
                     array( '%s', '%s' )
                 );
+                if ( $result === false ) {
+                    ciq_log( 'Form analytics UPDATE failed: session=' . $session_id . ' form=' . $form_id . ' error=' . $wpdb->last_error );
+                }
             } else {
-                $wpdb->insert( $form_table, $insert_row, $insert_formats );
+                $result = $wpdb->insert( $form_table, $insert_row, $insert_formats );
+                if ( $result === false ) {
+                    ciq_log( 'Form analytics INSERT failed: session=' . $session_id . ' form=' . $form_id . ' error=' . $wpdb->last_error );
+                } else {
+                    ciq_log( 'Form analytics INSERT ok: session=' . $session_id . ' form=' . $form_id );
+                }
             }
         }
     }
@@ -4007,12 +4222,16 @@ function conversioniq_heatmap_trigger_sync() {
         'today_utc'      => gmdate( 'Y-m-d' ),
     );
 
+    $sessions_table = $wpdb->prefix . 'conversioniq_heatmap_sessions';
+    $mysql_sessions_total = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$sessions_table}" );
+
     if ( ! $api_key || ! $org_id ) {
         ciq_log( '🔧 Heatmap trigger-sync: aborting — missing api_key or org_id.' );
         return new WP_REST_Response( array(
-            'success'     => false,
-            'message'     => 'No API key or organization ID — activate your license first.',
-            'diagnostics' => $diagnostics,
+            'success'              => false,
+            'message'              => 'No API key or organization ID — activate your license first.',
+            'mysql_sessions_total' => $mysql_sessions_total,
+            'diagnostics'          => $diagnostics,
         ), 400 );
     }
 
@@ -4078,9 +4297,10 @@ function conversioniq_heatmap_trigger_sync() {
     $diagnostics['enrichment_dates']  = $enrichment_dates;
 
     return new WP_REST_Response( array(
-        'success'     => true,
-        'message'     => "30-day backfill complete: {$synced_count} heatmap day(s) + " . count( $enrichment_dates ) . " enrichment day(s) synced to Supabase. Check debug logs for details.",
-        'diagnostics' => $diagnostics,
+        'success'              => true,
+        'message'              => "30-day backfill complete: {$synced_count} heatmap day(s) + " . count( $enrichment_dates ) . " enrichment day(s) synced to Supabase. Check debug logs for details.",
+        'mysql_sessions_total' => $mysql_sessions_total,
+        'diagnostics'          => $diagnostics,
     ), 200 );
 }
 
@@ -4197,19 +4417,72 @@ function conversioniq_heatmap_sync_daily( $date = null ) {
             );
         }, $top_element_rows ?: array() );
 
+        // Bounce sessions: sessions that only visited this one page during the day
+        $hm_sessions_table = $wpdb->prefix . 'conversioniq_heatmap_sessions';
+        $bounce_count = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM (
+                SELECT s.session_id
+                FROM {$hm_sessions_table} AS s
+                WHERE s.page_url = %s
+                  AND s.recorded_at BETWEEN %s AND %s
+                  AND (
+                      SELECT COUNT(DISTINCT e.page_url)
+                      FROM {$table} AS e
+                      WHERE e.session_id = s.session_id
+                        AND e.recorded_at BETWEEN %s AND %s
+                  ) = 1
+            ) AS bounced",
+            $page_url, $day_start, $day_end, $day_start, $day_end
+        ) );
+
+        // Average time on page (seconds) — only sessions with a recorded value
+        $avg_time_raw = $wpdb->get_var( $wpdb->prepare(
+            "SELECT AVG(time_on_page_sec)
+             FROM {$hm_sessions_table}
+             WHERE page_url = %s
+               AND recorded_at BETWEEN %s AND %s
+               AND time_on_page_sec IS NOT NULL
+               AND time_on_page_sec > 0",
+            $page_url, $day_start, $day_end
+        ) );
+        $avg_time_sec = $avg_time_raw !== null ? (int) round( (float) $avg_time_raw ) : null;
+
+        // Traffic source breakdown (top 10 by session count)
+        $traffic_rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT COALESCE(NULLIF(utm_source,''), 'direct') AS source,
+                    COUNT(*) AS sessions
+             FROM {$hm_sessions_table}
+             WHERE page_url = %s
+               AND recorded_at BETWEEN %s AND %s
+             GROUP BY source
+             ORDER BY sessions DESC
+             LIMIT 10",
+            $page_url, $day_start, $day_end
+        ), ARRAY_A );
+        $traffic_sources = array_map( function( $r ) {
+            return array( 'source' => $r['source'], 'sessions' => (int) $r['sessions'] );
+        }, $traffic_rows ?: array() );
+
+        $total_sessions_count = (int) ( $click_row['sessions'] ?? 0 );
+        $bounce_rate = $total_sessions_count > 0 ? round( $bounce_count / $total_sessions_count, 4 ) : null;
+
         $summaries[] = array(
-            'organization_id' => $org_id,
-            'site_url'        => $site_url,
-            'page_url'        => $page_url,
-            'date'            => $yesterday,
-            'total_clicks'    => (int) ( $click_row['clicks'] ?? 0 ),
-            'total_sessions'  => (int) ( $click_row['sessions'] ?? 0 ),
-            'scroll_25'       => $scroll_counts[25],
-            'scroll_50'       => $scroll_counts[50],
-            'scroll_75'       => $scroll_counts[75],
-            'scroll_90'       => $scroll_counts[90],
-            'scroll_100'      => $scroll_counts[100],
-            'top_elements'    => $top_elements,
+            'organization_id'      => $org_id,
+            'site_url'             => $site_url,
+            'page_url'             => $page_url,
+            'date'                 => $yesterday,
+            'total_clicks'         => (int) ( $click_row['clicks'] ?? 0 ),
+            'total_sessions'       => $total_sessions_count,
+            'scroll_25'            => $scroll_counts[25],
+            'scroll_50'            => $scroll_counts[50],
+            'scroll_75'            => $scroll_counts[75],
+            'scroll_90'            => $scroll_counts[90],
+            'scroll_100'           => $scroll_counts[100],
+            'top_elements'         => $top_elements,
+            'avg_time_on_page_sec' => $avg_time_sec,
+            'bounce_sessions'      => $bounce_count,
+            'bounce_rate'          => $bounce_rate,
+            'traffic_sources'      => $traffic_sources,
         );
     }
 

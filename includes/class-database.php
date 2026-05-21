@@ -466,5 +466,23 @@ class ConversionIQ_DB
             KEY recorded_at (recorded_at)
         ) $charset_collate;";
         dbDelta( $sql_atf );
+
+        // Add new analytics columns to heatmap_sessions for existing installations
+        $hm_cols = $wpdb->get_col( "DESCRIBE {$sessions_table}" );
+        if ( ! in_array( 'time_on_page_sec', $hm_cols ) ) {
+            $wpdb->query( "ALTER TABLE {$sessions_table} ADD COLUMN time_on_page_sec SMALLINT UNSIGNED DEFAULT NULL AFTER inp_ms" );
+        }
+        if ( ! in_array( 'referrer', $hm_cols ) ) {
+            $wpdb->query( "ALTER TABLE {$sessions_table} ADD COLUMN referrer VARCHAR(500) DEFAULT NULL AFTER time_on_page_sec" );
+        }
+        if ( ! in_array( 'utm_source', $hm_cols ) ) {
+            $wpdb->query( "ALTER TABLE {$sessions_table} ADD COLUMN utm_source VARCHAR(100) DEFAULT NULL AFTER referrer" );
+        }
+        if ( ! in_array( 'utm_medium', $hm_cols ) ) {
+            $wpdb->query( "ALTER TABLE {$sessions_table} ADD COLUMN utm_medium VARCHAR(100) DEFAULT NULL AFTER utm_source" );
+        }
+        if ( ! in_array( 'utm_campaign', $hm_cols ) ) {
+            $wpdb->query( "ALTER TABLE {$sessions_table} ADD COLUMN utm_campaign VARCHAR(100) DEFAULT NULL AFTER utm_medium" );
+        }
     }
 }
