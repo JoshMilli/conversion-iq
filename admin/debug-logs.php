@@ -102,6 +102,39 @@ if ($log_exists) {
             <?php endif; ?>
         </form>
         
+        <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+            <button type="button" class="button" onclick="reregisterSync()">🔄 Re-register Sync Endpoint</button>
+            <span id="reregister-result" style="font-size: 13px;"></span>
+        </div>
+
+        <script>
+        function reregisterSync() {
+            const result = document.getElementById('reregister-result');
+            result.innerHTML = '<em>Registering…</em>';
+
+            fetch('<?php echo esc_js( rest_url('conversioniq/v1/reregister-sync') ); ?>', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-WP-Nonce': '<?php echo esc_js( wp_create_nonce('wp_rest') ); ?>'
+                },
+                body: '{}'
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.ok) {
+                    result.innerHTML = '<span style="color:green">&#10003; Registered — SaaS will pick this site up on its next sync run.</span>';
+                } else {
+                    result.innerHTML = '<span style="color:red">&#10007; ' + (data.message || 'Failed — check debug log for details.') + '</span>';
+                }
+            })
+            .catch(err => {
+                result.innerHTML = '<span style="color:red">&#10007; Fetch error: ' + err.message + '</span>';
+            });
+        }
+        </script>
+        </form>
+        
         <?php if ($log_exists): ?>
             <form method="post" style="margin-top: 10px;">
                 <?php wp_nonce_field('conversioniq_clear_logs'); ?>
