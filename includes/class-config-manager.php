@@ -310,6 +310,14 @@ class ConversionIQ_Config_Manager
             update_option(self::FEATURE_FLAGS_OPTION, $body['features']);
         }
 
+        // If the SaaS signals an immediate sync (fallback for sites the SaaS
+        // cannot reach directly via sync-plugins), run the heatmap sync now.
+        // This fires entirely as an outbound call from WP — no inbound needed.
+        if ( ! empty( $body['trigger_sync'] ) && function_exists( 'conversioniq_heatmap_sync_daily' ) ) {
+            ciq_log( 'ConversionIQ Config Sync: SaaS requested immediate data sync — running now.' );
+            conversioniq_heatmap_sync_daily();
+        }
+
         update_option(self::CONFIG_UPDATED_OPTION, time());
         ciq_log('ConversionIQ Config Sync: success');
         return true;
