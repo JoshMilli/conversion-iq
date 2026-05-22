@@ -141,6 +141,10 @@ add_action( 'init', function() {
         ConversionIQ_DB::create_tables();
         flush_rewrite_rules();
         update_option( 'conversioniq_version', CONVERSION_IQ_VERSION );
+        // Notify SaaS of the new version immediately rather than waiting for
+        // the next daily config-sync cron.
+        ConversionIQ_Config_Manager::sync_from_saas();
+        ciq_log( 'ConversionIQ: version updated to ' . CONVERSION_IQ_VERSION . ' — config sync triggered.' );
     }
 } );
 
@@ -432,6 +436,10 @@ function conversioniq_install() {
     if ( ! wp_next_scheduled( 'conversioniq_poll_audit_jobs' ) ) {
         wp_schedule_event( time() + 120, 'conversioniq_twominutes', 'conversioniq_poll_audit_jobs' );
     }
+
+    // Push version + sync endpoint to SaaS on activation/reactivation.
+    // Runs after a short delay so REST routes are fully registered first.
+    wp_schedule_single_event( time() + 10, 'conversioniq_sync_config' );
 }
 register_activation_hook( __FILE__, 'conversioniq_install' );
 
