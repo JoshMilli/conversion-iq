@@ -1309,7 +1309,18 @@ $results = array();
         }
 
         // Capture a screenshot of this page for visual AI analysis.
-        $screenshot_url = conversioniq_capture_audit_screenshot( $page_url, $force_screenshot );
+        $screenshot_result = conversioniq_capture_audit_screenshot( $page_url, $force_screenshot );
+
+        // Abort the audit if the screenshot service detected a broken page.
+        if ( is_wp_error( $screenshot_result ) && $screenshot_result->get_error_code() === 'page_broken' ) {
+            return new WP_REST_Response( array(
+                'success'    => false,
+                'error_code' => 'page_broken',
+                'message'    => $screenshot_result->get_error_message(),
+            ), 422 );
+        }
+
+        $screenshot_url = is_wp_error( $screenshot_result ) ? null : $screenshot_result;
         if ( $screenshot_url ) {
             ciq_log( 'CIQ Audit: screenshot ready for GPT-4o visual analysis — ' . $page_url );
         } else {
@@ -3988,6 +3999,15 @@ function conversioniq_capture_audit_screenshot( $page_url, $force_refresh = fals
         $source = ! empty( $data['from_cache'] ) ? 'cached' : 'new capture';
         ciq_log( 'CIQ screenshot [' . $source . ']: ' . $data['screenshot_url'] );
         return $data['screenshot_url'];
+    }
+
+    // Page health check: SaaS detected broken page content (PHP errors, DB errors, etc.)
+    // Return a WP_Error so the audit can surface a helpful message rather than proceeding
+    // with a broken screenshot.
+    if ( isset( $data['error_code'] ) && $data['error_code'] === 'page_broken' ) {
+        $msg = ! empty( $data['message'] ) ? $data['message'] : 'Your page appears broken (PHP or database errors detected). Please clear your site cache and retry.';
+        ciq_log( 'CIQ screenshot: page_broken detected — ' . $msg );
+        return new WP_Error( 'page_broken', $msg );
     }
 
     // On a 5xx error retry once after a short pause — the screenshot service
