@@ -793,6 +793,40 @@ add_action('rest_api_init', function () {
             },
         ));
 
+        // Re-register sync endpoint — forces a fresh get-config POST to the SaaS so that
+        // sync_endpoint and sync_secret are stored/updated on the SaaS side. This is what
+        // the SaaS sync-plugins cron uses to know which WordPress sites to call.
+        register_rest_route('conversioniq/v1', '/reregister-sync', array(
+            'methods'             => 'POST',
+            'permission_callback' => function() { return current_user_can( 'manage_options' ); },
+            'callback'            => function() {
+                $license_key = get_option( 'conversioniq_license_key', '' );
+                if ( empty( $license_key ) ) {
+                    return new WP_REST_Response( array(
+                        'ok'      => false,
+                        'message' => 'No license key configured — cannot register.',
+                    ), 200 );
+                }
+
+                $sync_secret   = conversioniq_get_sync_secret();
+                $sync_endpoint = rest_url( 'conversioniq/v1/sync-daily' );
+
+                $result = ConversionIQ_Config_Manager::sync_from_saas();
+
+                ciq_log( '🔄 Re-register sync: sync_from_saas() returned ' . ( $result ? 'true' : 'false' )
+                    . ' | sync_endpoint=' . $sync_endpoint );
+
+                return new WP_REST_Response( array(
+                    'ok'            => $result,
+                    'message'       => $result
+                        ? 'Successfully re-registered. The SaaS now has this site\'s sync_endpoint and sync_secret.'
+                        : 'sync_from_saas() returned false — check debug logs for the HTTP error from /api/get-config.',
+                    'sync_endpoint' => $sync_endpoint,
+                    'secret_length' => strlen( $sync_secret ),
+                ), 200 );
+            },
+        ));
+
         // Debug/diagnostic endpoint — WP admin only. Runs the full poll handler inline
         // and returns a detailed report. Use this to verify the cron pipeline works
         // without waiting for WP-Cron to fire naturally.

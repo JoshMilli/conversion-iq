@@ -231,6 +231,7 @@ if ( ! function_exists( 'get_option' ) ) {
         <button class="action-button" onclick="clearCache()">Clear Cache</button>
         <button class="action-button" onclick="testSaasConnectivity()" style="background:#2271b1;">Test SaaS Connectivity</button>
         <button class="action-button" onclick="testWorkerHealth()" style="background:#1a7e4a;">Worker Health</button>
+        <button class="action-button" onclick="reregisterSync()" style="background:#7e3af2;">Re-register Sync Endpoint</button>
     </p>
     <div id="test-results"></div>
 
@@ -327,6 +328,35 @@ function testWorkerHealth() {
     })
     .catch(err => {
         results.innerHTML = '<p style="color:red">❌ Health check failed: ' + err.message + '</p>';
+    });
+}
+
+function reregisterSync() {
+    const results = document.getElementById('test-results');
+    results.innerHTML = '<p>Re-registering sync endpoint with the SaaS (calling /api/get-config)...</p>';
+
+    fetch('<?php echo rest_url('conversioniq/v1/reregister-sync'); ?>', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-WP-Nonce': '<?php echo wp_create_nonce('wp_rest'); ?>'
+        },
+        body: '{}'
+    })
+    .then(r => r.json())
+    .then(data => {
+        const color = data.ok ? 'green' : 'red';
+        let html = '<p style="color:' + color + '"><strong>' + (data.ok ? '\u2705 ' : '\u274C ') + data.message + '</strong></p>';
+        if (data.ok) {
+            html += '<p>Sync endpoint registered: <code>' + data.sync_endpoint + '</code></p>';
+            html += '<p>Secret key length: ' + data.secret_length + ' chars</p>';
+            html += '<p style="color:#666">The SaaS <code>sync-plugins</code> cron should now show <code>total &gt; 0</code> on its next run.</p>';
+        }
+        html += '<pre style="background:#f0f0f0;padding:10px;font-size:12px">' + JSON.stringify(data, null, 2) + '</pre>';
+        results.innerHTML = html;
+    })
+    .catch(err => {
+        results.innerHTML = '<p style="color:red">\u274C Error: ' + err.message + '</p>';
     });
 }
 
