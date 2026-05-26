@@ -1648,23 +1648,22 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
             // Multi-modal message: existing text analysis prompt + explicit visual instructions + screenshot.
             // The visual instruction block sits between the text and the image so the model reads
             // the scoring context immediately before looking at the image.
-            $visual_instruction = "A full-page screenshot of this page is attached below. Use it as primary visual evidence:\n"
-                . "- Above-the-fold: note exactly what a visitor sees before scrolling — headline, CTA button, hero image. "
-                .   "If the primary CTA button is not visible in the first viewport, lower cta_strength accordingly.\n"
-                . "- CTA visual prominence: assess the button's colour contrast, size, and spacing relative to surrounding elements.\n"
-                . "- Layout density & whitespace: judge readability_score from actual typography, line-height, and paragraph spacing visible in the screenshot, not just the extracted text.\n"
-                . "- Trust signals: look for badge images, star-rating widgets, team/founder photos, or certification logos that may not appear in the HTML text — credit them in trust_score if present.\n"
-                . "- Visual richness: identify images, graphics, video thumbnails, or interactive widget placeholders that inform engagement_score.\n"
-                . "In your insights and suggestions, cite specific visual observations (e.g. ‘The screenshot shows the CTA button is below the fold on desktop’, "
-                .   "‘No trust badge images are visible in the screenshot despite claims in the copy’). "
-                . "Do not invent visual details not visible in the screenshot.";
+            $visual_instruction = "A full-page screenshot of this page is attached. This screenshot is AUTHORITATIVE for all visual CRO checklist items (1,2,3,5,7,11,13).\n\n"
+                . "CRITICAL: CRO Structural Signals marked 'UNCONFIRMED FROM HTML' or 'NOT DETECTED' for visual items mean the HTML parser could not detect the element — NOT that it is absent. For visual items, base present=true/false SOLELY on what you directly observe in this screenshot:\n"
+                . "- Item 1 (CTA Above the Fold): Is there a clearly styled button or CTA link visible without scrolling?\n"
+                . "- Item 2 (Trust Signals): Are there ANY logos, badges, or credential images visible — client logos, 'as seen in' bars, award badges, or media/brand logos all count.\n"
+                . "- Item 3 (Inline Social Proof): Are testimonial cards, review quotes, headshots, or star-rating widgets visible?\n"
+                . "- Item 5 (Sticky CTA in Nav): Is there a button in the navigation/header bar?\n"
+                . "- Item 7 (Clear Visual Hierarchy): Does the layout show clear heading weight, whitespace, and visual flow?\n\n"
+                . "Additionally assess for scoring: CTA button colour contrast, size, and spacing (cta_strength); layout density and whitespace (readability_score); images/graphics richness (engagement_score).\n"
+                . "Cite specific visual observations in suggestions (e.g. 'The screenshot shows the CTA button is below the fold'). Do not invent visual details.";
 
             $messages[] = array('role' => 'user', 'content' => array(
                 array('type' => 'text', 'text' => $prompt),
                 array('type' => 'text', 'text' => $visual_instruction),
                 array('type' => 'image_url', 'image_url' => array(
                     'url'    => $screenshot_url,
-                    'detail' => 'low',  // 'low' = fixed 85 tokens; 'high' tiles the full image (expensive)
+                    'detail' => 'auto',  // 'auto' picks resolution; 'low' loses too much detail for CRO checks
                 )),
             ));
         } else {

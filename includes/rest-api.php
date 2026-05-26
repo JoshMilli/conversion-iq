@@ -173,28 +173,42 @@ function conversioniq_extract_html_structure( $html, $page_url = '' )
     $above_fold_html = preg_replace( '/<script[\s>][\s\S]*?<\/script>/i', '', $above_fold_html );
     $above_fold_html = preg_replace( '/<style[\s>][\s\S]*?<\/style>/i',  '', $above_fold_html );
     $above_fold = substr( $above_fold_html, 0, 5000 );
+    // First pass: CTA-class buttons (strongest HTML signal)
     if (preg_match_all('/<(?:button|a)[^>]*(?:class|role)[^>]*(?:btn|button|cta|get-started|start|try|buy|book|request|contact|sign-up|signup)[^>]*>([^<]{2,60})<\/(?:button|a)>/i', $above_fold, $cta_matches)) {
         $cta_texts = array_unique(array_map('wp_strip_all_tags', $cta_matches[1]));
-        $cro_signals[] = 'CTA Above the Fold: YES â€” found button/link element(s) in first screen area: "' . implode('", "', array_slice($cta_texts, 0, 3)) . '"';
-    } elseif (preg_match('/<(?:button|a)[^>]*>([^<]{2,40})<\/(?:button|a)>/i', $above_fold, $m)) {
-        $cro_signals[] = 'CTA Above the Fold: POSSIBLE â€” interactive element in hero area: "' . wp_strip_all_tags($m[1]) . '"';
+        $cro_signals[] = 'CTA Above the Fold: YES — found CTA button/link in hero area: "' . implode('", "', array_slice($cta_texts, 0, 3)) . '"';
+    // Second pass: any button/link with CTA-action text (catches custom-styled/theme buttons)
+    } elseif (preg_match_all('/<(?:button|a)[^>]*>([^<]{2,80})<\/(?:button|a)>/i', $above_fold, $any_matches)) {
+        $cta_action_texts = array_filter( array_map( 'wp_strip_all_tags', $any_matches[1] ), function( $t ) {
+            return preg_match('/\b(?:join|book|get|start|explore|discover|shop|buy|contact|sign\s*up|register|try|request|enquire|enrol|apply|learn\s+more|find\s+out|speak|consult|schedule|reserve|access|download|claim)\b/i', trim( $t ) );
+        } );
+        if ( ! empty( $cta_action_texts ) ) {
+            $cro_signals[] = 'CTA Above the Fold: YES — found CTA-action button/link in hero area: "' . implode('", "', array_slice( array_values( $cta_action_texts ), 0, 3 ) ) . '"';
+        } else {
+            $cro_signals[] = 'CTA Above the Fold: UNCONFIRMED FROM HTML (visual item — HTML could not confirm a CTA; use screenshot as primary evidence)';
+        }
     } else {
-        $cro_signals[] = 'CTA Above the Fold: NOT DETECTED in first screen area';
+        $cro_signals[] = 'CTA Above the Fold: UNCONFIRMED FROM HTML (visual item — HTML could not confirm a CTA; use screenshot as primary evidence)';
     }
 
-    // 2. Trust Signals â€” image alt text + class names for certs, awards, badges
+    // 2. Trust Signals — image alt text, class names for certs/awards/badges, and client logo bars
     $trust_imgs = array();
-    if (preg_match_all('/<img[^>]*alt=["\']([^"\']*(?:cert|award|badge|accredit|iso|ssl|secure|verified|partner|member|guarantee)[^"\']*)["\'][^>]*>/i', $html, $img_alts)) {
+    if (preg_match_all('/<img[^>]*alt=["\'\']([^"\'\'']*(?:cert|award|badge|accredit|iso|ssl|secure|verified|partner|member|guarantee)[^"\'\'']*)["\'\'][^>]*>/i', $html, $img_alts)) {
         $trust_imgs = array_map('wp_strip_all_tags', $img_alts[1]);
     }
-    $has_trust_section = preg_match('/(?:class|id)=["\'][^"\']*(?:trust|badge|cert|award|accredit|partner|guarantee)[^"\']*["\']/i', $html);
-    $trust_text_match = preg_match('/\b(?:certified|accredited|award[- ]winning|ISO[- ]\d+|BBB|google\s+partner|microsoft\s+partner|as\s+seen\s+in)\b/i', $html);
-    if (!empty($trust_imgs)) {
-        $cro_signals[] = 'Trust Signals (Certs/Awards): YES â€” trust image(s) with alt: "' . implode('", "', array_slice($trust_imgs, 0, 3)) . '"';
-    } elseif ($has_trust_section || $trust_text_match) {
-        $cro_signals[] = 'Trust Signals (Certs/Awards): POSSIBLE â€” trust-related class/text detected on page';
+    $has_trust_section  = preg_match('/(?:class|id)=["\'\'][^"\'\'']*(?:trust|badge|cert|award|accredit|guarantee)[^"\'\'']*["\'\'']/i', $html);
+    $has_trust_text     = preg_match('/\b(?:certified|accredited|award[- ]winning|ISO[- ]\d+|BBB|google\s+partner|microsoft\s+partner|as\s+seen\s+in)\b/i', $html);
+    // Client logo bars and "featured in" sections are also strong trust signals
+    $has_logo_bar       = preg_match('/(?:class|id)=["\'\'][^"\'\'']*(?:featured[-_]?in|as[-_]?seen|client[-_]?logo|logo[-_]?bar|media[-_]?logo|brand[-_]?logo|partner[-_]?logo|press[-_]?logo|featured[-_]?clients|client[-_]?strip|logo[-_]?strip)[^"\'\'']*["\'\'']/i', $html);
+    $has_featured_text  = preg_match('/\b(?:featured\s+(?:in|clients?)|as\s+seen\s+in|our\s+clients?|clients?\s+include|trusted\s+by|worked\s+with|in\s+the\s+press|press\s+coverage|media\s+coverage)\b/i', $html);
+    if ( ! empty( $trust_imgs ) ) {
+        $cro_signals[] = 'Trust Signals (Certs/Awards): YES — trust image(s) with alt: "' . implode('", "', array_slice($trust_imgs, 0, 3)) . '"';
+    } elseif ( $has_trust_section || $has_trust_text ) {
+        $cro_signals[] = 'Trust Signals (Certs/Awards): YES — trust-related class/text detected on page';
+    } elseif ( $has_logo_bar || $has_featured_text ) {
+        $cro_signals[] = 'Trust Signals (Certs/Awards): LIKELY — client/partner logo section or "featured in" text detected (logos are image-only; verify against screenshot)';
     } else {
-        $cro_signals[] = 'Trust Signals (Certs/Awards): NOT DETECTED â€” no certification/award images or text found';
+        $cro_signals[] = 'Trust Signals (Certs/Awards): UNCONFIRMED FROM HTML (visual item — client logos and award badges are image-only; use screenshot as primary evidence)';
     }
 
     // 3. Inline Social Proof â€” testimonials (already handled above), star ratings, review counts
@@ -217,13 +231,21 @@ function conversioniq_extract_html_structure( $html, $page_url = '' )
         $cro_signals[] = 'Urgency/Scarcity: NOT DETECTED';
     }
 
-    // 5. Sticky CTA in Nav â€” nav element containing a button or CTA-style link
-    if (preg_match('/<(?:nav|header)[^>]*>[\s\S]{0,3000}?<(?:button|a)[^>]*(?:btn|button|cta|get-started|start|try|buy|book|request|sign-up|signup)[^>]*>/i', $html)) {
-        $cro_signals[] = 'Sticky CTA in Nav: YES â€” CTA button/link detected inside nav or header element';
-    } elseif (preg_match('/(?:class|id)=["\'][^"\']*(?:sticky|fixed)[^"\']*["\']/i', $html) && preg_match('/<(?:button|a)[^>]*(?:btn|cta)[^>]*>/i', $html)) {
-        $cro_signals[] = 'Sticky CTA in Nav: POSSIBLE â€” sticky/fixed element with CTA detected';
+    // 5. Sticky CTA in Nav — nav element containing a button or CTA-style link
+    // First pass: CTA-class button/link in nav/header
+    if (preg_match('/<(?:nav|header)[^>]*>[\\s\\S]{0,3000}?<(?:button|a)[^>]*(?:btn|button|cta|get-started|start|try|buy|book|request|sign-up|signup)[^>]*>/i', $html)) {
+        $cro_signals[] = 'Sticky CTA in Nav: YES — CTA button/link detected inside nav or header element';
+    // Second pass: any button/link with CTA-action text inside nav/header (catches custom themes)
+    } elseif (preg_match('/<(?:nav|header)[^>]*>([\\s\\S]{0,5000}?)<\/(?:nav|header)>/i', $html, $nav_block_m) &&
+              preg_match_all('/<(?:button|a)[^>]*>([^<]{3,80})<\/(?:button|a)>/i', $nav_block_m[1], $nav_link_m) &&
+              ! empty( array_filter( array_map( 'wp_strip_all_tags', $nav_link_m[1] ), function( $t ) {
+                  return preg_match('/\b(?:book|get|start|join|contact|try|request|enquire|apply|buy|shop|sign\s*up|free|consult|speak|schedule|reserve|access|claim)\b/i', trim($t) );
+              } ) ) ) {
+        $cro_signals[] = 'Sticky CTA in Nav: YES — CTA-action link/button detected in nav/header element';
+    } elseif (preg_match('/(?:class|id)=["\'\'][^"\'\'']*(?:sticky|fixed)[^"\'\'']*["\'\'']/i', $html) && preg_match('/<(?:button|a)[^>]*(?:btn|cta)[^>]*>/i', $html)) {
+        $cro_signals[] = 'Sticky CTA in Nav: POSSIBLE — sticky/fixed element with CTA detected';
     } else {
-        $cro_signals[] = 'Sticky CTA in Nav: NOT DETECTED';
+        $cro_signals[] = 'Sticky CTA in Nav: UNCONFIRMED FROM HTML (visual item — use screenshot to check for a persistent CTA button in the navigation bar)';
     }
 
     // 6. Reassurance Micro-copy (friction reducers near CTAs)
@@ -300,7 +322,7 @@ function conversioniq_extract_html_structure( $html, $page_url = '' )
     }
 
     if (!empty($cro_signals)) {
-        $summary .= "\nCRO Structural Signals (HTML-derived â€” use these as primary evidence for cro_checklist):\n";
+        $summary .= "\nCRO Structural Signals (HTML-derived — PRIMARY evidence for COPY/BEHAVIOUR items 4,6,8,9,10,12; for VISUAL items 1,2,3,5,7,11,13 the screenshot overrides HTML — treat UNCONFIRMED/NOT DETECTED as no evidence, not as absent):\n";
         foreach ($cro_signals as $signal) {
             $summary .= 'â€¢ ' . $signal . "\n";
         }
