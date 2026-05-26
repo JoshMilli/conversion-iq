@@ -1787,6 +1787,11 @@ $results = array();
                 ciq_log( 'SEO background: starting for ' . count( $seo_page_ids ) . ' page(s)' );
                 $supabase = new ConversionIQ_Supabase_Sync();
                 foreach ( $seo_page_ids as $pid ) {
+                    $cached = get_transient( 'ciq_seo_last_' . $pid );
+                    if ( $cached !== false ) {
+                        ciq_log( 'SEO background: skipping page_id=' . $pid . ' — already audited (cached score=' . ( $cached['overall_score'] ?? '?' ) . ', expires in 7 days)' );
+                        continue;
+                    }
                     $seo_result = ConversionIQ_SEO_Analyzer::analyze( $pid );
                     if ( is_wp_error( $seo_result ) ) {
                         ciq_log( 'SEO background: error page_id=' . $pid . ' — ' . $seo_result->get_error_message() );
