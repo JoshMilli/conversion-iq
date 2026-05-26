@@ -193,13 +193,13 @@ function conversioniq_extract_html_structure( $html, $page_url = '' )
 
     // 2. Trust Signals — image alt text, class names for certs/awards/badges, and client logo bars
     $trust_imgs = array();
-    if (preg_match_all('/<img[^>]*alt=["\'\']([^"\'\'']*(?:cert|award|badge|accredit|iso|ssl|secure|verified|partner|member|guarantee)[^"\'\'']*)["\'\'][^>]*>/i', $html, $img_alts)) {
+    if (preg_match_all('/<img[^>]*alt=[\x22\x27]([^\x22\x27]*(?:cert|award|badge|accredit|iso|ssl|secure|verified|partner|member|guarantee)[^\x22\x27]*)[\x22\x27][^>]*>/i', $html, $img_alts)) {
         $trust_imgs = array_map('wp_strip_all_tags', $img_alts[1]);
     }
-    $has_trust_section  = preg_match('/(?:class|id)=["\'\'][^"\'\'']*(?:trust|badge|cert|award|accredit|guarantee)[^"\'\'']*["\'\'']/i', $html);
+    $has_trust_section  = preg_match('/(?:class|id)=[\x22\x27][^\x22\x27]*(?:trust|badge|cert|award|accredit|guarantee)[^\x22\x27]*[\x22\x27]/i', $html);
     $has_trust_text     = preg_match('/\b(?:certified|accredited|award[- ]winning|ISO[- ]\d+|BBB|google\s+partner|microsoft\s+partner|as\s+seen\s+in)\b/i', $html);
     // Client logo bars and "featured in" sections are also strong trust signals
-    $has_logo_bar       = preg_match('/(?:class|id)=["\'\'][^"\'\'']*(?:featured[-_]?in|as[-_]?seen|client[-_]?logo|logo[-_]?bar|media[-_]?logo|brand[-_]?logo|partner[-_]?logo|press[-_]?logo|featured[-_]?clients|client[-_]?strip|logo[-_]?strip)[^"\'\'']*["\'\'']/i', $html);
+    $has_logo_bar       = preg_match('/(?:class|id)=[\x22\x27][^\x22\x27]*(?:featured[-_]?in|as[-_]?seen|client[-_]?logo|logo[-_]?bar|media[-_]?logo|brand[-_]?logo|partner[-_]?logo|press[-_]?logo|featured[-_]?clients|client[-_]?strip|logo[-_]?strip)[^\x22\x27]*[\x22\x27]/i', $html);
     $has_featured_text  = preg_match('/\b(?:featured\s+(?:in|clients?)|as\s+seen\s+in|our\s+clients?|clients?\s+include|trusted\s+by|worked\s+with|in\s+the\s+press|press\s+coverage|media\s+coverage)\b/i', $html);
     if ( ! empty( $trust_imgs ) ) {
         $cro_signals[] = 'Trust Signals (Certs/Awards): YES — trust image(s) with alt: "' . implode('", "', array_slice($trust_imgs, 0, 3)) . '"';
@@ -242,7 +242,7 @@ function conversioniq_extract_html_structure( $html, $page_url = '' )
                   return preg_match('/\b(?:book|get|start|join|contact|try|request|enquire|apply|buy|shop|sign\s*up|free|consult|speak|schedule|reserve|access|claim)\b/i', trim($t) );
               } ) ) ) {
         $cro_signals[] = 'Sticky CTA in Nav: YES — CTA-action link/button detected in nav/header element';
-    } elseif (preg_match('/(?:class|id)=["\'\'][^"\'\'']*(?:sticky|fixed)[^"\'\'']*["\'\'']/i', $html) && preg_match('/<(?:button|a)[^>]*(?:btn|cta)[^>]*>/i', $html)) {
+    } elseif (preg_match('/(?:class|id)=[\x22\x27][^\x22\x27]*(?:sticky|fixed)[^\x22\x27]*[\x22\x27]/i', $html) && preg_match('/<(?:button|a)[^>]*(?:btn|cta)[^>]*>/i', $html)) {
         $cro_signals[] = 'Sticky CTA in Nav: POSSIBLE — sticky/fixed element with CTA detected';
     } else {
         $cro_signals[] = 'Sticky CTA in Nav: UNCONFIRMED FROM HTML (visual item — use screenshot to check for a persistent CTA button in the navigation bar)';
