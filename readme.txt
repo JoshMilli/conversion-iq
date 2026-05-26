@@ -58,6 +58,15 @@ Yes. Conversion IQ extracts rendered content from any published page regardless 
 
 == Changelog ==
 
+= 2.1.0 =
+* Fix: device/browser data (device_type, browser, screen_w/h, pixel_ratio) was not reaching Supabase — the enrichment sync SELECT included time_on_page_sec, referrer, utm_source, utm_medium, utm_campaign but those columns were missing from existing installations (only in ALTER TABLE, not in CREATE TABLE SQL), causing MySQL to return a column-not-found error and silently send 0 sessions to the SaaS server
+* Fix: added time_on_page_sec, referrer, utm_source, utm_medium, utm_campaign to the CREATE TABLE SQL for conversioniq_heatmap_sessions so dbDelta() adds them to existing tables when create_tables() runs
+* Fix: version bump to 2.1.0 triggers the create_tables() schema migration automatically on the next admin page load for all existing installations
+* Improvement: enrichment sync now logs $wpdb->last_error alongside the sessions-found count so SQL failures are visible in the debug log rather than silently showing "found = 0"
+* Improvement: above-fold CRO checklist now validates against real browser data — measureAboveFold() in JS tracker expanded from 4 to 9 element types (added nav_cta, trust_badge, testimonial, pricing, progress)
+* Improvement: conversioniq_extract_html_structure() queries the last 30 real browser sessions for the page URL and appends a [BROWSER-CONFIRMED] block with per-element presence percentages to the AI context
+* Improvement: AI engine prompt updated to treat [BROWSER-CONFIRMED] signals as primary evidence for visual CRO checks (H1, CTA, hero image, nav CTA, trust badges, testimonials, pricing, progress indicators), falling back to HTML-only analysis when no browser data exists
+
 = 2.0.83 =
 * Fix: page-type detection now correctly identifies About, Services, Contact, FAQ, and Pricing pages — previously all pages with a trailing slash matched as Homepage, causing identical scores across all page types
 * Improvement: above-fold CTA detection strips <head>, <script>, and <style> blocks before sampling hero markup, expanded window from 4,000 to 5,000 chars

@@ -1656,8 +1656,8 @@ class ConversionIQ_Supabase_Sync {
     public function sync_enrichment_data( $date = null ) {
         global $wpdb;
 
-        if ( ! $this->supabase_anon_key || ! $this->organization_id ) {
-            ciq_log( 'Enrichment sync: aborting — no Supabase credentials.' );
+        if ( ! $this->api_key || ! $this->organization_id ) {
+            ciq_log( 'Enrichment sync: aborting — no API key or org ID.' );
             return;
         }
 
@@ -1673,13 +1673,10 @@ class ConversionIQ_Supabase_Sync {
 
         ciq_log( 'Enrichment sync: starting for date=' . $target_date . ' org=' . substr( $org_id, 0, 8 ) . '…' );
 
-        $headers = array(
-            'apikey'        => $this->supabase_anon_key,
-            'Authorization' => 'Bearer ' . $this->supabase_anon_key,
-            'Content-Type'  => 'application/json',
-            'X-API-Key'     => $this->api_key,
-            'Prefer'        => 'resolution=ignore-duplicates,return=minimal',
-        );
+        // Payload buckets — populated below, sent together to the SaaS server.
+        $session_payload = array();
+        $form_payload    = array();
+        $atf_payload     = array();
 
         // ── 1. Device / browser sessions ─────────────────────────────────
         $sessions_table = $wpdb->prefix . 'conversioniq_heatmap_sessions';
@@ -1695,7 +1692,7 @@ class ConversionIQ_Supabase_Sync {
             $day_start, $day_end
         ), ARRAY_A );
 
-        ciq_log( 'Enrichment sync: local sessions found = ' . count( $sessions ?? array() ) . ' (table: ' . $sessions_table . ')' );
+        ciq_log( 'Enrichment sync: local sessions found = ' . count( $sessions ?? array() ) . ' (table: ' . $sessions_table . ')' . ( $wpdb->last_error ? ' SQL error: ' . $wpdb->last_error : '' ) );
 
         if ( ! empty( $sessions ) ) {
             $rows = array_map( function( $row ) use ( $org_id ) {
@@ -1722,15 +1719,7 @@ class ConversionIQ_Supabase_Sync {
                 );
             }, $sessions );
 
-            $resp = wp_remote_post( $this->supabase_url . '/rest/v1/ciq_heatmap_sessions', array(
-                'headers' => $headers,
-                'body'    => wp_json_encode( $rows ),
-                'timeout' => 20,
-            ) );
-            $code = is_wp_error( $resp ) ? $resp->get_error_message() : wp_remote_retrieve_response_code( $resp );
-            $sessions_ok = ( $code === 201 || $code === 200 );
-            $resp_body   = is_wp_error( $resp ) ? '' : substr( wp_remote_retrieve_body( $resp ), 0, 400 );
-            ciq_log( 'Enrichment sync sessions → Supabase ciq_heatmap_sessions: ' . count( $rows ) . ' rows, HTTP ' . $code . ( $sessions_ok ? ' ✅' : ' ❌' ) . ( $resp_body ? ' body=' . $resp_body : '' ) );
+            $session_payload = $rows;
         }
 
         // ── 2. Form analytics ─────────────────────────────────────────────
@@ -1761,15 +1750,7 @@ class ConversionIQ_Supabase_Sync {
                 );
             }, $forms );
 
-            $resp = wp_remote_post( $this->supabase_url . '/rest/v1/ciq_form_analytics', array(
-                'headers' => $headers,
-                'body'    => wp_json_encode( $rows ),
-                'timeout' => 20,
-            ) );
-            $code = is_wp_error( $resp ) ? $resp->get_error_message() : wp_remote_retrieve_response_code( $resp );
-            $forms_ok  = ( $code === 201 || $code === 200 );
-            $resp_body = is_wp_error( $resp ) ? '' : substr( wp_remote_retrieve_body( $resp ), 0, 400 );
-            ciq_log( 'Enrichment sync form_analytics → Supabase ciq_form_analytics: ' . count( $rows ) . ' rows, HTTP ' . $code . ( $forms_ok ? ' ✅' : ' ❌' ) . ( $resp_body ? ' body=' . $resp_body : '' ) );
+            $form_payload = $rows;
         }
 
         // ── 3. Above-the-fold snapshots ───────────────────────────────────
@@ -1803,15 +1784,35 @@ class ConversionIQ_Supabase_Sync {
                 );
             }, $atf_rows );
 
-            $resp = wp_remote_post( $this->supabase_url . '/rest/v1/ciq_above_fold', array(
-                'headers' => $headers,
-                'body'    => wp_json_encode( $rows ),
-                'timeout' => 20,
-            ) );
-            $code = is_wp_error( $resp ) ? $resp->get_error_message() : wp_remote_retrieve_response_code( $resp );
-            $atf_ok = ( $code === 201 || $code === 200 );
-            ciq_log( 'Enrichment sync above_fold → Supabase ciq_above_fold: ' . count( $rows ) . ' rows, HTTP ' . $code . ( $atf_ok ? ' ✅' : ' ❌ body=' . ( is_wp_error( $resp ) ? '' : substr( wp_remote_retrieve_body( $resp ), 0, 200 ) ) ) );
+            $atf_payload = $rows;
         }
+
+        // ── Send all three datasets to the SaaS server in one request ──────
+        // The SaaS server inserts using the service_role key, which bypasses RLS.
+        $payload      = array(
+            'organization_id' => $org_id,
+            'date'            => $target_date,
+            'sessions'        => $session_payload,
+            'form_analytics'  => $form_payload,
+            'above_fold'      => $atf_payload,
+        );
+        $payload_json = wp_json_encode( $payload );
+
+        ciq_log( 'Enrichment sync: sending sessions=' . count( $session_payload ) . ' forms=' . count( $form_payload ) . ' atf=' . count( $atf_payload ) . ' to SaaS (' . strlen( $payload_json ) . ' bytes)' );
+
+        $resp = wp_remote_post( 'https://conversioniq-app.com/api/heatmap/sync-enrichment', array(
+            'headers' => array(
+                'Content-Type'  => 'application/json',
+                'Authorization' => 'Bearer ' . $this->api_key,
+            ),
+            'body'    => $payload_json,
+            'timeout' => 30,
+        ) );
+
+        $code      = is_wp_error( $resp ) ? $resp->get_error_message() : wp_remote_retrieve_response_code( $resp );
+        $resp_body = is_wp_error( $resp ) ? '' : substr( wp_remote_retrieve_body( $resp ), 0, 400 );
+        $ok        = ( $code === 200 || $code === 201 );
+        ciq_log( 'Enrichment sync → conversioniq-app.com/api/heatmap/sync-enrichment: HTTP ' . $code . ( $ok ? ' ✅' : ' ❌' ) . ( $resp_body ? ' body=' . $resp_body : '' ) );
 
         ciq_log( 'Enrichment sync complete for ' . $target_date
             . ' — sessions:' . count( $sessions ?? array() )

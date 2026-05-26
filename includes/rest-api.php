@@ -24,9 +24,9 @@ function conversioniq_has_basecamp_email($emails)
 /**
  * Extract HTML structure for AI analysis
  */
-function conversioniq_extract_html_structure($html)
+function conversioniq_extract_html_structure( $html, $page_url = '' )
 {
-    // Identify likely page sections based on content and structure
+    global $wpdb;
     $sections = array();
 
     // Collect visible headings text
@@ -303,6 +303,97 @@ function conversioniq_extract_html_structure($html)
         $summary .= "\nCRO Structural Signals (HTML-derived â€” use these as primary evidence for cro_checklist):\n";
         foreach ($cro_signals as $signal) {
             $summary .= 'â€¢ ' . $signal . "\n";
+        }
+    }
+
+    // ── Real Browser Signals (from JS above-fold tracker) ────────────────
+    // These are ground-truth observations from actual visitor sessions.
+    // For VISUAL checklist items (1,2,3,5,11,13) these OVERRIDE HTML signals.
+    if ( $page_url ) {
+        $atf_table = $wpdb->prefix . 'conversioniq_above_fold';
+        $atf_rows  = $wpdb->get_results( $wpdb->prepare(
+            "SELECT elements FROM {$atf_table}
+             WHERE page_url = %s
+             ORDER BY recorded_at DESC
+             LIMIT 30",
+            $page_url
+        ), ARRAY_A );
+
+        if ( ! empty( $atf_rows ) ) {
+            $session_count   = count( $atf_rows );
+            $elem_above_fold = array(); // type => sessions where element was above fold
+            $elem_total      = array(); // type => sessions where element appeared at all
+
+            foreach ( $atf_rows as $row ) {
+                $elements = json_decode( $row['elements'], true );
+                if ( ! is_array( $elements ) ) { continue; }
+                $seen_types = array();
+                foreach ( $elements as $el ) {
+                    $type = $el['type'] ?? '';
+                    if ( ! $type ) { continue; }
+                    if ( ! isset( $seen_types[ $type ] ) ) {
+                        $elem_total[ $type ] = ( $elem_total[ $type ] ?? 0 ) + 1;
+                        $seen_types[ $type ] = true;
+                    }
+                    if ( ! empty( $el['above_fold'] ) && ! isset( $seen_types[ $type . '_atf' ] ) ) {
+                        $elem_above_fold[ $type ]      = ( $elem_above_fold[ $type ] ?? 0 ) + 1;
+                        $seen_types[ $type . '_atf' ]  = true;
+                    }
+                }
+            }
+
+            $browser_signals = array();
+
+            // 1. CTA Above the Fold
+            if ( isset( $elem_above_fold['cta'] ) ) {
+                $pct = round( $elem_above_fold['cta'] / $session_count * 100 );
+                $browser_signals[] = "CTA Above the Fold [BROWSER-CONFIRMED]: CTA visible in initial viewport on {$pct}% of {$session_count} real sessions -- set present=true";
+            } elseif ( isset( $elem_total['cta'] ) ) {
+                $browser_signals[] = "CTA Above the Fold [BROWSER-CONFIRMED]: CTA exists but appeared BELOW the fold in all {$session_count} measured sessions -- set present=false";
+            }
+
+            // 5. Sticky CTA in Nav
+            if ( isset( $elem_above_fold['nav_cta'] ) ) {
+                $pct = round( $elem_above_fold['nav_cta'] / $session_count * 100 );
+                $browser_signals[] = "Sticky CTA in Nav [BROWSER-CONFIRMED]: Nav/header CTA visible above fold on {$pct}% of {$session_count} sessions -- set present=true";
+            } elseif ( isset( $elem_total['nav_cta'] ) ) {
+                $browser_signals[] = "Sticky CTA in Nav [BROWSER-CONFIRMED]: Nav CTA detected but not reliably in initial viewport";
+            }
+
+            // 2. Trust Signals
+            if ( isset( $elem_above_fold['trust_badge'] ) ) {
+                $pct = round( $elem_above_fold['trust_badge'] / $session_count * 100 );
+                $browser_signals[] = "Trust Signals [BROWSER-CONFIRMED]: Trust badge/cert image above fold on {$pct}% of {$session_count} sessions -- set present=true";
+            } elseif ( isset( $elem_total['trust_badge'] ) ) {
+                $browser_signals[] = "Trust Signals [BROWSER-CONFIRMED]: Trust badge found on page but appears below the initial viewport";
+            }
+
+            // 3. Inline Social Proof
+            if ( isset( $elem_above_fold['testimonial'] ) ) {
+                $pct = round( $elem_above_fold['testimonial'] / $session_count * 100 );
+                $browser_signals[] = "Inline Social Proof [BROWSER-CONFIRMED]: Testimonial/review section visible above fold on {$pct}% of sessions -- set present=true";
+            } elseif ( isset( $elem_total['testimonial'] ) ) {
+                $browser_signals[] = "Inline Social Proof [BROWSER-CONFIRMED]: Testimonial section exists on page (below fold) in {$session_count} measured sessions";
+            }
+
+            // 11. Anchor Pricing
+            if ( isset( $elem_total['pricing'] ) ) {
+                $above_note = isset( $elem_above_fold['pricing'] ) ? 'visible above fold' : 'appears below fold';
+                $browser_signals[] = "Anchor Pricing [BROWSER-CONFIRMED]: Pricing section detected in {$session_count} real sessions ({$above_note})";
+            }
+
+            // 13. Progress Indicators
+            if ( isset( $elem_total['progress'] ) ) {
+                $above_note = isset( $elem_above_fold['progress'] ) ? 'visible above fold' : 'appears below fold';
+                $browser_signals[] = "Progress Indicators [BROWSER-CONFIRMED]: Progress/step element detected in real browser sessions ({$above_note})";
+            }
+
+            if ( ! empty( $browser_signals ) ) {
+                $summary .= "\nReal Browser Signals -- {$session_count} tracked visitor sessions on this URL (OVERRIDE HTML signals for visual checklist items 1,2,3,5,11,13):\n";
+                foreach ( $browser_signals as $bs ) {
+                    $summary .= '* ' . $bs . "\n";
+                }
+            }
         }
     }
 
@@ -1258,7 +1349,7 @@ $results = array();
         $html_structure = '';
         $html = $rendered_content; // reuse rendered output as our "html" source
 
-        $html_structure = conversioniq_extract_html_structure( $rendered_content );
+        $html_structure = conversioniq_extract_html_structure( $rendered_content, $page_url );
         ciq_log( 'HTML structure extracted from rendered content (' . strlen( $html_structure ) . ' chars)' );
 
         // Fallback for page builders that store content in meta (not post_content):
@@ -3018,7 +3109,7 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
             // Build HTML structure directly from the page-builder rendered content.
             $html_structure = '';
             $html_body = $rendered_content;
-            $html_structure = conversioniq_extract_html_structure( $rendered_content );
+            $html_structure = conversioniq_extract_html_structure( $rendered_content, $page_url );
 
             if ( strlen( trim( $content ) ) < 300 ) {
                 $fallback_text = conversioniq_extract_body_text( $rendered_content );
@@ -3611,8 +3702,11 @@ function conversioniq_heatmap_record( WP_REST_Request $request ) {
         return new WP_REST_Response( array( 'success' => false, 'message' => 'Internal URL not tracked' ), 400 );
     }
 
-    // Strip volatile params so the same page always maps to a single URL
-    $strip_params = array( 'ver', 'preview_nonce', 'reauth', 'redirect_to', '_wpnonce' );
+    // Strip volatile params so the same page always maps to a single URL.
+    // Ad-network click IDs (fbclid, gclid, etc.) are unique per click — stripping
+    // them here mirrors the JS tracker so MySQL always stores a canonical URL.
+    $strip_params = array( 'ver', 'preview_nonce', 'reauth', 'redirect_to', '_wpnonce',
+                           'fbclid', 'gclid', 'msclkid', 'ttclid', 'li_fat_id', 'igshid', 'mc_cid', 'mc_eid' );
     $parts        = wp_parse_url( $raw_url );
     if ( ! empty( $parts['query'] ) ) {
         wp_parse_str( $parts['query'], $qs_arr );
@@ -3666,8 +3760,8 @@ function conversioniq_heatmap_record( WP_REST_Request $request ) {
         $effective_session = preg_replace( '/[^a-z0-9]/i', '', substr( $events[0]['session_id'], 0, 100 ) );
     }
 
-    // Persist device info, above-fold snapshot, form analytics, and RUM CWV
-    if ( $effective_session && ( $device_info || $above_fold || ! empty( $form_analytics ) || $cwv ) ) {
+    // Persist device info, above-fold snapshot, form analytics, RUM CWV, and time-on-page
+    if ( $effective_session && ( $device_info || $above_fold || ! empty( $form_analytics ) || $cwv || $time_on_page_sec !== null ) ) {
         conversioniq_heatmap_store_enrichment( $raw_url, $effective_session, $device_info, $above_fold, $form_analytics, $cwv, $time_on_page_sec, $traffic_source );
     }
 
@@ -4288,10 +4382,25 @@ function conversioniq_external_sync_daily( WP_REST_Request $request ) {
     ), 200 );
 }
 
-function conversioniq_heatmap_trigger_sync() {
+function conversioniq_heatmap_trigger_sync( WP_REST_Request $request = null ) {
     global $wpdb;
 
-    ciq_log( '🔧 Heatmap trigger-sync: 30-day backfill triggered by admin.' );
+    // If a single date is passed (e.g. 'yesterday' or 'YYYY-MM-DD'), run just that day.
+    $single_date = null;
+    if ( $request ) {
+        $raw = $request->get_param( 'date' );
+        if ( $raw === 'yesterday' ) {
+            $single_date = gmdate( 'Y-m-d', strtotime( '-1 day' ) );
+        } elseif ( $raw && preg_match( '/^\d{4}-\d{2}-\d{2}$/', $raw ) ) {
+            $single_date = $raw;
+        }
+    }
+
+    if ( $single_date ) {
+        ciq_log( '🔧 Heatmap trigger-sync: single-day sync triggered by admin for ' . $single_date . '.' );
+    } else {
+        ciq_log( '🔧 Heatmap trigger-sync: 30-day backfill triggered by admin.' );
+    }
 
     $api_key = get_option( 'conversioniq_api_key', '' );
     $org_id  = get_option( 'conversioniq_organization_id', '' );
@@ -4322,14 +4431,20 @@ function conversioniq_heatmap_trigger_sync() {
     }
 
     $table        = $wpdb->prefix . 'conversioniq_heatmap_events';
-    $synced_dates = array();
+    $synced_dates  = array();
     $skipped_dates = array();
 
-    // Loop through the last 30 days (most recent first) and sync any day with data.
-    // This serves as both the initial backfill and a re-sync that overwrites dirty
-    // rows in Supabase (e.g. internal URLs recorded before filters were added).
-    for ( $i = 1; $i <= 30; $i++ ) {
-        $date      = gmdate( 'Y-m-d', strtotime( "-{$i} days" ) );
+    // Build the list of dates to process: single day or last 30 days.
+    $dates_to_check = array();
+    if ( $single_date ) {
+        $dates_to_check[] = $single_date;
+    } else {
+        for ( $i = 1; $i <= 30; $i++ ) {
+            $dates_to_check[] = gmdate( 'Y-m-d', strtotime( "-{$i} days" ) );
+        }
+    }
+
+    foreach ( $dates_to_check as $date ) {
         $day_start = $date . ' 00:00:00';
         $day_end   = $date . ' 23:59:59';
 
@@ -4347,24 +4462,28 @@ function conversioniq_heatmap_trigger_sync() {
             conversioniq_heatmap_sync_daily( $date );
             $synced_dates[] = $date . ' (' . $count . ' events)';
         } else {
+            ciq_log( '🔧 Heatmap trigger-sync: no events for ' . $date . ' — skipping.' );
             $skipped_dates[] = $date;
         }
     }
 
     $synced_count = count( $synced_dates );
-    ciq_log( '🔧 Heatmap trigger-sync: backfill complete — ' . $synced_count . ' day(s) synced.' );
+    ciq_log( '🔧 Heatmap trigger-sync: ' . ( $single_date ? 'single-day sync' : 'backfill' ) . ' complete — ' . $synced_count . ' day(s) synced.' );
 
-    // Enrichment backfill: sync sessions, form analytics, and above-fold data for
-    // ALL 30 days + today ($i=0). Uses ignore-duplicates so re-running is safe.
-    ciq_log( '🔧 Heatmap trigger-sync: running enrichment backfill for today + last 30 days.' );
+    // Enrichment sync: sessions, form analytics, above-fold.
+    $label = $single_date ? 'single day ' . $single_date : 'today + last 30 days';
+    ciq_log( '🔧 Heatmap trigger-sync: running enrichment sync for ' . $label . '.' );
     $supabase_enrichment = new ConversionIQ_Supabase_Sync();
     $enrichment_dates = array();
-    for ( $i = 0; $i <= 30; $i++ ) {
-        $edate      = gmdate( 'Y-m-d', strtotime( "-{$i} days" ) );
+
+    $enrichment_dates_to_check = $single_date
+        ? array( $single_date )
+        : array_merge( array( gmdate( 'Y-m-d' ) ), $dates_to_check ); // today + last 30
+
+    foreach ( $enrichment_dates_to_check as $edate ) {
         $eday_start = $edate . ' 00:00:00';
         $eday_end   = $edate . ' 23:59:59';
 
-        // Only bother if at least one enrichment table has data for this date
         $sessions_table = $wpdb->prefix . 'conversioniq_heatmap_sessions';
         $ecount = (int) $wpdb->get_var( $wpdb->prepare(
             "SELECT COUNT(*) FROM {$sessions_table} WHERE recorded_at BETWEEN %s AND %s",
@@ -4376,15 +4495,16 @@ function conversioniq_heatmap_trigger_sync() {
             $enrichment_dates[] = $edate . ' (' . $ecount . ' sessions)';
         }
     }
-    ciq_log( '🔧 Enrichment backfill complete — ' . count( $enrichment_dates ) . ' day(s) synced.' );
+    ciq_log( '🔧 Enrichment sync complete — ' . count( $enrichment_dates ) . ' day(s) synced.' );
 
     $diagnostics['synced_dates']      = $synced_dates;
     $diagnostics['skipped_dates']     = $skipped_dates;
     $diagnostics['enrichment_dates']  = $enrichment_dates;
 
+    $mode_label = $single_date ? "single-day sync for {$single_date}" : '30-day backfill';
     return new WP_REST_Response( array(
         'success'              => true,
-        'message'              => "30-day backfill complete: {$synced_count} heatmap day(s) + " . count( $enrichment_dates ) . " enrichment day(s) synced to Supabase. Check debug logs for details.",
+        'message'              => ucfirst( $mode_label ) . " complete: {$synced_count} heatmap day(s) + " . count( $enrichment_dates ) . ' enrichment day(s) synced to Supabase. Check debug logs for details.',
         'mysql_sessions_total' => $mysql_sessions_total,
         'diagnostics'          => $diagnostics,
     ), 200 );
@@ -4434,7 +4554,7 @@ function conversioniq_heatmap_sync_daily( $date = null ) {
            AND page_url NOT LIKE '%%fl_builder=%%'
            AND page_url NOT LIKE '%%et_pb_preview=%%'
            AND page_url NOT LIKE '%%preview=true%%'
-         LIMIT 100",
+         LIMIT 500",
         $day_start,
         $day_end
     ) );
@@ -4454,14 +4574,24 @@ function conversioniq_heatmap_sync_daily( $date = null ) {
 
     foreach ( $pages as $page_url ) {
 
-        // Total clicks and unique sessions for this page/day
+        // Total clicks (click events only)
         $click_row = $wpdb->get_row( $wpdb->prepare(
-            "SELECT COUNT(*) AS clicks, COUNT(DISTINCT session_id) AS sessions
+            "SELECT COUNT(*) AS clicks
              FROM {$table}
              WHERE page_url = %s AND event_type = 'click'
                AND recorded_at BETWEEN %s AND %s",
             $page_url, $day_start, $day_end
         ), ARRAY_A );
+
+        // Total unique sessions across ALL event types (clicks + scrolls).
+        // Using click-only sessions was causing pages with scroll-only visitors
+        // (e.g. bounced paid-traffic sessions) to report total_sessions = 0.
+        $total_sessions_count = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(DISTINCT session_id) FROM {$table}
+             WHERE page_url = %s AND session_id IS NOT NULL
+               AND recorded_at BETWEEN %s AND %s",
+            $page_url, $day_start, $day_end
+        ) );
 
         // Scroll milestone counts
         // Count distinct sessions that fired a scroll event at each milestone.
@@ -4549,15 +4679,26 @@ function conversioniq_heatmap_sync_daily( $date = null ) {
             return array( 'source' => $r['source'], 'sessions' => (int) $r['sessions'] );
         }, $traffic_rows ?: array() );
 
-        $total_sessions_count = (int) ( $click_row['sessions'] ?? 0 );
         $bounce_rate = $total_sessions_count > 0 ? round( $bounce_count / $total_sessions_count, 4 ) : null;
+
+        $total_clicks = (int) ( $click_row['clicks'] ?? 0 );
+
+        ciq_log( sprintf(
+            '🔄   [%s] clicks=%d sessions=%d scroll=(%d/%d/%d/%d/%d) bounce=%d avg_time=%s',
+            $page_url,
+            $total_clicks,
+            $total_sessions_count,
+            $scroll_counts[25], $scroll_counts[50], $scroll_counts[75], $scroll_counts[90], $scroll_counts[100],
+            $bounce_count,
+            $avg_time_sec !== null ? $avg_time_sec . 's' : 'n/a'
+        ) );
 
         $summaries[] = array(
             'organization_id'      => $org_id,
             'site_url'             => $site_url,
             'page_url'             => $page_url,
             'date'                 => $yesterday,
-            'total_clicks'         => (int) ( $click_row['clicks'] ?? 0 ),
+            'total_clicks'         => $total_clicks,
             'total_sessions'       => $total_sessions_count,
             'scroll_25'            => $scroll_counts[25],
             'scroll_50'            => $scroll_counts[50],
@@ -4573,35 +4714,40 @@ function conversioniq_heatmap_sync_daily( $date = null ) {
     }
 
     if ( empty( $summaries ) ) {
+        ciq_log( '🔄 Heatmap sync_daily: no summaries built for ' . $yesterday . ' — nothing to POST.' );
         return;
     }
 
-    ciq_log( '🔄 Heatmap sync_daily: built ' . count( $summaries ) . ' summary record(s). POSTing to SaaS...' );
+    $payload = array(
+        'organization_id' => $org_id,
+        'site_url'        => $site_url,
+        'date'            => $yesterday,
+        'summaries'       => $summaries,
+    );
+    $payload_json = wp_json_encode( $payload );
+
+    ciq_log( '🔄 Heatmap sync_daily: built ' . count( $summaries ) . ' summary record(s) for ' . $yesterday . '. Payload size=' . strlen( $payload_json ) . ' bytes. POSTing to SaaS…' );
 
     $response = wp_remote_post( 'https://conversioniq-app.com/api/heatmap/sync-summary', array(
         'headers' => array(
             'Content-Type'  => 'application/json',
             'Authorization' => 'Bearer ' . $api_key,
         ),
-        'body'    => wp_json_encode( array(
-            'organization_id' => $org_id,
-            'site_url'        => $site_url,
-            'date'            => $yesterday,
-            'summaries'       => $summaries,
-        ) ),
+        'body'    => $payload_json,
         'timeout' => 30,
     ) );
 
     if ( is_wp_error( $response ) ) {
-        ciq_log( 'ConversionIQ Heatmap sync error: ' . $response->get_error_message() );
+        ciq_log( '🔄 ❌ Heatmap sync_daily: WP_Error — ' . $response->get_error_message() );
         return;
     }
 
-    $code = wp_remote_retrieve_response_code( $response );
+    $code      = wp_remote_retrieve_response_code( $response );
+    $resp_body = wp_remote_retrieve_body( $response );
     if ( $code === 200 ) {
-        ciq_log( 'ConversionIQ Heatmap sync: pushed ' . count( $summaries ) . ' page summary(s) for ' . $yesterday );
+        ciq_log( '🔄 ✅ Heatmap sync_daily: HTTP 200 — pushed ' . count( $summaries ) . ' page summary(s) for ' . $yesterday . '. Response: ' . $resp_body );
     } else {
-        ciq_log( 'ConversionIQ Heatmap sync: HTTP ' . $code . ' — ' . wp_remote_retrieve_body( $response ) );
+        ciq_log( '🔄 ❌ Heatmap sync_daily: HTTP ' . $code . ' — ' . $resp_body );
     }
 
     // Sync enrichment data (device sessions, form analytics, above-fold) to Supabase

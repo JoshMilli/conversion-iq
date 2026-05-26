@@ -34,7 +34,10 @@
     // Stripped: Elementor versioning, WP nonces, preview ids, Beaver Builder.
     var _stripParams = ['ver', 'elementor-preview', 'elementor_library',
         'preview_id', 'preview_nonce', 'preview', 'et_pb_preview',
-        'fl_builder', 'reauth', 'redirect_to', '_wpnonce'];
+        'fl_builder', 'reauth', 'redirect_to', '_wpnonce',
+        // Ad-network click IDs — unique per click, must be stripped or every
+        // ad visitor creates a separate page URL and fragments heatmap data.
+        'fbclid', 'gclid', 'msclkid', 'ttclid', 'li_fat_id', 'igshid', 'mc_cid', 'mc_eid'];
     var pageUrl = (function () {
         try {
             var u = new URL(window.location.href);
@@ -180,10 +183,16 @@
     function measureAboveFold() {
         var vh = window.innerHeight;
         var checks = [
-            { type: 'h1',         query: 'h1' },
-            { type: 'cta',        query: '.btn,.cta,button[type="submit"],[class*="btn"],[class*="cta"]' },
-            { type: 'hero_image', query: '[class*="hero"] img,[class*="banner"] img' },
-            { type: 'form',       query: 'form' }
+            { type: 'h1',          query: 'h1' },
+            { type: 'cta',         query: '.btn,.cta,button[type="submit"],[class*="btn"],[class*="cta"],a[href][class*="button"]' },
+            { type: 'hero_image',  query: '[class*="hero"] img,[class*="banner"] img' },
+            { type: 'form',        query: 'form' },
+            // CRO-checklist-specific element types
+            { type: 'nav_cta',     query: 'nav a[class*="btn"],nav a[class*="cta"],nav button,header a[class*="btn"],header button' },
+            { type: 'trust_badge', query: '[class*="trust"] img,[class*="badge"] img,[class*="cert"] img,[class*="award"] img,[class*="accredit"] img' },
+            { type: 'testimonial', query: '[class*="testimonial"],[class*="review"],[class*="social-proof"],[class*="feedback"]' },
+            { type: 'pricing',     query: '[class*="pricing"],[class*="plan"],[class*="package"],[class*="tier"]' },
+            { type: 'progress',    query: '[class*="progress"],[class*="stepper"],[class*="wizard"],[class*="step-indicator"],[class*="breadcrumb"]' }
         ];
         var elements = [];
         checks.forEach(function (c) {
@@ -475,7 +484,9 @@
         // Final safety net: include above-fold if flush() couldn't send it
         // (e.g. aboveFoldData wasn't ready when the last event batch fired)
         var hasAtf = !aboveFoldSent && aboveFoldData;
-        if ((formList.length > 0 || hasCwv || hasAtf) && navigator.sendBeacon) {
+        // Always send the pagehide beacon so time_on_page_sec is captured for
+        // every session, even when there are no forms, CWV, or above-fold data.
+        if (navigator.sendBeacon) {
             if (hasAtf) { aboveFoldSent = true; }
             var faBatch = JSON.stringify({
                 page_url:         pageUrl,

@@ -1570,10 +1570,13 @@ Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact struc
         $screenshot_notice = '';
         if ( ! $screenshot_url ) {
             $screenshot_notice = "\nSCREENSHOT NOTICE: No page screenshot is available for this audit. "
-                . "You MUST NOT fabricate or guess visual observations. "
+                . "However, the HTML structure data may include a 'Real Browser Signals' section containing "
+                . "ground-truth observations from real visitor sessions collected by the JS tracker. "
+                . "If that section is present, use it as primary evidence for visual CRO checklist items. "
+                . "Where no browser signals exist for a visual item, you MUST NOT fabricate or guess visual observations. "
                 . "For CRO checklist items 1 (CTA Above the Fold), 2 (Trust Signals), 3 (Inline Social Proof), "
-                . "5 (Sticky CTA in Nav), 7 (Clear Visual Hierarchy), 11 (Anchor Pricing), and 13 (Progress Indicators): "
-                . "set present=false unless the HTML signal data explicitly confirms presence, "
+                . "5 (Sticky CTA in Nav), 11 (Anchor Pricing), and 13 (Progress Indicators): "
+                . "if no [BROWSER-CONFIRMED] signal exists for the item, set present=false unless HTML signals explicitly confirm presence, "
                 . "and set explanation to a statement based solely on HTML evidence (e.g. \"Assessed from HTML signals only — no screenshot available\"). "
                 . "Do not include screenshot-observation phrases in suggestions or insights.\n";
         }

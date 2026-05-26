@@ -143,7 +143,175 @@ if ($log_exists) {
             </form>
         <?php endif; ?>
     </div>
-    
+
+    <!-- ── Heatmap Sync Test Panel ─────────────────────────────────────── -->
+    <div style="background: white; padding: 20px; margin-bottom: 20px; border: 1px solid #ccc; border-radius: 4px;">
+        <h3 style="margin-top: 0; margin-bottom: 4px;">🔄 Heatmap Sync Tester</h3>
+        <p style="color: #666; margin: 0 0 14px;">Manually trigger a 30-day heatmap backfill to Supabase. Use this to test the sync pipeline, recover after a cron failure, or debug why summaries aren't appearing.</p>
+
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px;">
+            <button type="button" id="btn-heatmap-sync" class="button button-primary" onclick="triggerHeatmapSync()">
+                🔄 Trigger Heatmap Sync (30-day backfill)
+            </button>
+            <button type="button" id="btn-heatmap-sync-yesterday" class="button" onclick="triggerHeatmapSyncDate('yesterday')">
+                📅 Sync Yesterday Only
+            </button>
+            <span id="sync-status" style="font-size: 13px; margin-left: 4px;"></span>
+        </div>
+
+        <div id="sync-results" style="display:none; margin-top: 16px;"></div>
+    </div>
+
+    <script>
+    function triggerHeatmapSync() {
+        runHeatmapSync(
+            document.getElementById('btn-heatmap-sync'),
+            '<?php echo esc_js( rest_url('conversioniq/v1/heatmap/trigger-sync') ); ?>',
+            '{}'
+        );
+    }
+
+    function triggerHeatmapSyncDate(when) {
+        // Calls the external-cron endpoint with yesterday's date via the admin REST route
+        runHeatmapSync(
+            document.getElementById('btn-heatmap-sync-yesterday'),
+            '<?php echo esc_js( rest_url('conversioniq/v1/heatmap/trigger-sync') ); ?>',
+            JSON.stringify({ date: when })
+        );
+    }
+
+    function runHeatmapSync(btn, url, body) {
+        const status  = document.getElementById('sync-status');
+        const results = document.getElementById('sync-results');
+        const origTxt = btn.textContent;
+
+        btn.disabled = true;
+        btn.textContent = '⏳ Syncing…';
+        status.innerHTML = '<em style="color:#666;">Running — this may take up to 60 seconds…</em>';
+        results.style.display = 'none';
+        results.innerHTML = '';
+
+        const startMs = Date.now();
+
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-WP-Nonce': '<?php echo esc_js( wp_create_nonce('wp_rest') ); ?>'
+            },
+            body: body
+        })
+        .then(r => {
+            if (!r.ok && r.status !== 400) { throw new Error('HTTP ' + r.status); }
+            return r.json();
+        })
+        .then(data => {
+            const elapsed = ((Date.now() - startMs) / 1000).toFixed(1);
+            btn.disabled = false;
+            btn.textContent = origTxt;
+
+            if (data.success) {
+                status.innerHTML = '<span style="color:green; font-weight:600;">✓ Complete</span> <span style="color:#888;">(' + elapsed + 's)</span>';
+            } else {
+                status.innerHTML = '<span style="color:#c00; font-weight:600;">✗ Failed</span> <span style="color:#888;">(' + elapsed + 's)</span>';
+            }
+
+            results.innerHTML = buildSyncResultsHtml(data, elapsed);
+            results.style.display = 'block';
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.textContent = origTxt;
+            status.innerHTML = '<span style="color:#c00;">✗ Fetch error: ' + err.message + '</span>';
+            results.innerHTML = '<div style="background:#fdf2f2;border:1px solid #e8b4b4;border-radius:4px;padding:12px;color:#c00;">'
+                + '<strong>Request failed:</strong> ' + err.message
+                + '<br><small>Check that you are logged in as admin and the REST API is accessible.</small></div>';
+            results.style.display = 'block';
+        });
+    }
+
+    function buildSyncResultsHtml(data, elapsed) {
+        const d   = data.diagnostics || {};
+        const ok  = v => v
+            ? '<span style="color:green;font-weight:bold;">✓</span>'
+            : '<span style="color:#c00;font-weight:bold;">✗</span>';
+        const row = (label, val) =>
+            `<tr><td style="padding:4px 12px 4px 0;color:#555;white-space:nowrap;vertical-align:top;">${label}</td><td style="padding:4px 0;">${val}</td></tr>`;
+
+        let html = '<div style="background:#f8f8f8;border:1px solid #ddd;border-radius:4px;padding:16px;font-size:13px;line-height:1.6;">';
+
+        // ── Status banner ──────────────────────────────────────────────────
+        const bg  = data.success ? '#d4edda' : '#f8d7da';
+        const bdr = data.success ? '#b5d5c4' : '#f5c6cb';
+        html += `<div style="background:${bg};border:1px solid ${bdr};border-radius:4px;padding:10px 14px;margin-bottom:16px;font-weight:bold;font-size:14px;">
+            ${data.success ? '✅' : '❌'} ${escHtml(data.message || 'No message returned')}
+        </div>`;
+
+        // ── Diagnostics ────────────────────────────────────────────────────
+        html += '<h4 style="margin:0 0 8px;font-size:13px;text-transform:uppercase;color:#555;letter-spacing:.04em;">Diagnostics</h4>';
+        html += '<table style="border-collapse:collapse;margin-bottom:16px;">';
+        html += row('API key set',           ok(d.api_key_set)  + ' ' + (d.api_key_set  ? 'Yes' : '<span style="color:#c00;">No — activate your license first</span>'));
+        html += row('Org ID set',            ok(d.org_id_set)   + ' ' + (d.org_id_set   ? 'Yes' : '<span style="color:#c00;">No — activate your license first</span>'));
+        html += row('WP-Cron scheduled',     ok(d.cron_scheduled) + ' ' + (d.cron_next_utc || 'N/A'));
+        html += row('Last sync date',        escHtml(d.last_sync_date || 'Never'));
+        html += row('Sessions in MySQL',     (typeof data.mysql_sessions_total === 'number' ? data.mysql_sessions_total.toLocaleString() : '—'));
+        html += row('Elapsed time',          elapsed + 's');
+        html += '</table>';
+
+        // ── Synced dates ───────────────────────────────────────────────────
+        if (d.synced_dates && d.synced_dates.length) {
+            html += `<h4 style="margin:0 0 6px;font-size:13px;text-transform:uppercase;color:#555;letter-spacing:.04em;">
+                Heatmap days synced — ${d.synced_dates.length}</h4>`;
+            html += '<ul style="margin:0 0 14px 18px;padding:0;">';
+            d.synced_dates.forEach(s => {
+                html += `<li style="color:green;">✓ ${escHtml(s)}</li>`;
+            });
+            html += '</ul>';
+        } else {
+            html += '<p style="color:#888;margin:0 0 12px;"><em>No heatmap event days found in MySQL for the last 30 days.</em></p>';
+        }
+
+        // ── Enrichment dates ───────────────────────────────────────────────
+        if (d.enrichment_dates && d.enrichment_dates.length) {
+            html += `<h4 style="margin:0 0 6px;font-size:13px;text-transform:uppercase;color:#555;letter-spacing:.04em;">
+                Enrichment days synced — ${d.enrichment_dates.length}</h4>`;
+            html += '<ul style="margin:0 0 14px 18px;padding:0;">';
+            d.enrichment_dates.forEach(s => {
+                html += `<li style="color:#2271b1;">↑ ${escHtml(s)}</li>`;
+            });
+            html += '</ul>';
+        }
+
+        // ── Skipped dates (collapsible) ────────────────────────────────────
+        if (d.skipped_dates && d.skipped_dates.length) {
+            html += `<details style="margin-bottom:12px;">
+                <summary style="cursor:pointer;color:#777;font-size:13px;">
+                    Skipped days (no events) — ${d.skipped_dates.length}
+                </summary>
+                <ul style="margin:6px 0 0 18px;padding:0;color:#aaa;">`;
+            d.skipped_dates.forEach(s => { html += `<li>${escHtml(s)}</li>`; });
+            html += '</ul></details>';
+        }
+
+        // ── Reload hint ────────────────────────────────────────────────────
+        html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #e0e0e0;display:flex;align-items:center;gap:12px;">
+            <span style="color:#666;font-style:italic;">Reload the page to see new entries in the debug log below.</span>
+            <button class="button button-small" onclick="window.location.reload()">↻ Reload Page</button>
+        </div>`;
+
+        html += '</div>';
+        return html;
+    }
+
+    function escHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+    </script>
+
     <?php if ($log_exists && !empty($log_content)): ?>
         <div style="background: #1e1e1e; color: #d4d4d4; padding: 20px; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.5; overflow-x: auto; border-radius: 4px; max-height: 70vh; overflow-y: auto;">
             <pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word;"><?php echo esc_html($log_content); ?></pre>

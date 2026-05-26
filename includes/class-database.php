@@ -424,6 +424,11 @@ class ConversionIQ_DB
             fcp_ms SMALLINT UNSIGNED DEFAULT NULL,
             ttfb_ms SMALLINT UNSIGNED DEFAULT NULL,
             inp_ms SMALLINT UNSIGNED DEFAULT NULL,
+            time_on_page_sec SMALLINT UNSIGNED DEFAULT NULL,
+            referrer VARCHAR(500) DEFAULT NULL,
+            utm_source VARCHAR(100) DEFAULT NULL,
+            utm_medium VARCHAR(100) DEFAULT NULL,
+            utm_campaign VARCHAR(100) DEFAULT NULL,
             recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             UNIQUE KEY session_id (session_id),
@@ -467,8 +472,27 @@ class ConversionIQ_DB
         ) $charset_collate;";
         dbDelta( $sql_atf );
 
-        // Add new analytics columns to heatmap_sessions for existing installations
+        // Add missing columns to heatmap_sessions for existing installations.
+        // These ALTER statements are idempotent (guarded by DESCRIBE check) and cover
+        // installations created before each column was introduced to the schema.
         $hm_cols = $wpdb->get_col( "DESCRIBE {$sessions_table}" );
+        // CWV columns (added after initial release)
+        if ( ! in_array( 'lcp_ms', $hm_cols ) ) {
+            $wpdb->query( "ALTER TABLE {$sessions_table} ADD COLUMN lcp_ms SMALLINT UNSIGNED DEFAULT NULL AFTER pixel_ratio" );
+        }
+        if ( ! in_array( 'cls', $hm_cols ) ) {
+            $wpdb->query( "ALTER TABLE {$sessions_table} ADD COLUMN cls DECIMAL(5,3) DEFAULT NULL AFTER lcp_ms" );
+        }
+        if ( ! in_array( 'fcp_ms', $hm_cols ) ) {
+            $wpdb->query( "ALTER TABLE {$sessions_table} ADD COLUMN fcp_ms SMALLINT UNSIGNED DEFAULT NULL AFTER cls" );
+        }
+        if ( ! in_array( 'ttfb_ms', $hm_cols ) ) {
+            $wpdb->query( "ALTER TABLE {$sessions_table} ADD COLUMN ttfb_ms SMALLINT UNSIGNED DEFAULT NULL AFTER fcp_ms" );
+        }
+        if ( ! in_array( 'inp_ms', $hm_cols ) ) {
+            $wpdb->query( "ALTER TABLE {$sessions_table} ADD COLUMN inp_ms SMALLINT UNSIGNED DEFAULT NULL AFTER ttfb_ms" );
+        }
+        // Session enrichment columns
         if ( ! in_array( 'time_on_page_sec', $hm_cols ) ) {
             $wpdb->query( "ALTER TABLE {$sessions_table} ADD COLUMN time_on_page_sec SMALLINT UNSIGNED DEFAULT NULL AFTER inp_ms" );
         }
