@@ -4,7 +4,7 @@ Tags: conversion optimization, AI audit, copy analysis, website scoring, lead in
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.3.0
+Stable tag: 2.3.1
 License: GPLv2 or later
 
 AI-powered conversion auditing for WordPress. Scores your pages, generates actionable reports, and rewrites copy to convert more visitors.
@@ -57,6 +57,9 @@ Yes. On the Professional and Agency plans you can customize the company name, lo
 Yes. Conversion IQ extracts rendered content from any published page regardless of how it was built (Elementor, Divi, Gutenberg, etc.).
 
 == Changelog ==
+
+= 2.3.1 =
+* Improvement: GA4 property wizard — search/filter bar and scrollable list added (matches GSC step); filters by property name, account name, or property ID
 
 = 2.3.0 =
 * Feature: Traffic Intelligence — Supabase sync now routes through SaaS proxy (conversioniq-app.com/api/traffic/sync-snapshot) to bypass RLS; supports daily snapshot accumulation keyed by org_id + source + snapshot_date for trend tracking on the SaaS dashboard

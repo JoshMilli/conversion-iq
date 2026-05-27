@@ -643,6 +643,7 @@ function PropertyWizard({ step, loading, gscSites, ga4Props, selectedGsc, select
   onDisconnect: () => void;
 }) {
   const [gscSearch, setGscSearch] = useState('');
+  const [ga4Search, setGa4Search] = useState('');
   if (loading) {
     return <div style={{ padding: 48, textAlign: 'center', color: T.textMuted }}>Loading your Google properties…</div>;
   }
@@ -709,6 +710,11 @@ function PropertyWizard({ step, loading, gscSites, ga4Props, selectedGsc, select
   }
 
   if (step === 'select-ga4') {
+    const filteredGa4 = ga4Props.filter(p =>
+      p.name.toLowerCase().includes(ga4Search.toLowerCase()) ||
+      p.account.toLowerCase().includes(ga4Search.toLowerCase()) ||
+      p.id.toLowerCase().includes(ga4Search.toLowerCase())
+    );
     return (
       <div style={{ background: T.bgCard, borderRadius: 16, padding: 32, border: `1px solid ${T.border}` }}>
         <h3 style={{ margin: '0 0 8px', color: T.textPrimary }}>Step 2 of 2 — Select GA4 Property</h3>
@@ -716,17 +722,38 @@ function PropertyWizard({ step, loading, gscSites, ga4Props, selectedGsc, select
         {ga4Props.length === 0 ? (
           <p style={{ color: T.textMuted, fontSize: 13 }}>No GA4 properties found. You can skip this step and use Search Console data only.</p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
-            {ga4Props.map((p, i) => (
-              <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: selectedGa4 === p.id ? T.primaryBg : T.bgSubtle, border: `1px solid ${selectedGa4 === p.id ? T.primary : T.border}`, borderRadius: 8, cursor: 'pointer' }}>
-                <input type="radio" name="ga4" value={p.id} checked={selectedGa4 === p.id} onChange={() => onSelectGa4(p.id, p.name)} style={{ accentColor: T.primary }} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ color: T.textPrimary, fontSize: 14 }}>{p.name}</div>
-                  <div style={{ fontSize: 11, color: T.textMuted }}>{p.account} · {p.id}</div>
+          <>
+            <div style={{ position: 'relative', marginBottom: 12 }}>
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: T.textMuted, fontSize: 14, pointerEvents: 'none' }}>🔍</span>
+              <input
+                type="text"
+                placeholder="Filter properties…"
+                value={ga4Search}
+                onChange={e => setGa4Search(e.target.value)}
+                style={{ width: '100%', padding: '9px 12px 9px 36px', background: T.bgSubtle, border: `1px solid ${T.border}`, borderRadius: 8, color: T.textPrimary, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+            {filteredGa4.length === 0 ? (
+              <p style={{ color: T.textMuted, fontSize: 13, marginBottom: 24 }}>No properties match "{ga4Search}".</p>
+            ) : (
+              <>
+                <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 8 }}>
+                  {filteredGa4.length === ga4Props.length ? `${ga4Props.length} properties` : `${filteredGa4.length} of ${ga4Props.length} properties`}
                 </div>
-              </label>
-            ))}
-          </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 320, overflowY: 'auto', marginBottom: 24, paddingRight: 4 }}>
+                  {filteredGa4.map((p, i) => (
+                    <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: selectedGa4 === p.id ? T.primaryBg : T.bgSubtle, border: `1px solid ${selectedGa4 === p.id ? T.primary : T.border}`, borderRadius: 8, cursor: 'pointer', flexShrink: 0 }}>
+                      <input type="radio" name="ga4" value={p.id} checked={selectedGa4 === p.id} onChange={() => onSelectGa4(p.id, p.name)} style={{ accentColor: T.primary }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ color: T.textPrimary, fontSize: 14 }}>{p.name}</div>
+                        <div style={{ fontSize: 11, color: T.textMuted }}>{p.account} · {p.id}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </>
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
           <button onClick={onBack} style={{ padding: '10px 20px', background: T.bgSubtle, color: T.textSecondary, border: `1px solid ${T.border}`, borderRadius: 8, cursor: 'pointer' }}>
