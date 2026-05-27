@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 2.2.0
+ * Version: 2.3.0
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'CONVERSION_IQ_VERSION', '2.2.0' );
+define( 'CONVERSION_IQ_VERSION', '2.3.0' );
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
@@ -24,6 +24,26 @@ define( 'CONVERSION_IQ_FILE', __FILE__ );
 // Can be overridden per-environment by defining CONVERSIONIQ_PAGESPEED_KEY in wp-config.php.
 if ( ! defined( 'CONVERSIONIQ_PAGESPEED_KEY' ) ) {
     define( 'CONVERSIONIQ_PAGESPEED_KEY', 'AIzaSyAtH41-fIhW2ywWvS1RsC3Yg_Vton6TyhM' );
+}
+
+// Google OAuth 2.0 — shared Webtec app used by all Conversion IQ installations.
+// Credentials are NOT stored in this file.  They are pushed by the SaaS config-sync
+// endpoint and stored in wp_options('conversioniq_google_oauth_credentials').
+// Clients who want to use their own Google Cloud project can still override via
+// wp-config.php constants (CIQ_GOOGLE_CLIENT_ID / CIQ_GOOGLE_CLIENT_SECRET).
+if ( ! defined( 'CIQ_GOOGLE_CLIENT_ID' ) ) {
+    $ciq_oauth_cfg = function_exists( 'get_option' )
+        ? get_option( 'conversioniq_google_oauth_credentials', array() )
+        : array();
+    define( 'CIQ_GOOGLE_CLIENT_ID',     ! empty( $ciq_oauth_cfg['client_id'] )     ? $ciq_oauth_cfg['client_id']     : '' );
+    define( 'CIQ_GOOGLE_CLIENT_SECRET', ! empty( $ciq_oauth_cfg['client_secret'] ) ? $ciq_oauth_cfg['client_secret'] : '' );
+    unset( $ciq_oauth_cfg );
+}
+if ( ! defined( 'CIQ_GOOGLE_REDIRECT_URI' ) ) {
+    // SaaS proxy handles the code exchange then forwards the result back to the
+    // originating WordPress site.  Override with the direct WP-admin URL in
+    // wp-config.php only for local/staging environments.
+    define( 'CIQ_GOOGLE_REDIRECT_URI', 'https://conversioniq-app.com/oauth/google/callback' );
 }
 
 // Initialize Plugin Update Checker
@@ -93,6 +113,8 @@ require_once CONVERSION_IQ_DIR . 'includes/class-seo-analyzer.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-reports.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-automated-reports.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-supabase-sync.php';
+require_once CONVERSION_IQ_DIR . 'includes/class-google-analytics.php';
+require_once CONVERSION_IQ_DIR . 'includes/class-traffic-insights.php';
 if ( ConversionIQ_Config_Manager::can('knockknock') ) {
     require_once CONVERSION_IQ_DIR . 'includes/class-knockknock-webhook.php';
 }
@@ -104,6 +126,15 @@ add_action( 'init', function() {
     // Schedule daily config sync if not already scheduled
     if ( ! wp_next_scheduled( 'conversioniq_sync_config' ) ) {
         wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'conversioniq_sync_config' );
+    }
+
+    // Schedule daily traffic insights sync if not already scheduled
+    if ( ! wp_next_scheduled( 'conversioniq_traffic_sync' ) ) {
+        $next = strtotime( gmdate( 'Y-m-d' ) . ' 03:30:00 UTC' );
+        if ( $next <= time() ) {
+            $next += DAY_IN_SECONDS;
+        }
+        wp_schedule_event( $next, 'daily', 'conversioniq_traffic_sync' );
     }
 
     // Schedule weekly DB pruning if not already scheduled
@@ -151,6 +182,71 @@ add_action( 'init', function() {
 // Daily config sync cron
 add_action( 'conversioniq_sync_config', function() {
     ConversionIQ_Config_Manager::sync_from_saas();
+} );
+
+// Daily traffic insights sync cron — refreshes cached GA4 + GSC data
+add_action( 'conversioniq_traffic_sync', function() {
+    if ( ! get_option( 'conversioniq_api_key' ) ) {
+        return;
+    }
+    $insights = new ConversionIQ_Traffic_Insights();
+    $insights->get_summary( true ); // force refresh clears transients and re-fetches
+    ciq_log( 'Traffic Insights: daily cron sync complete.' );
+} );
+
+// ── Google OAuth callback handler ─────────────────────────────────────────
+// Handles the redirect from Google after the user grants permission.
+// Runs before any output on admin pages.
+// OAuth callback — runs on `init` (fires BEFORE WordPress's admin auth redirect),
+// so it works even when SameSite cookie restrictions prevent the session cookie
+// from being forwarded through the cross-origin OAuth redirect chain.
+add_action( 'init', function() {
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+    if ( empty( $_GET['ga_callback'] ) || empty( $_GET['code'] ) ) {
+        return;
+    }
+
+    ciq_log( '[OAuth] init FIRED — user_id=' . get_current_user_id() . ' logged_in=' . ( is_user_logged_in() ? 'yes' : 'no' ) . ' REQUEST_URI=' . ( $_SERVER['REQUEST_URI'] ?? 'n/a' ) );
+
+    // Verify CSRF state nonce — this is the sole security gate since we cannot
+    // require the user to be logged in at the point the callback lands.
+    // State is base64url-encoded JSON: { site_url, nonce }
+    $raw_state    = sanitize_text_field( wp_unslash( $_GET['state'] ?? '' ) );
+    $decoded      = base64_decode( strtr( $raw_state, '-_', '+/' ) );
+    $state_data   = $decoded ? json_decode( $decoded, true ) : null;
+    $nonce        = is_array( $state_data ) ? ( $state_data['nonce'] ?? '' ) : '';
+    $stored_nonce = get_transient( 'ciq_google_oauth_state' );
+
+    ciq_log( '[OAuth] init: state decode — json_valid=' . ( is_array( $state_data ) ? 'yes' : 'no' ) . ' nonce_present=' . ( $nonce ? 'yes' : 'no' ) . ' transient_present=' . ( $stored_nonce ? 'yes' : 'no' ) );
+    ciq_log( '[OAuth] init: nonce_in_state=' . $nonce . ' stored_nonce=' . (string) $stored_nonce );
+
+    if ( empty( $nonce ) || ! hash_equals( (string) $stored_nonce, $nonce ) ) {
+        ciq_log( '[OAuth] init: CSRF check FAILED — stored=' . (string) $stored_nonce . ' received=' . $nonce );
+        wp_safe_redirect( admin_url( 'admin.php?page=conversion-iq&ciq_oauth_error=state_mismatch' ) );
+        exit;
+    }
+    delete_transient( 'ciq_google_oauth_state' );
+    ciq_log( '[OAuth] init: CSRF check PASSED — proceeding to token exchange' );
+
+    $code   = sanitize_text_field( wp_unslash( $_GET['code'] ) );
+    ciq_log( '[OAuth] init: exchanging code (first 20 chars)=' . substr( $code, 0, 20 ) );
+    $ga     = new ConversionIQ_Google_Analytics();
+    $result = $ga->exchange_code( $code );
+
+    ciq_log( '[OAuth] init: exchange_code result=' . wp_json_encode( array_intersect_key( $result, array_flip( array( 'success', 'error' ) ) ) ) );
+
+    if ( empty( $result['success'] ) ) {
+        $error = urlencode( $result['error'] ?? 'oauth_failed' );
+        wp_safe_redirect( admin_url( 'admin.php?page=conversion-iq&ciq_oauth_error=' . $error ) );
+        exit;
+    }
+
+    // Tokens stored — redirect to the plugin page.  If the session cookie was
+    // not forwarded, WordPress will intercept at admin.php and redirect through
+    // wp-login.php, after which the user lands on the success page.
+    ciq_log( '[OAuth] init: SUCCESS — tokens stored, redirecting to plugin' );
+    wp_safe_redirect( admin_url( 'admin.php?page=conversion-iq&ciq_tab=traffic&ciq_oauth_success=1' ) );
+    exit;
 } );
 
 // Weekly DB pruning cron — keep tables from growing unbounded across 300+ sites
@@ -645,18 +741,5 @@ add_action( 'wp_ajax_conversioniq_clear_cache', function() {
     wp_send_json_success( 'Cache cleared' );
 } );
 
-// Handle Google Analytics OAuth callback
-add_action( 'admin_init', function() {
-    if ( isset( $_GET['page'] ) && $_GET['page'] === 'conversioniq' && isset( $_GET['code'] ) && isset( $_GET['ga_callback'] ) ) {
-        $ga = new ConversionIQ_Google_Analytics();
-        $result = $ga->exchange_code( $_GET['code'] );
-        
-        if ( $result['success'] ) {
-            wp_redirect( admin_url( 'admin.php?page=conversioniq&ga_connected=1' ) );
-        } else {
-            wp_redirect( admin_url( 'admin.php?page=conversioniq&ga_error=' . urlencode( $result['error'] ) ) );
-        }
-        exit;
-    }
-} );
+// (Duplicate OAuth handler removed — the secure handler above handles all OAuth callbacks.)
 

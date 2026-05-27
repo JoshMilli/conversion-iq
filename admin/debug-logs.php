@@ -312,6 +312,103 @@ if ($log_exists) {
     }
     </script>
 
+    <!-- ── Traffic Intelligence Sync Test ─────────────────────────────── -->
+    <div style="background: white; padding: 20px; margin-bottom: 20px; border: 1px solid #ccc; border-radius: 4px;">
+        <h3 style="margin-top: 0; margin-bottom: 4px;">📊 Traffic Intelligence Sync Tester</h3>
+        <p style="color: #666; margin: 0 0 14px;">Manually run the daily GA4 + GSC fetch and Supabase push. Bypasses the 1-hour rate limit so you can test the full pipeline without waiting.</p>
+
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px;">
+            <button type="button" id="btn-traffic-sync" class="button button-primary" onclick="triggerTrafficSync()">
+                📊 Run Traffic Sync (same as daily cron)
+            </button>
+            <span id="traffic-sync-status" style="font-size: 13px; margin-left: 4px;"></span>
+        </div>
+
+        <div id="traffic-sync-results" style="display:none; margin-top: 16px;"></div>
+    </div>
+
+    <script>
+    function triggerTrafficSync() {
+        const btn     = document.getElementById('btn-traffic-sync');
+        const status  = document.getElementById('traffic-sync-status');
+        const results = document.getElementById('traffic-sync-results');
+
+        btn.disabled   = true;
+        btn.textContent = '⏳ Running…';
+        status.innerHTML = '<em style="color:#666;">Fetching GA4 + GSC data and pushing to Supabase…</em>';
+        results.style.display = 'none';
+        results.innerHTML = '';
+
+        const startMs = Date.now();
+
+        fetch('<?php echo esc_js( rest_url('conversioniq/v1/traffic-debug-sync') ); ?>', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-WP-Nonce': '<?php echo esc_js( wp_create_nonce('wp_rest') ); ?>'
+            },
+            body: '{}'
+        })
+        .then(r => r.json())
+        .then(data => {
+            const elapsed = ((Date.now() - startMs) / 1000).toFixed(1);
+            btn.disabled   = false;
+            btn.textContent = '📊 Run Traffic Sync (same as daily cron)';
+
+            if (data.success) {
+                status.innerHTML = '<span style="color:green;font-weight:600;">✓ Complete</span> <span style="color:#888;">(' + elapsed + 's)</span>';
+            } else {
+                status.innerHTML = '<span style="color:#c00;font-weight:600;">✗ Failed</span> <span style="color:#888;">(' + elapsed + 's)</span>';
+            }
+
+            let html = '<div style="background:#f8f8f8;border:1px solid #ddd;border-radius:4px;padding:16px;font-size:13px;line-height:1.6;">';
+
+            const bg  = data.success ? '#d4edda' : '#f8d7da';
+            const bdr = data.success ? '#b5d5c4' : '#f5c6cb';
+            html += `<div style="background:${bg};border:1px solid ${bdr};border-radius:4px;padding:10px 14px;margin-bottom:16px;font-weight:bold;font-size:14px;">
+                ${data.success ? '✅' : '❌'} ${escHtml(data.message || (data.success ? 'Sync complete' : 'Sync failed'))}
+            </div>`;
+
+            if (data.success) {
+                const ok  = v => v ? '<span style="color:green;font-weight:bold;">✓</span>' : '<span style="color:#c00;font-weight:bold;">✗</span>';
+                const row = (l, v) => `<tr><td style="padding:4px 12px 4px 0;color:#555;white-space:nowrap;">${l}</td><td style="padding:4px 0;">${v}</td></tr>`;
+
+                html += '<table style="border-collapse:collapse;margin-bottom:14px;">';
+                html += row('GA4 data',        ok(data.ga4_ok) + ' ' + (data.ga4_ok ? 'Fetched — ' + (data.ga4_sessions ?? '?') + ' sessions' : 'No data returned'));
+                html += row('GSC data',        ok(data.gsc_ok) + ' ' + (data.gsc_ok ? 'Fetched — ' + (data.gsc_clicks ?? '?') + ' clicks' : 'No data returned'));
+                html += row('Supabase push',   ok(data.ga4_ok || data.gsc_ok) + ' Included in fetch (see debug log)');
+                html += row('Verdict',         escHtml(data.verdict || 'no_data'));
+                html += row('Fetched at',      data.fetched_at ? new Date(data.fetched_at * 1000).toLocaleString() : '—');
+                html += row('Elapsed',         elapsed + 's');
+                html += '</table>';
+
+                if (data.errors && Object.keys(data.errors).length > 0) {
+                    html += '<h4 style="margin:0 0 6px;font-size:12px;text-transform:uppercase;color:#c00;">Errors</h4><ul style="margin:0 0 12px 18px;padding:0;">';
+                    Object.entries(data.errors).forEach(([k, v]) => {
+                        html += `<li style="color:#c00;">${escHtml(k)}: ${escHtml(v)}</li>`;
+                    });
+                    html += '</ul>';
+                }
+            }
+
+            html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #e0e0e0;">
+                <button class="button button-small" onclick="window.location.reload()">↻ Reload to see log entries</button>
+            </div>`;
+            html += '</div>';
+
+            results.innerHTML = html;
+            results.style.display = 'block';
+        })
+        .catch(err => {
+            btn.disabled   = false;
+            btn.textContent = '📊 Run Traffic Sync (same as daily cron)';
+            status.innerHTML = '<span style="color:#c00;">✗ Fetch error: ' + err.message + '</span>';
+            results.innerHTML = '<div style="background:#fdf2f2;border:1px solid #e8b4b4;border-radius:4px;padding:12px;color:#c00;"><strong>Request failed:</strong> ' + err.message + '</div>';
+            results.style.display = 'block';
+        });
+    }
+    </script>
+
     <?php if ($log_exists && !empty($log_content)): ?>
         <div style="background: #1e1e1e; color: #d4d4d4; padding: 20px; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.5; overflow-x: auto; border-radius: 4px; max-height: 70vh; overflow-y: auto;">
             <pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word;"><?php echo esc_html($log_content); ?></pre>

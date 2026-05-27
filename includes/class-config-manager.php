@@ -8,6 +8,7 @@ class ConversionIQ_Config_Manager
     const BRANDING_OPTION = 'conversioniq_branding_config';
     const FEATURE_FLAGS_OPTION = 'conversioniq_feature_flags';
     const CONFIG_UPDATED_OPTION = 'conversioniq_saas_config_updated_at';
+    const OAUTH_OPTION = 'conversioniq_google_oauth_credentials';
 
     /**
      * Default branding config — used when no remote config is cached.
@@ -100,6 +101,7 @@ class ConversionIQ_Config_Manager
                 'heatmap_scroll'         => false,
                 'heatmap_history_days'   => 7,
                 'seo'                    => false,
+                'traffic_insights'       => false,
             ),
             'starter' => array(
                 'max_sites'              => 1,
@@ -123,6 +125,7 @@ class ConversionIQ_Config_Manager
                 'heatmap_scroll'         => false,
                 'heatmap_history_days'   => 7,
                 'seo'                    => true,
+                'traffic_insights'       => true,
             ),
             'professional' => array(
                 'max_sites'              => 1,
@@ -146,6 +149,7 @@ class ConversionIQ_Config_Manager
                 'heatmap_scroll'         => true,
                 'heatmap_history_days'   => 30,
                 'seo'                    => true,
+                'traffic_insights'       => true,
             ),
             'business' => array(
                 'max_sites'              => 1,
@@ -169,6 +173,7 @@ class ConversionIQ_Config_Manager
                 'heatmap_scroll'         => true,
                 'heatmap_history_days'   => 90,
                 'seo'                    => true,
+                'traffic_insights'       => true,
             ),
             'agency' => array(
                 'max_sites'              => 100,
@@ -192,6 +197,7 @@ class ConversionIQ_Config_Manager
                 'heatmap_scroll'         => true,
                 'heatmap_history_days'   => 90,
                 'seo'                    => true,
+                'traffic_insights'       => true,
             ),
         );
 
@@ -308,6 +314,20 @@ class ConversionIQ_Config_Manager
         // Store feature flags if present
         if (isset($body['features']) && is_array($body['features'])) {
             update_option(self::FEATURE_FLAGS_OPTION, $body['features']);
+        }
+
+        // Store Google OAuth credentials if the SaaS pushes them.
+        // This keeps credentials out of the plugin source code while ensuring
+        // they survive plugin auto-updates (wp_options is never touched by updates).
+        if ( isset( $body['oauth'] ) && is_array( $body['oauth'] ) ) {
+            $oauth = array(
+                'client_id'     => sanitize_text_field( $body['oauth']['client_id']     ?? '' ),
+                'client_secret' => sanitize_text_field( $body['oauth']['client_secret'] ?? '' ),
+            );
+            if ( ! empty( $oauth['client_id'] ) && ! empty( $oauth['client_secret'] ) ) {
+                update_option( self::OAUTH_OPTION, $oauth );
+                ciq_log( 'ConversionIQ Config Sync: Google OAuth credentials updated.' );
+            }
         }
 
         // If the SaaS signals an immediate sync (fallback for sites the SaaS

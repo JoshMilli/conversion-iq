@@ -4,7 +4,7 @@ Tags: conversion optimization, AI audit, copy analysis, website scoring, lead in
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.1.0
+Stable tag: 2.3.0
 License: GPLv2 or later
 
 AI-powered conversion auditing for WordPress. Scores your pages, generates actionable reports, and rewrites copy to convert more visitors.
@@ -57,6 +57,15 @@ Yes. On the Professional and Agency plans you can customize the company name, lo
 Yes. Conversion IQ extracts rendered content from any published page regardless of how it was built (Elementor, Divi, Gutenberg, etc.).
 
 == Changelog ==
+
+= 2.3.0 =
+* Feature: Traffic Intelligence — Supabase sync now routes through SaaS proxy (conversioniq-app.com/api/traffic/sync-snapshot) to bypass RLS; supports daily snapshot accumulation keyed by org_id + source + snapshot_date for trend tracking on the SaaS dashboard
+* Feature: Traffic Intelligence — snapshots now include ga4_property_id and gsc_property so the SaaS dashboard can isolate data by connected account and handle property switches cleanly
+* Feature: Debug Logs — new Traffic Intelligence Sync Tester panel with force-refresh button that bypasses the 1-hour rate limit and returns GA4/GSC fetch results and Supabase push status
+* Feature: new /traffic-debug-sync REST endpoint (manage_options only) that clears transients and runs the same pipeline as the daily cron
+* Improvement: GSC property wizard — search/filter bar, scrollable list (max 320px), and Skip GSC button added so agencies managing many client accounts can navigate the list quickly
+* Fix: T.accent colour token was undefined in theme.ts causing blue CTA buttons (Refresh, Connect, Next, Save) to render with a white background and invisible white text on dark theme
+* Fix: get_property_id() public accessor added to ConversionIQ_Google_Analytics
 
 = 2.1.0 =
 * Fix: device/browser data (device_type, browser, screen_w/h, pixel_ratio) was not reaching Supabase — the enrichment sync SELECT included time_on_page_sec, referrer, utm_source, utm_medium, utm_campaign but those columns were missing from existing installations (only in ALTER TABLE, not in CREATE TABLE SQL), causing MySQL to return a column-not-found error and silently send 0 sessions to the SaaS server

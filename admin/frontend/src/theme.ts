@@ -21,6 +21,7 @@ export const T = {
 
   // ── Secondary Accent — Blue ──────────────────────────────────────────────
   blue:         '#3b82f6',               // blue-500 — secondary accents
+  accent:       '#3b82f6',               // alias — interactive CTAs (Connect, Refresh, Next…)
 
   // ── Text ─────────────────────────────────────────────────────────────────
   textPrimary:   '#fafafa',                   // headlines, bold body

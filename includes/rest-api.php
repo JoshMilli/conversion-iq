@@ -1065,10 +1065,174 @@ add_action('rest_api_init', function () {
                 ),
             ),
         ));
+
+        // ── Traffic Intelligence (GA4 + GSC) ──────────────────────────────────
+
+        // Connection status + OAuth URL
+        register_rest_route( 'conversioniq/v1', '/traffic-status', array(
+            'methods'             => 'GET',
+            'callback'            => 'conversioniq_traffic_status',
+            'permission_callback' => function () { return current_user_can( 'manage_options' ); },
+        ) );
+
+        // Cached summary (fast — returns transient data)
+        register_rest_route( 'conversioniq/v1', '/traffic-summary', array(
+            'methods'             => 'GET',
+            'callback'            => 'conversioniq_traffic_summary',
+            'permission_callback' => function () { return current_user_can( 'manage_options' ); },
+        ) );
+
+        // Force a fresh fetch (rate-limited to once per hour)
+        register_rest_route( 'conversioniq/v1', '/traffic-refresh', array(
+            'methods'             => 'POST',
+            'callback'            => 'conversioniq_traffic_refresh',
+            'permission_callback' => function () { return current_user_can( 'manage_options' ); },
+        ) );
+
+        // List available GSC sites for the connected Google account
+        register_rest_route( 'conversioniq/v1', '/traffic-gsc-sites', array(
+            'methods'             => 'GET',
+            'callback'            => 'conversioniq_traffic_gsc_sites',
+            'permission_callback' => function () { return current_user_can( 'manage_options' ); },
+        ) );
+
+        // List available GA4 properties
+        register_rest_route( 'conversioniq/v1', '/traffic-ga4-properties', array(
+            'methods'             => 'GET',
+            'callback'            => 'conversioniq_traffic_ga4_properties',
+            'permission_callback' => function () { return current_user_can( 'manage_options' ); },
+        ) );
+
+        // Save selected GSC site + GA4 property
+        register_rest_route( 'conversioniq/v1', '/traffic-save-property', array(
+            'methods'             => 'POST',
+            'callback'            => 'conversioniq_traffic_save_property',
+            'permission_callback' => function () { return current_user_can( 'manage_options' ); },
+        ) );
+
+        // Disconnect Google (deletes tokens)
+        register_rest_route( 'conversioniq/v1', '/traffic-disconnect', array(
+            'methods'             => 'POST',
+            'callback'            => 'conversioniq_traffic_disconnect',
+            'permission_callback' => function () { return current_user_can( 'manage_options' ); },
+        ) );
+
+        // Debug: force-run the daily traffic sync cron inline (bypasses rate-limit)
+        register_rest_route( 'conversioniq/v1', '/traffic-debug-sync', array(
+            'methods'             => 'POST',
+            'callback'            => 'conversioniq_traffic_debug_sync',
+            'permission_callback' => function () { return current_user_can( 'manage_options' ); },
+        ) );
     });
 
 
-function conversioniq_save_settings(WP_REST_Request $request)
+function conversioniq_traffic_status() {
+    $insights = new ConversionIQ_Traffic_Insights();
+    return rest_ensure_response( $insights->get_status() );
+}
+
+function conversioniq_traffic_summary() {
+    if ( ! ConversionIQ_Config_Manager::can( 'traffic_insights' ) ) {
+        return new WP_REST_Response( array( 'error' => 'upgrade_required' ), 403 );
+    }
+    $insights = new ConversionIQ_Traffic_Insights();
+    return rest_ensure_response( $insights->get_summary() );
+}
+
+function conversioniq_traffic_refresh() {
+    if ( ! ConversionIQ_Config_Manager::can( 'traffic_insights' ) ) {
+        return new WP_REST_Response( array( 'error' => 'upgrade_required' ), 403 );
+    }
+    // Rate-limit: one forced refresh per hour
+    if ( get_transient( 'ciq_traffic_refresh_lock' ) ) {
+        return new WP_REST_Response( array( 'error' => 'rate_limited', 'message' => 'Data was recently refreshed. Try again in an hour.' ), 429 );
+    }
+    set_transient( 'ciq_traffic_refresh_lock', 1, HOUR_IN_SECONDS );
+
+    $insights = new ConversionIQ_Traffic_Insights();
+    $data     = $insights->get_summary( true );
+    return rest_ensure_response( $data );
+}
+
+function conversioniq_traffic_gsc_sites() {
+    $ga = new ConversionIQ_Google_Analytics();
+    return rest_ensure_response( $ga->get_gsc_sites() );
+}
+
+function conversioniq_traffic_ga4_properties() {
+    $ga = new ConversionIQ_Google_Analytics();
+    return rest_ensure_response( $ga->get_properties() );
+}
+
+function conversioniq_traffic_save_property( WP_REST_Request $request ) {
+    $params = $request->get_json_params();
+    $ga     = new ConversionIQ_Google_Analytics();
+
+    if ( ! empty( $params['gsc_site_url'] ) ) {
+        $ga->save_gsc_property( $params['gsc_site_url'] );
+    }
+
+    if ( ! empty( $params['ga4_property_id'] ) ) {
+        $ga->save_property( sanitize_text_field( $params['ga4_property_id'] ) );
+        if ( ! empty( $params['ga4_property_name'] ) ) {
+            $creds = get_option( 'conversioniq_ga_credentials', array() );
+            $creds['property_name'] = sanitize_text_field( $params['ga4_property_name'] );
+            update_option( 'conversioniq_ga_credentials', $creds );
+        }
+    }
+
+    // Clear cached data so the next summary fetch uses the new property
+    delete_transient( 'ciq_traffic_ga4' );
+    delete_transient( 'ciq_traffic_gsc' );
+
+    return rest_ensure_response( array( 'success' => true ) );
+}
+
+function conversioniq_traffic_disconnect() {
+    $ga = new ConversionIQ_Google_Analytics();
+    $ga->disconnect();
+    delete_transient( 'ciq_traffic_ga4' );
+    delete_transient( 'ciq_traffic_gsc' );
+    delete_option( 'conversioniq_traffic_fetched_at' );
+    return rest_ensure_response( array( 'success' => true ) );
+}
+
+function conversioniq_traffic_debug_sync() {
+    $start    = microtime( true );
+    $insights = new ConversionIQ_Traffic_Insights();
+    $status   = $insights->get_status();
+
+    if ( ! $status['has_tokens'] ) {
+        return rest_ensure_response( array(
+            'success' => false,
+            'message' => 'Not connected to Google — no OAuth tokens stored.',
+        ) );
+    }
+
+    // Clear rate-limit transient so a debug run is always allowed
+    delete_transient( 'ciq_traffic_refresh_lock' );
+
+    // Run the same logic as the daily cron
+    $summary = $insights->get_summary( true );
+    $elapsed = round( ( microtime( true ) - $start ) * 1000 );
+
+    $has_ga4 = ! empty( $summary['ga4'] ) && ! empty( $summary['ga4']['sessions'] ?? null );
+    $has_gsc = ! empty( $summary['gsc'] ) && ! empty( $summary['gsc']['total_clicks'] ?? null );
+
+    return rest_ensure_response( array(
+        'success'     => true,
+        'elapsed_ms'  => $elapsed,
+        'ga4_ok'      => $has_ga4,
+        'gsc_ok'      => $has_gsc,
+        'fetched_at'  => $summary['fetched_at'] ?? null,
+        'ga4_sessions'=> $summary['ga4']['sessions'] ?? null,
+        'gsc_clicks'  => $summary['gsc']['total_clicks'] ?? null,
+        'errors'      => $summary['errors'] ?? array(),
+        'verdict'     => $summary['verdict']['direction'] ?? 'no_data',
+    ) );
+}
+
+function conversioniq_save_settings( WP_REST_Request $request )
 {
     $params = $request->get_json_params();
     if (empty($params)) {

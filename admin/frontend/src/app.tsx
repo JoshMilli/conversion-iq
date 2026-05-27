@@ -5,6 +5,7 @@ import { T } from './theme';
 import OverviewTab from './OverviewTab';
 import HeatmapTab from './HeatmapTab';
 import SeoTab from './SeoTab';
+import TrafficTab from './TrafficTab';
 
 type Page = { id: number; title: string; permalink: string };
 
@@ -67,7 +68,18 @@ export default function App() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingAutomated, setSavingAutomated] = useState(false);
   const [auditRunning, setAuditRunning] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'audits' | 'knockknock' | 'heatmap' | 'seo' | 'license'>('overview');
+
+  // Auto-switch to a tab when the URL contains ?ciq_tab=xxx (e.g. after Google OAuth callback)
+  // Some URL params (traffic, knockknock, license) map to sub-tabs inside the Account tab.
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlTabRaw = urlParams.get('ciq_tab');
+  const _accountSubTabs = ['traffic', 'knockknock', 'license'];
+  const _initialTab = (urlTabRaw && _accountSubTabs.includes(urlTabRaw)) ? 'account' : (urlTabRaw as any || 'overview');
+  const _initialSubTab = (urlTabRaw && _accountSubTabs.includes(urlTabRaw))
+    ? (urlTabRaw as 'traffic' | 'knockknock' | 'license')
+    : 'traffic';
+  const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'audits' | 'heatmap' | 'seo' | 'account'>(_initialTab);
+  const [activeSubTab, setActiveSubTab] = useState<'traffic' | 'knockknock' | 'license'>(_initialSubTab);
   const [scoreHistory, setScoreHistory] = useState<any[]>([]);
   const [overviewPageFilter, setOverviewPageFilter] = useState<string>('all');
 
@@ -109,6 +121,15 @@ export default function App() {
     const timer = setTimeout(() => setNotice(null), TOAST_MS);
     return () => clearTimeout(timer);
   }, [notice]);
+
+  // Show OAuth feedback when returning from Google consent screen
+  useEffect(() => {
+    if (urlParams.get('ciq_oauth_success') === '1') {
+      showSuccess('Google account connected successfully! Choose your properties below.');
+    } else if (urlParams.get('ciq_oauth_error')) {
+      showError('Google connection failed: ' + urlParams.get('ciq_oauth_error'));
+    }
+  }, []);
 
   // Check license status on mount
   useEffect(() => {
@@ -445,31 +466,31 @@ export default function App() {
     setNotice('✅ Webhook URL copied to clipboard!');
   };
 
-  // Load KnockKnock leads when Growth Machine tab is opened
+  // Load KnockKnock leads when Visitor Insights sub-tab is opened
   useEffect(() => {
     const hasAuth = knockKnockCompanyId || knockKnockWebhookSecret;
 
-    if (activeTab === 'knockknock' && hasAuth) {
+    if (activeTab === 'account' && activeSubTab === 'knockknock' && hasAuth) {
       fetchKnockKnockLeads();
       // Load monthly visitor trend
       axios.get(api('visitor-trend'), { headers: { 'X-WP-Nonce': nonce } })
         .then(r => { if (r.data?.months) setVisitorTrend(r.data.months); })
         .catch(() => {});
     }
-  }, [activeTab, knockKnockCompanyId, knockKnockWebhookSecret]);
+  }, [activeTab, activeSubTab, knockKnockCompanyId, knockKnockWebhookSecret]);
 
-  // Auto-refresh leads every 30 seconds when on Growth Machine tab
+  // Auto-refresh leads every 30 seconds when on Visitor Insights sub-tab
   useEffect(() => {
     const hasAuth = knockKnockCompanyId || knockKnockWebhookSecret;
-    
-    if (activeTab === 'knockknock' && hasAuth) {
+
+    if (activeTab === 'account' && activeSubTab === 'knockknock' && hasAuth) {
       const intervalId = setInterval(() => {
         fetchKnockKnockLeads();
-      }, 30000); // 30 seconds
-      
+      }, 30000);
+
       return () => clearInterval(intervalId);
     }
-  }, [activeTab, knockKnockCompanyId, knockKnockWebhookSecret]);
+  }, [activeTab, activeSubTab, knockKnockCompanyId, knockKnockWebhookSecret]);
 
   const handlePageSelect = (id: number) => {
     setSelectedPages(p => {
@@ -891,41 +912,6 @@ export default function App() {
               Audits
             </button>
             <button
-              onClick={() => setActiveTab('knockknock')}
-              style={{
-                flex: 1,
-                padding: '16px 24px',
-                background: activeTab === 'knockknock' ? T.primaryBg : T.bgCard,
-                color: activeTab === 'knockknock' ? T.primary : T.textSecondary,
-                border: 'none',
-                borderBottom: activeTab === 'knockknock' ? `3px solid ${T.primary}` : '3px solid transparent',
-                cursor: 'pointer',
-                fontSize: 16,
-                fontWeight: 600,
-                transition: 'all 0.2s',
-                position: 'relative'
-              }}
-            >
-              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                Visitor Insights
-                {!canUse('knockknock') && (
-                  <span style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 16,
-                    height: 16,
-                    background: activeTab === 'knockknock' ? T.primaryBg : T.bgSubtle,
-                    borderRadius: 4,
-                    fontSize: 10,
-                    lineHeight: 1,
-                    color: T.primary,
-                    flexShrink: 0
-                  }}>🔒</span>
-                )}
-              </span>
-            </button>
-            <button
               onClick={() => setActiveTab('heatmap')}
               style={{
                 flex: 1,
@@ -960,21 +946,21 @@ export default function App() {
               SEO
             </button>
             <button
-              onClick={() => setActiveTab('license')}
+              onClick={() => setActiveTab('account')}
               style={{
                 flex: 1,
                 padding: '16px 24px',
-                background: activeTab === 'license' ? T.primaryBg : T.bgCard,
-                color: activeTab === 'license' ? T.primary : T.textSecondary,
+                background: activeTab === 'account' ? T.primaryBg : T.bgCard,
+                color: activeTab === 'account' ? T.primary : T.textSecondary,
                 border: 'none',
-                borderBottom: activeTab === 'license' ? `3px solid ${T.primary}` : '3px solid transparent',
+                borderBottom: activeTab === 'account' ? `3px solid ${T.primary}` : '3px solid transparent',
                 cursor: 'pointer',
                 fontSize: 16,
                 fontWeight: 600,
                 transition: 'all 0.2s'
               }}
             >
-              License
+              Account
             </button>
           </div>
         </div>
@@ -1142,7 +1128,7 @@ export default function App() {
                   <span><strong>{(liveFeatures.audits_per_week as number) || 3} audits</strong> per week</span>
                 </div>
                 {currentPlan !== 'agency' && (
-                  <button onClick={() => setActiveTab('license')} style={{ background: 'none', color: T.primary, border: `1px solid ${T.primaryBorder}`, borderRadius: 6, padding: '4px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                  <button onClick={() => { setActiveTab('account'); setActiveSubTab('license'); }} style={{ background: 'none', color: T.primary, border: `1px solid ${T.primaryBorder}`, borderRadius: 6, padding: '4px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                     Upgrade plan →
                   </button>
                 )}
@@ -1151,7 +1137,7 @@ export default function App() {
               {selectedPages.length >= maxPagesPerAudit && (
                 <div style={{ marginBottom: 16, padding: '10px 16px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 13, color: '#92400e', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                   <span>🔒 Page limit reached for your <strong>{currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1)}</strong> plan.</span>
-                  <button onClick={() => setActiveTab('license')} style={{ background: T.primary, color: T.btnPrimaryText, border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Upgrade Plan →</button>
+                  <button onClick={() => { setActiveTab('account'); setActiveSubTab('license'); }} style={{ background: T.primary, color: T.btnPrimaryText, border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Upgrade Plan →</button>
                 </div>
               )}
               <div style={{ maxHeight: 240, overflow: 'auto', border: `1px solid ${T.border}`, borderRadius: 8, padding: 16, background: T.bgSubtle }}>
@@ -1401,8 +1387,45 @@ export default function App() {
           </>
         )}
 
-        {/* KnockKnock Tab */}
-        {activeTab === 'knockknock' && (
+        {/* Account Tab — sub-tab bar */}
+        {activeTab === 'account' && (
+          <div style={{ background: T.bgCard, borderRadius: 12, marginBottom: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.18)', border: `1px solid ${T.border}`, padding: '10px 16px', display: 'flex', gap: 6, alignItems: 'center' }}>
+            {([
+              { key: 'traffic',    label: 'Traffic Intelligence', icon: '📈' },
+              { key: 'knockknock', label: 'Visitor Insights',     icon: '👁', locked: !canUse('knockknock') },
+              { key: 'license',    label: 'License & Plan',       icon: '⚡' },
+            ] as { key: 'traffic' | 'knockknock' | 'license'; label: string; icon: string; locked?: boolean }[]).map(({ key, label, icon, locked }) => (
+              <button
+                key={key}
+                onClick={() => setActiveSubTab(key)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '8px 18px',
+                  background: activeSubTab === key ? T.primary : 'transparent',
+                  color: activeSubTab === key ? '#fff' : T.textSecondary,
+                  border: activeSubTab === key ? 'none' : `1px solid ${T.border}`,
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <span>{icon}</span>
+                {label}
+                {locked && (
+                  <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 2 }}>🔒</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* KnockKnock / Visitor Insights — Account sub-tab */}
+        {activeTab === 'account' && activeSubTab === 'knockknock' && (
           <section style={{ background: T.bgCard, borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.3)', padding: 32, border: `1px solid ${T.border}` }}>
             <div style={{ marginBottom: 32 }}>
               <h2 style={{ margin: '0 0 8px 0', fontSize: 28, fontWeight: 700, color: T.textPrimary }}>
@@ -1434,7 +1457,7 @@ export default function App() {
                     </div>
                   ))}
                 </div>
-                <button onClick={() => setActiveTab('license')} style={{ background: T.btnPrimary, color: T.btnPrimaryText, border: 'none', borderRadius: 8, padding: '14px 32px', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>
+                <button onClick={() => { setActiveTab('account'); setActiveSubTab('license'); }} style={{ background: T.btnPrimary, color: T.btnPrimaryText, border: 'none', borderRadius: 8, padding: '14px 32px', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>
                   Unlock on Business or Agency →
                 </button>
                 <div style={{ marginTop: 12, fontSize: 12, color: T.textMuted }}>Available on Business ($249/mo) and Agency ($449/mo)</div>
@@ -2020,8 +2043,17 @@ export default function App() {
           />
         )}
 
-        {/* License Tab */}
-        {activeTab === 'license' && (
+        {/* Traffic Intelligence — Account sub-tab */}
+        {activeTab === 'account' && activeSubTab === 'traffic' && (
+          <TrafficTab
+            nonce={nonce}
+            apiBase={(window as any).ConversionIQData?.restUrl || '/wp-json/conversioniq/v1/'}
+            features={liveFeatures}
+          />
+        )}
+
+        {/* License & Plan — Account sub-tab */}
+        {activeTab === 'account' && activeSubTab === 'license' && (
           <section style={{ background: T.bgCard, borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.3)', padding: 32, border: `1px solid ${T.border}` }}>
             <h2 style={{ margin: '0 0 8px 0', fontSize: 24, fontWeight: 700, color: T.textPrimary }}>License</h2>
             <p style={{ color: T.textSecondary, marginBottom: 32, fontSize: 15 }}>
