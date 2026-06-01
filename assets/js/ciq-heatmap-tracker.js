@@ -248,7 +248,9 @@
         formStates[fid].drop_off_field = fieldName;
     }, true);
 
-    // Mark completion and clear the drop-off field on submit
+    // Mark completion and clear the drop-off field on submit.
+    // Also fire a conversion event via the server-side REST endpoint so it
+    // is recorded even if no recognised form plugin hook ran server-side.
     document.addEventListener('submit', function (e) {
         var form = e.target;
         if (!form || (form.tagName || '').toLowerCase() !== 'form') { return; }
@@ -261,7 +263,129 @@
         if (formStates[fid].start_time) {
             formStates[fid].time_sec = Math.round((Date.now() - formStates[fid].start_time) / 1000);
         }
+
+        // ── Conversion tracking (JS fallback) ────────────────────────────
+        // Uses the WordPress REST API so CORS is never an issue.
+        // The server will deduplicate against any server-side hook that also fired.
+        try {
+            var cfg        = window.ciqTrackerConfig || {};
+            var restBase   = cfg.restBase || '/wp-json';
+            var convEndpt  = restBase.replace(/\/$/, '') + '/conversioniq/v1/track-conversion';
+            var formTitle  = (form.getAttribute('data-title') ||
+                              form.getAttribute('aria-label') ||
+                              fid).slice(0, 120);
+
+            var payload = JSON.stringify({
+                form_name: formTitle,
+                page_url:  pageUrl
+            });
+
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon(convEndpt, new Blob([payload], { type: 'application/json' }));
+            } else if (typeof fetch !== 'undefined') {
+                fetch(convEndpt, {
+                    method:      'POST',
+                    headers:     { 'Content-Type': 'application/json' },
+                    body:        payload,
+                    credentials: 'same-origin',
+                    keepalive:   true
+                }).catch(function () {}); // swallow network errors silently
+            }
+        } catch (_ex) { /* non-critical — never break form submission */ }
     }, true);
+
+    // ── Conversion Goals tracker ──────────────────────────────────────────
+    // Evaluates user-defined goals (injected via ciqTrackerConfig.convGoals)
+    // against page URL, clicks, and Calendly postMessage events.
+    // Fires the same /track-conversion REST endpoint as the form fallback.
+    (function () {
+        var cfg      = window.ciqTrackerConfig || {};
+        var goals    = cfg.convGoals || [];
+        var restBase = (cfg.restBase || '/wp-json').replace(/\/$/, '');
+        var convEndpt = restBase + '/conversioniq/v1/track-conversion';
+
+        if (!goals.length) { return; }
+
+        function fireGoal(goal, extraName) {
+            try {
+                var payload = JSON.stringify({
+                    form_name:  extraName || goal.label || goal.type,
+                    page_url:   pageUrl,
+                    goal_type:  goal.type,
+                    goal_label: goal.label || goal.type
+                });
+                if (navigator.sendBeacon) {
+                    navigator.sendBeacon(convEndpt, new Blob([payload], { type: 'application/json' }));
+                } else if (typeof fetch !== 'undefined') {
+                    fetch(convEndpt, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, credentials: 'same-origin', keepalive: true }).catch(function(){});
+                }
+            } catch (_e) {}
+        }
+
+        // ── thank_you_page — check on load ───────────────────────────────
+        goals.forEach(function (goal) {
+            if (goal.type === 'thank_you_page' && goal.value) {
+                if (pageUrl.indexOf(goal.value) !== -1) {
+                    fireGoal(goal);
+                }
+            }
+        });
+
+        // ── Click-based goals ─────────────────────────────────────────────
+        document.addEventListener('click', function (e) {
+            var el = e.target;
+            // Walk up to 3 levels to catch clicks on child elements (e.g. <span> inside <a>)
+            for (var i = 0; i < 3 && el; i++) {
+                goals.forEach(function (goal) {
+                    if (goal.type === 'tel_click') {
+                        var href = el.getAttribute ? (el.getAttribute('href') || '') : '';
+                        if (href.indexOf('tel:') === 0) {
+                            if (!goal.value || href.indexOf(goal.value) !== -1) {
+                                fireGoal(goal, href);
+                            }
+                        }
+                    } else if (goal.type === 'mailto_click') {
+                        var href = el.getAttribute ? (el.getAttribute('href') || '') : '';
+                        if (href.indexOf('mailto:') === 0) {
+                            if (!goal.value || href.indexOf(goal.value) !== -1) {
+                                fireGoal(goal, href);
+                            }
+                        }
+                    } else if (goal.type === 'element_click' && goal.value) {
+                        try {
+                            if (el.matches && el.matches(goal.value)) {
+                                fireGoal(goal);
+                            }
+                        } catch (_e) {}
+                    } else if (goal.type === 'external_link') {
+                        var href = el.getAttribute ? (el.getAttribute('href') || '') : '';
+                        try {
+                            var linkHost = new URL(href, window.location.href).hostname;
+                            if (linkHost && linkHost !== window.location.hostname) {
+                                fireGoal(goal, href);
+                            }
+                        } catch (_e) {}
+                    }
+                });
+                el = el.parentElement;
+            }
+        }, true);
+
+        // ── Calendly postMessage ──────────────────────────────────────────
+        var hasCalendly = goals.some(function (g) { return g.type === 'calendly'; });
+        if (hasCalendly) {
+            window.addEventListener('message', function (e) {
+                try {
+                    var data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+                    if (data && data.event === 'calendly.event_scheduled') {
+                        goals.forEach(function (goal) {
+                            if (goal.type === 'calendly') { fireGoal(goal); }
+                        });
+                    }
+                } catch (_e) {}
+            });
+        }
+    }());
 
     function getPageDimensions() {
         return {

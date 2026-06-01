@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 2.3.1
+ * Version: 2.4.0
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'CONVERSION_IQ_VERSION', '2.3.1' );
+define( 'CONVERSION_IQ_VERSION', '2.4.0' );
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
@@ -115,6 +115,7 @@ require_once CONVERSION_IQ_DIR . 'includes/class-automated-reports.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-supabase-sync.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-google-analytics.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-traffic-insights.php';
+require_once CONVERSION_IQ_DIR . 'includes/class-conversion-tracker.php';
 if ( ConversionIQ_Config_Manager::can('knockknock') ) {
     require_once CONVERSION_IQ_DIR . 'includes/class-knockknock-webhook.php';
 }
@@ -122,6 +123,7 @@ if ( ConversionIQ_Config_Manager::can('knockknock') ) {
 // Initialize automated reports after WordPress loads
 add_action( 'init', function() {
     ConversionIQ_Automated_Reports::init();
+    ConversionIQ_Conversion_Tracker::init();
     
     // Schedule daily config sync if not already scheduled
     if ( ! wp_next_scheduled( 'conversioniq_sync_config' ) ) {
@@ -363,6 +365,11 @@ add_action( 'conversioniq_seo_sweep', function() {
 // Nightly heatmap summary sync (legacy cron hook — kept in case someone re-schedules it)
 add_action( 'conversioniq_heatmap_sync', 'conversioniq_heatmap_sync_daily' );
 
+// Piggyback conversion sync on the same nightly heatmap cron
+add_action( 'conversioniq_heatmap_sync', function() {
+    ConversionIQ_Conversion_Tracker::sync_to_saas();
+} );
+
 // ── Heatmap daily sync fallback — fires on admin_init, once per UTC day ──────
 // More reliable than WP-Cron alone: runs the first time any admin visits the
 // dashboard after midnight UTC, guaranteeing yesterday's data gets synced even
@@ -392,6 +399,9 @@ add_action( 'admin_init', function() {
 
     ciq_log( '🔄 Heatmap admin_init sync: running for ' . $today_utc );
     conversioniq_heatmap_sync_daily();
+
+    // Sync yesterday's conversion counts alongside the heatmap
+    ConversionIQ_Conversion_Tracker::sync_to_saas();
 } );
 
 // ── Audit Jobs Poller ──────────────────────────────────────────────────────
@@ -707,7 +717,9 @@ add_action( 'wp_enqueue_scripts', function() {
     );
 
     wp_localize_script( 'ciq-heatmap-tracker', 'ciqTrackerConfig', array(
-        'endpoint' => esc_url_raw( rest_url( 'conversioniq/v1/heatmap/record' ) ),
+        'endpoint'    => esc_url_raw( rest_url( 'conversioniq/v1/heatmap/record' ) ),
+        'restBase'    => esc_url_raw( rest_url() ),
+        'convGoals'   => ConversionIQ_Conversion_Tracker::get_goals(),
     ) );
 } );
 

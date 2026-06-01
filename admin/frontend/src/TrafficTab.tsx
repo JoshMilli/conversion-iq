@@ -566,11 +566,216 @@ export default function TrafficTab({ nonce, apiBase, features }: TrafficTabProps
           )}
         </>
       )}
+
+      {/* Conversion Goals */}
+      <ConversionGoalsPanel apiBase={apiBase} nonce={nonce} />
     </div>
   );
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────
+
+// ── Conversion Goals Panel ────────────────────────────────────────────────
+
+type GoalType = 'thank_you_page' | 'tel_click' | 'mailto_click' | 'element_click' | 'calendly' | 'external_link';
+
+interface ConversionGoal {
+  id: string;
+  type: GoalType;
+  value: string;
+  label: string;
+}
+
+const GOAL_TYPE_META: Record<GoalType, { label: string; placeholder: string; hint: string; needsValue: boolean }> = {
+  thank_you_page: { label: 'Thank-you Page',  placeholder: '/thank-you',        hint: 'URL contains this string',               needsValue: true  },
+  tel_click:      { label: 'Phone Click',      placeholder: '+1234567890',       hint: 'Phone number to match (empty = any)',     needsValue: false },
+  mailto_click:   { label: 'Email Click',      placeholder: 'hello@example.com', hint: 'Email address to match (empty = any)',    needsValue: false },
+  element_click:  { label: 'Button / Element', placeholder: '.book-call-btn',    hint: 'CSS selector of the clickable element',   needsValue: true  },
+  calendly:       { label: 'Calendly Booking', placeholder: '',                  hint: 'Fires when a Calendly booking completes', needsValue: false },
+  external_link:  { label: 'External Link',    placeholder: '',                  hint: 'Fires on any click leaving the site',     needsValue: false },
+};
+
+function ConversionGoalsPanel({ apiBase, nonce }: { apiBase: string; nonce: string }) {
+  const headers = { 'X-WP-Nonce': nonce };
+  const [goals, setGoals] = useState<ConversionGoal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [panelNotice, setPanelNotice] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [newType, setNewType] = useState<GoalType>('thank_you_page');
+  const [newValue, setNewValue] = useState('');
+  const [newLabel, setNewLabel] = useState('');
+
+  useEffect(() => {
+    axios.get(apiBase + 'conversion-goals', { headers })
+      .then(r => setGoals(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const persist = (updated: ConversionGoal[]) => {
+    setSaving(true);
+    axios.post(apiBase + 'conversion-goals', { goals: updated }, { headers })
+      .then(r => {
+        setGoals(r.data.goals ?? updated);
+        setPanelNotice({ type: 'success', msg: 'Goals saved.' });
+        setTimeout(() => setPanelNotice(null), 3000);
+      })
+      .catch(() => setPanelNotice({ type: 'error', msg: 'Failed to save goals.' }))
+      .finally(() => setSaving(false));
+  };
+
+  const addGoal = () => {
+    const meta = GOAL_TYPE_META[newType];
+    if (meta.needsValue && !newValue.trim()) return;
+    const goal: ConversionGoal = {
+      id: Math.random().toString(36).slice(2),
+      type: newType,
+      value: newValue.trim(),
+      label: newLabel.trim() || meta.label,
+    };
+    const updated = [...goals, goal];
+    setGoals(updated);
+    persist(updated);
+    setNewValue(''); setNewLabel(''); setNewType('thank_you_page'); setShowForm(false);
+  };
+
+  const removeGoal = (id: string) => {
+    const updated = goals.filter(g => g.id !== id);
+    setGoals(updated);
+    persist(updated);
+  };
+
+  const meta = GOAL_TYPE_META[newType];
+
+  return (
+    <div style={{ background: T.bgCard, borderRadius: 12, padding: 24, border: `1px solid ${T.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: T.textPrimary }}>Conversion Goals</h3>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: T.textMuted }}>
+            Track CTAs, bookings, and custom clicks beyond form submissions.
+          </p>
+        </div>
+        {!showForm && (
+          <button
+            onClick={() => setShowForm(true)}
+            style={{ padding: '8px 16px', background: T.primary, color: '#000', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+          >
+            + Add Goal
+          </button>
+        )}
+      </div>
+
+      {panelNotice && (
+        <div style={{
+          marginBottom: 12, padding: '10px 14px', borderRadius: 8, fontSize: 13,
+          background: panelNotice.type === 'success' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+          border: `1px solid ${panelNotice.type === 'success' ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)'}`,
+          color: panelNotice.type === 'success' ? '#10b981' : '#ef4444',
+        }}>
+          {panelNotice.msg}
+        </div>
+      )}
+
+      {showForm && (
+        <div style={{ background: T.bgSubtle, borderRadius: 10, padding: 20, marginBottom: 16, border: `1px solid ${T.border}` }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+
+            <div style={{ flex: '1 1 160px' }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: T.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Goal Type</label>
+              <select
+                value={newType}
+                onChange={e => { setNewType(e.target.value as GoalType); setNewValue(''); }}
+                style={{ width: '100%', padding: '9px 12px', background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 8, color: T.textPrimary, fontSize: 13 }}
+              >
+                {(Object.keys(GOAL_TYPE_META) as GoalType[]).map(t => (
+                  <option key={t} value={t}>{GOAL_TYPE_META[t].label}</option>
+                ))}
+              </select>
+            </div>
+
+            {(meta.needsValue || meta.placeholder) && (
+              <div style={{ flex: '2 1 220px' }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: T.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>
+                  Value{meta.needsValue ? ' *' : ' (optional)'}
+                </label>
+                <input
+                  type="text"
+                  value={newValue}
+                  onChange={e => setNewValue(e.target.value)}
+                  placeholder={meta.placeholder}
+                  style={{ width: '100%', padding: '9px 12px', background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 8, color: T.textPrimary, fontSize: 13, boxSizing: 'border-box' }}
+                />
+                <div style={{ fontSize: 11, color: T.textMuted, marginTop: 4 }}>{meta.hint}</div>
+              </div>
+            )}
+
+            <div style={{ flex: '2 1 180px' }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: T.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Label</label>
+              <input
+                type="text"
+                value={newLabel}
+                onChange={e => setNewLabel(e.target.value)}
+                placeholder={meta.label}
+                style={{ width: '100%', padding: '9px 12px', background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 8, color: T.textPrimary, fontSize: 13, boxSizing: 'border-box' }}
+              />
+              <div style={{ fontSize: 11, color: T.textMuted, marginTop: 4 }}>How it appears in reports</div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={addGoal}
+              disabled={saving || (meta.needsValue && !newValue.trim())}
+              style={{ padding: '9px 18px', background: T.primary, color: '#000', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', opacity: (saving || (meta.needsValue && !newValue.trim())) ? 0.5 : 1 }}
+            >
+              {saving ? 'Saving…' : 'Save Goal'}
+            </button>
+            <button
+              onClick={() => { setShowForm(false); setNewValue(''); setNewLabel(''); }}
+              style={{ padding: '9px 18px', background: T.bgHover, color: T.textSecondary, border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ color: T.textMuted, fontSize: 13 }}>Loading goals…</div>
+      ) : goals.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '32px 20px', color: T.textMuted, fontSize: 13 }}>
+          No conversion goals yet. Add one to track CTAs, bookings, and more.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {goals.map(goal => (
+            <div key={goal.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: T.bgSubtle, borderRadius: 8, border: `1px solid ${T.border}` }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: T.primary, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: T.textPrimary }}>{goal.label}</div>
+                <div style={{ fontSize: 12, color: T.textMuted, marginTop: 2 }}>
+                  <span style={{ background: T.primaryBg, color: T.primary, borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 600, marginRight: 8 }}>
+                    {GOAL_TYPE_META[goal.type]?.label ?? goal.type}
+                  </span>
+                  {goal.value && <span>{goal.value}</span>}
+                </div>
+              </div>
+              <button
+                onClick={() => removeGoal(goal.id)}
+                title="Remove goal"
+                style={{ background: 'transparent', border: 'none', color: T.textMuted, cursor: 'pointer', fontSize: 16, padding: 4, flexShrink: 0 }}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function NoticeBar({ notice }: { notice: { type: 'success' | 'error'; msg: string } }) {
   const bg = notice.type === 'success' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)';

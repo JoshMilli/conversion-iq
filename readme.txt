@@ -4,7 +4,7 @@ Tags: conversion optimization, AI audit, copy analysis, website scoring, lead in
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.3.1
+Stable tag: 2.4.0
 License: GPLv2 or later
 
 AI-powered conversion auditing for WordPress. Scores your pages, generates actionable reports, and rewrites copy to convert more visitors.
@@ -57,6 +57,16 @@ Yes. On the Professional and Agency plans you can customize the company name, lo
 Yes. Conversion IQ extracts rendered content from any published page regardless of how it was built (Elementor, Divi, Gutenberg, etc.).
 
 == Changelog ==
+
+= 2.4.0 =
+* Feature: Conversion tracking — server-side hooks for Contact Form 7, Gravity Forms, WPForms, Ninja Forms, Formidable Forms, and Fluent Forms record conversions locally and push daily to Supabase via the SaaS proxy (conversioniq-app.com/api/conversions/sync); zero client setup required
+* Feature: Conversion Goals — user-defined goals for thank-you page visits, phone/email link clicks, CSS-selector element clicks, Calendly booking confirmations, and external link clicks; managed via new Traffic Intelligence UI panel
+* Feature: Conversion Goals UI — "Conversion Goals" panel added to Traffic Intelligence dashboard tab; supports add, label, and delete with per-goal type hints and live validation
+* Feature: Client-side conversion fallback — ciq-heatmap-tracker.js extended with a goal-matching engine that reads injected goals from ciqTrackerConfig.convGoals and fires POST /conversioniq/v1/track-conversion via sendBeacon (no CORS issues, non-blocking); also fires on native form submits not covered by server-side hooks
+* Feature: Non-PII proof capture — form callbacks extract field labels and field count (never field values) as proof data per conversion event; stored in the events jsonb column in Supabase
+* Feature: New REST endpoints — POST /conversioniq/v1/track-conversion (public JS fallback), GET/POST /conversioniq/v1/conversion-goals (admin-only goals CRUD)
+* Improvement: restBase added to ciqTrackerConfig so front-end JS can construct REST URLs without hardcoding the path
+* Improvement: SEO analyzer — H1 word count tracked; checklist warns when H1 exceeds 10 words and explains the H1 (short, keyword-focused) + H2 (persuasive headline) hero pattern
 
 = 2.3.1 =
 * Improvement: GA4 property wizard — search/filter bar and scrollable list added (matches GSC step); filters by property name, account name, or property ID

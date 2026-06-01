@@ -254,7 +254,7 @@ class ConversionIQ_SEO_Analyzer {
      */
     private static function extract_headings( string $html ): array {
         if ( ! $html ) {
-            return [ 'h1' => [], 'h2' => [], 'h3' => [], 'h4' => [], 'h5' => [], 'h6' => [] ];
+            return [ 'h1' => [], 'h2' => [], 'h3' => [], 'h4' => [], 'h5' => [], 'h6' => [], 'h1_word_count' => 0 ];
         }
 
         $data = [];
@@ -262,6 +262,12 @@ class ConversionIQ_SEO_Analyzer {
             preg_match_all( "/<h{$i}[^>]*>(.*?)<\/h{$i}>/is", $html, $m );
             $data[ 'h' . $i ] = array_map( 'wp_strip_all_tags', $m[1] );
         }
+
+        // Word count of the first H1 — used to detect hero H1/H2 pattern issues.
+        $data['h1_word_count'] = ! empty( $data['h1'][0] )
+            ? str_word_count( wp_strip_all_tags( $data['h1'][0] ) )
+            : 0;
+
         return $data;
     }
 
@@ -533,7 +539,13 @@ class ConversionIQ_SEO_Analyzer {
         if ( $h1s >= 1 && $h2s >= 1 ) $score += 15;
         elseif ( $h1s >= 1 )           $score += 5;
 
-        return min( 100, $score );
+        // Hero H1 length: a long H1 (>10 words) tries to do double-duty as both
+        // keyword and conversion copy — penalise slightly (-10pts).
+        if ( ! empty( $d['h1_word_count'] ) && $d['h1_word_count'] > 10 ) {
+            $score -= 10;
+        }
+
+        return min( 100, max( 0, $score ) );
     }
 
     private static function score_keywords( array $d ): int {
@@ -699,12 +711,31 @@ class ConversionIQ_SEO_Analyzer {
             'Set og:title and og:description meta tags for social sharing previews.' );
 
         // Headings
-        $h1_count = count( $headings['h1'] );
+        $h1_count      = count( $headings['h1'] );
+        $h1_word_count = $headings['h1_word_count'] ?? 0;
         $items[] = self::item( 'Single H1 tag',       $h1_count === 1,       'headings',
             $h1_count === 0 ? 'No H1 tag found. Every page needs exactly one H1.' : ( $h1_count > 1 ? "Found {$h1_count} H1 tags. Use only one H1 per page." : '' ) );
         $items[] = self::item( 'H2 subheadings present', count( $headings['h2'] ) >= 2, 'headings', 'Add at least 2 H2 subheadings to structure your content.' );
         $items[] = self::item( 'Logical heading hierarchy', count( $headings['h1'] ) >= 1 && count( $headings['h2'] ) >= 1, 'headings',
             'Use H1 → H2 → H3 in order. Do not skip heading levels.' );
+
+        // Hero H1/H2 split: H1 should be short + keyword-focused; H2 handles conversion copy.
+        // A long H1 (>10 words) is trying to do both jobs at once and failing at both.
+        if ( $h1_count === 1 && $h1_word_count > 10 ) {
+            $items[] = self::item(
+                'Hero H1 is concise and keyword-focused',
+                false,
+                'headings',
+                "Your H1 is {$h1_word_count} words — it's trying to be both a keyword signal and a conversion headline at the same time. Split it: keep a short H1 (3–6 words) that targets your primary keyword, then add a larger H2 directly below it with your persuasive, conversion-driven message. Visitors read the big text first (your H2) while Google reads the H1 for ranking signals. You get both."
+            );
+        } elseif ( $h1_count === 1 && $h1_word_count > 0 && count( $headings['h2'] ) === 0 ) {
+            $items[] = self::item(
+                'Hero has a conversion-focused H2 alongside the H1',
+                false,
+                'headings',
+                'Your H1 exists but there is no H2 on the page. Consider adding an H2 directly after the H1 in the hero: let the H1 handle the keyword/search intent (short, specific), and use the H2 for a compelling, action-driving headline that converts visitors.'
+            );
+        }
 
         // Keywords
         if ( $keywords['has_focus_keyword'] ) {
