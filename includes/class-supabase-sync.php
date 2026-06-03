@@ -1834,14 +1834,16 @@ class ConversionIQ_Supabase_Sync {
      */
     public function upsert_competitor_score( $url, $name, $overall_score, $scores ) {
         if ( ! $this->supabase_anon_key ) {
-            ciq_log( 'Competitor upsert: no Supabase credentials' );
+            ciq_log( 'Competitor upsert: ❌ no Supabase anon key — check plugin credentials' );
             return false;
         }
 
         if ( ! $this->organization_id && ! $this->ensure_organization() ) {
-            ciq_log( 'Competitor upsert: no organization_id' );
+            ciq_log( 'Competitor upsert: ❌ no organization_id and ensure_organization() failed' );
             return false;
         }
+
+        ciq_log( 'Competitor upsert: sending to Supabase — org_id=' . $this->organization_id . ' url=' . $url . ' score=' . $overall_score );
 
         $payload = [
             'organization_id' => $this->organization_id,
@@ -1873,12 +1875,14 @@ class ConversionIQ_Supabase_Sync {
         }
 
         $status = wp_remote_retrieve_response_code( $response );
-        if ( $status === 200 || $status === 201 ) {
+        if ( $status === 200 || $status === 201 || $status === 204 ) {
             ciq_log( 'Competitor upsert: ✅ ' . $name . ' overall=' . $overall_score . ' (HTTP ' . $status . ')' );
             return true;
         }
 
-        ciq_log( 'Competitor upsert failed (' . $name . '): HTTP ' . $status . ' — ' . substr( wp_remote_retrieve_body( $response ), 0, 200 ) );
+        $body_raw = wp_remote_retrieve_body( $response );
+        ciq_log( 'Competitor upsert failed (' . $name . '): HTTP ' . $status . ' — ' . substr( $body_raw, 0, 500 ) );
+        ciq_log( 'Competitor upsert payload preview: org_id=' . $this->organization_id . ' url=' . $url );
         return false;
     }
 

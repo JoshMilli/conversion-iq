@@ -1123,8 +1123,139 @@ add_action('rest_api_init', function () {
             'callback'            => 'conversioniq_traffic_debug_sync',
             'permission_callback' => function () { return current_user_can( 'manage_options' ); },
         ) );
+
+        // Competitor analysis diagnostic: checks table, RLS, org-id, and URL parsing.
+        // Call via: POST /wp-json/conversioniq/v1/test-competitor-analysis
+        register_rest_route( 'conversioniq/v1', '/test-competitor-analysis', array(
+            'methods'             => 'POST',
+            'permission_callback' => function() { return current_user_can( 'manage_options' ); },
+            'callback'            => 'conversioniq_test_competitor_analysis',
+        ) );
     });
 
+
+/**
+ * Diagnostic: test competitor analysis end-to-end without running a full audit.
+ * Returns a detailed report: org-id, parsed URLs, table probe, sample upsert dry-run.
+ */
+function conversioniq_test_competitor_analysis() {
+    $report = [];
+
+    // ── 1. Organisation ID ─────────────────────────────────────────────────
+    $org_id = get_option( 'conversioniq_organization_id', '' );
+    $report['organization_id'] = $org_id ?: '(not set)';
+
+    // ── 2. Business settings & competitor field ───────────────────────────
+    $business        = json_decode( get_option( 'conversion_iq_settings', '{}' ), true );
+    $competitors_raw = trim( $business['competitors'] ?? '' );
+    $report['competitors_raw'] = $competitors_raw ?: '(empty — add competitors in Settings → Business Profile)';
+
+    // ── 3. Parse URLs using the same logic as conversioniq_analyze_competitors ─
+    $parsed_urls = [];
+    foreach ( array_filter( array_map( 'trim', explode( ',', $competitors_raw ) ) ) as $entry ) {
+        if ( preg_match( '/^https?:\/\//i', $entry ) ) {
+            $parsed_urls[] = [ 'input' => $entry, 'resolved' => esc_url_raw( $entry ), 'method' => 'full_url' ];
+        } elseif ( preg_match( '/^[a-z0-9][a-z0-9\-\.]+\.[a-z]{2,}$/i', $entry ) ) {
+            $parsed_urls[] = [ 'input' => $entry, 'resolved' => 'https://' . $entry, 'method' => 'bare_domain' ];
+        } elseif ( preg_match( '/^[a-z0-9][a-z0-9\s\-\_]+$/i', $entry ) ) {
+            $slug = strtolower( preg_replace( '/[\s_]+/', '', $entry ) );
+            $parsed_urls[] = [ 'input' => $entry, 'resolved' => 'https://' . $slug . '.com', 'method' => 'business_name' ];
+        } else {
+            $parsed_urls[] = [ 'input' => $entry, 'resolved' => null, 'method' => 'SKIPPED' ];
+        }
+    }
+    $report['parsed_urls'] = $parsed_urls;
+
+    // ── 4. Probe ciq_competitor_scores table (SELECT 0 rows) ─────────────
+    $sync        = new ConversionIQ_Supabase_Sync();
+    $supabase_url = 'https://spefdqiywnihehfhrood.supabase.co';
+    $anon_key     = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNwZWZkcWl5d25paGVoZmhyb29kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5ODI4NDcsImV4cCI6MjA4NDU1ODg0N30.FHJRpodLKgwW6hexRqGXKfcVFS4pwntSq83yNyR74d8';
+
+    $probe = wp_remote_get(
+        $supabase_url . '/rest/v1/ciq_competitor_scores?limit=1',
+        [
+            'headers' => [
+                'apikey'        => $anon_key,
+                'Authorization' => 'Bearer ' . $anon_key,
+            ],
+            'timeout' => 10,
+        ]
+    );
+    if ( is_wp_error( $probe ) ) {
+        $report['table_probe'] = [ 'ok' => false, 'error' => $probe->get_error_message() ];
+    } else {
+        $probe_status = wp_remote_retrieve_response_code( $probe );
+        $probe_body   = wp_remote_retrieve_body( $probe );
+        $report['table_probe'] = [
+            'http_status' => $probe_status,
+            'ok'          => $probe_status === 200,
+            'body_preview'=> substr( $probe_body, 0, 300 ),
+            'hint'        => $probe_status === 404 ? 'TABLE DOES NOT EXIST — run the CREATE TABLE SQL in Supabase'
+                           : ( $probe_status === 401 || $probe_status === 403 ? 'RLS or auth error — check anon key permissions'
+                           : ( $probe_status === 200 ? 'Table exists and is readable by anon' : 'Unexpected status' ) ),
+        ];
+    }
+
+    // ── 5. Dry-run INSERT (organisation_id required) ──────────────────────
+    if ( $org_id ) {
+        $test_payload = [
+            'organization_id' => $org_id,
+            'url'             => 'https://diagnostic-test.example.com',
+            'name'            => 'Diagnostic Test',
+            'overall_score'   => 0,
+            'scores'          => [ 'note' => 'diagnostic dry-run — safe to delete' ],
+            'analyzed_at'     => gmdate( 'Y-m-d\TH:i:s\Z' ),
+        ];
+        $dry_run = wp_remote_post(
+            $supabase_url . '/rest/v1/ciq_competitor_scores',
+            [
+                'headers' => [
+                    'apikey'        => $anon_key,
+                    'Authorization' => 'Bearer ' . $anon_key,
+                    'Content-Type'  => 'application/json',
+                    'Prefer'        => 'resolution=merge-duplicates,return=minimal',
+                ],
+                'body'    => json_encode( $test_payload ),
+                'timeout' => 10,
+            ]
+        );
+        if ( is_wp_error( $dry_run ) ) {
+            $report['upsert_test'] = [ 'ok' => false, 'error' => $dry_run->get_error_message() ];
+        } else {
+            $dr_status = wp_remote_retrieve_response_code( $dry_run );
+            $dr_body   = wp_remote_retrieve_body( $dry_run );
+            $report['upsert_test'] = [
+                'http_status'  => $dr_status,
+                'ok'           => in_array( $dr_status, [ 200, 201, 204 ], true ),
+                'body_preview' => substr( $dr_body, 0, 300 ),
+                'hint'         => in_array( $dr_status, [ 200, 201, 204 ], true )
+                    ? 'Upsert succeeded — data can be written to the table'
+                    : ( $dr_status === 403 ? 'PERMISSION DENIED — add RLS policy for anon role'
+                    : ( $dr_status === 404 ? 'Table not found — create it first'
+                    : 'See body_preview for details' ) ),
+            ];
+        }
+    } else {
+        $report['upsert_test'] = [ 'skipped' => 'No organization_id — register the plugin first' ];
+    }
+
+    // ── 6. Active transients (cached analyses) ────────────────────────────
+    $cached = [];
+    foreach ( $parsed_urls as $pu ) {
+        if ( $pu['resolved'] ) {
+            $key = 'ciq_comp_' . md5( $pu['resolved'] );
+            $val = get_transient( $key );
+            if ( $val !== false ) {
+                $cached[] = $pu['resolved'];
+            }
+        }
+    }
+    $report['cached_competitors'] = empty( $cached )
+        ? 'None — all competitors will be re-analysed on next audit'
+        : $cached;
+
+    return new WP_REST_Response( $report, 200 );
+}
 
 function conversioniq_traffic_status() {
     $insights = new ConversionIQ_Traffic_Insights();
@@ -1503,6 +1634,8 @@ function conversioniq_run_audit(WP_REST_Request $request)
     $pages = $valid_pages;
 
     $business = json_decode(get_option('conversion_iq_settings', '{}'), true);
+    ciq_log( 'Audit: business settings loaded — keys: ' . implode( ', ', array_keys( $business ?: [] ) ) );
+    ciq_log( 'Audit: competitors field = ' . json_encode( $business['competitors'] ?? '(not set)' ) );
 
 $results = array();
 
@@ -1938,10 +2071,14 @@ $results = array();
     if ( ! empty( $competitors_raw ) ) {
         $business_snapshot = $business; // capture by value for the closure
         register_shutdown_function( function() use ( $business_snapshot ) {
+            ciq_log( 'Competitors: shutdown function entered' );
             // On PHP-FPM / FastCGI hosts this flushes the response to the client
             // so they don't wait for competitor analysis to complete.
             if ( function_exists( 'fastcgi_finish_request' ) ) {
                 fastcgi_finish_request();
+                ciq_log( 'Competitors: fastcgi_finish_request() called' );
+            } else {
+                ciq_log( 'Competitors: fastcgi_finish_request() not available — running inline' );
             }
             // Allow analysis to run without hitting max_execution_time
             @set_time_limit( 120 );
@@ -1949,6 +2086,8 @@ $results = array();
             conversioniq_analyze_competitors( $business_snapshot );
         } );
         ciq_log( 'Competitors: analysis registered for post-response execution' );
+    } else {
+        ciq_log( 'Competitors: skipped — competitors field is empty in business profile' );
     }
 
     // Run SEO audit for each successfully audited page in the background,
@@ -2010,32 +2149,39 @@ function conversioniq_analyze_competitors( $business ) {
         return;
     }
 
-    // Parse comma-separated entries into validated URLs.
-    // Accepts: bare domains ("competitor.com"), full URLs ("https://...").
-    // Plain business names without a TLD are skipped — can't infer a URL.
-    $urls = [];
+    // Parse comma-separated entries, preserving the original name as a hint for GPT.
+    // Accepts: full URLs ("https://..."), bare domains ("competitor.com"),
+    // and plain business names ("AirBNB" → url=https://airbnb.com, hint="AirBNB").
+    $entries = [];
     foreach ( array_filter( array_map( 'trim', explode( ',', $competitors_raw ) ) ) as $entry ) {
         if ( preg_match( '/^https?:\/\//i', $entry ) ) {
-            $urls[] = esc_url_raw( $entry );
+            $entries[] = [ 'url' => esc_url_raw( $entry ), 'hint' => parse_url( $entry, PHP_URL_HOST ) ?: $entry ];
         } elseif ( preg_match( '/^[a-z0-9][a-z0-9\-\.]+\.[a-z]{2,}$/i', $entry ) ) {
-            $urls[] = 'https://' . $entry;
+            $entries[] = [ 'url' => 'https://' . $entry, 'hint' => $entry ];
+        } elseif ( preg_match( '/^[a-z0-9][a-z0-9\s\-\_]+$/i', $entry ) ) {
+            $slug = strtolower( preg_replace( '/[\s_]+/', '', $entry ) );
+            $entries[] = [ 'url' => 'https://' . $slug . '.com', 'hint' => $entry ];
+            ciq_log( 'Competitors: resolved "' . $entry . '" → https://' . $slug . '.com' );
         } else {
-            ciq_log( 'Competitors: skipping "' . $entry . '" — not a recognizable URL or domain' );
+            ciq_log( 'Competitors: skipping "' . $entry . '" — not a recognizable URL, domain, or business name' );
         }
     }
 
-    if ( empty( $urls ) ) {
-        ciq_log( 'Competitors: no valid URLs found in competitors field — nothing to analyze' );
+    if ( empty( $entries ) ) {
+        ciq_log( 'Competitors: no valid entries found — nothing to analyze' );
         return;
     }
 
     // Cap at 3 to keep total audit time reasonable
-    $urls = array_slice( $urls, 0, 3 );
-    ciq_log( 'Competitors: ' . count( $urls ) . ' URL(s) to check: ' . implode( ', ', $urls ) );
+    $entries = array_slice( $entries, 0, 3 );
+    ciq_log( 'Competitors: ' . count( $entries ) . ' to score via GPT knowledge (no scraping)' );
 
     $supabase_sync = new ConversionIQ_Supabase_Sync();
 
-    foreach ( $urls as $competitor_url ) {
+    foreach ( $entries as $entry_data ) {
+        $competitor_url = $entry_data['url'];
+        $name_hint      = $entry_data['hint'];
+
         $cache_key = 'ciq_comp_' . md5( $competitor_url );
         if ( get_transient( $cache_key ) ) {
             ciq_log( 'Competitors: ⏭ ' . $competitor_url . ' analyzed within last 7 days — skipping' );
@@ -2043,62 +2189,31 @@ function conversioniq_analyze_competitors( $business ) {
         }
 
         $comp_start = microtime( true );
-        ciq_log( 'Competitors: fetching ' . $competitor_url );
-
-        $resp = wp_remote_get( $competitor_url, [
-            'timeout'    => 12,
-            'sslverify'  => false,
-            'user-agent' => 'Mozilla/5.0 (compatible; ConversionIQ/1.0)',
-        ]);
-
-        if ( is_wp_error( $resp ) ) {
-            ciq_log( 'Competitors: ❌ fetch failed for ' . $competitor_url . ' — ' . $resp->get_error_message() );
-            continue;
-        }
-
-        $http_code = wp_remote_retrieve_response_code( $resp );
-        if ( $http_code !== 200 ) {
-            ciq_log( 'Competitors: ❌ HTTP ' . $http_code . ' for ' . $competitor_url . ' — skipping' );
-            continue;
-        }
-
-        $html    = wp_remote_retrieve_body( $resp );
-        $content = wp_strip_all_tags( $html );
-        $content = trim( preg_replace( '/\s+/', ' ', $content ) );
-        $content = substr( $content, 0, 6000 ); // stay within single-chunk AI limit
-
-        // Derive a display name from the page <title>, falling back to hostname
-        $name = parse_url( $competitor_url, PHP_URL_HOST ) ?: $competitor_url;
-        if ( preg_match( '/<title[^>]*>(.*?)<\/title>/is', $html, $m ) ) {
-            $extracted = trim( wp_strip_all_tags( $m[1] ) );
-            if ( ! empty( $extracted ) ) {
-                $name = substr( $extracted, 0, 100 );
-            }
-        }
-
-        ciq_log( 'Competitors: running AI analysis for "' . $name . '"' );
 
         try {
-            $ai = ConversionIQ_AI::score_competitor( $content, $competitor_url, $name, $business );
+            $ai = ConversionIQ_AI::score_competitor( $competitor_url, $name_hint, $business );
 
             if ( ! is_array( $ai ) || ! isset( $ai['overall_score'] ) ) {
                 ciq_log( 'Competitors: ⚠️ AI returned unexpected response for ' . $competitor_url );
                 continue;
             }
 
+            // Use the real brand name GPT identified, falling back to our hint
+            $display_name = ! empty( $ai['business_name'] ) ? $ai['business_name'] : $name_hint;
+
             $scores = [
-                'clarity_score'     => isset( $ai['clarity_score'] )     ? intval( $ai['clarity_score'] )     : null,
-                'emotional_score'   => isset( $ai['emotional_score'] )   ? intval( $ai['emotional_score'] )   : null,
-                'cta_strength'      => isset( $ai['cta_strength'] )      ? intval( $ai['cta_strength'] )      : null,
-                'readability_score' => isset( $ai['readability_score'] ) ? intval( $ai['readability_score'] ) : null,
-                'engagement_score'  => isset( $ai['engagement_score'] )  ? intval( $ai['engagement_score'] )  : null,
-                'trust_score'       => isset( $ai['trust_score'] )       ? intval( $ai['trust_score'] )       : null,
+                'clarity_score'       => isset( $ai['clarity_score'] )     ? intval( $ai['clarity_score'] )     : null,
+                'emotional_score'     => isset( $ai['emotional_score'] )   ? intval( $ai['emotional_score'] )   : null,
+                'cta_strength'        => isset( $ai['cta_strength'] )      ? intval( $ai['cta_strength'] )      : null,
+                'readability_score'   => isset( $ai['readability_score'] ) ? intval( $ai['readability_score'] ) : null,
+                'engagement_score'    => isset( $ai['engagement_score'] )  ? intval( $ai['engagement_score'] )  : null,
+                'trust_score'         => isset( $ai['trust_score'] )       ? intval( $ai['trust_score'] )       : null,
                 'competitive_insight' => $ai['competitive_insight'] ?? null,
             ];
 
             $upserted = $supabase_sync->upsert_competitor_score(
                 $competitor_url,
-                $name,
+                $display_name,
                 intval( $ai['overall_score'] ),
                 $scores
             );
@@ -2109,7 +2224,7 @@ function conversioniq_analyze_competitors( $business ) {
             }
 
             $elapsed = round( microtime( true ) - $comp_start, 2 );
-            ciq_log( 'Competitors: ' . ( $upserted ? '✅' : '⚠️ upsert failed —' ) . ' "' . $name . '" overall=' . $ai['overall_score'] . ' in ' . $elapsed . 's' );
+            ciq_log( 'Competitors: ' . ( $upserted ? '✅' : '⚠️ upsert failed —' ) . ' "' . $display_name . '" overall=' . $ai['overall_score'] . ' in ' . $elapsed . 's' );
 
         } catch ( Exception $e ) {
             ciq_log( 'Competitors: exception for ' . $competitor_url . ' — ' . $e->getMessage() );
@@ -2478,6 +2593,11 @@ function conversioniq_get_business_profile(WP_REST_Request $request)
                 $local[ $f ] = $profile[ $f ];
             }
         }
+        // Write merged data back to the local WP option so audits always read
+        // the latest values — without this, competitors/etc set on the SaaS
+        // side are only visible in the UI, never used by conversioniq_run_audit().
+        update_option( 'conversion_iq_settings', wp_json_encode( $local ) );
+        ciq_log( 'Business profile: synced to local WP option from ' . $source . ' — competitors=' . json_encode( $local['competitors'] ?? '(empty)' ) );
     }
 
     // Build response from merged data

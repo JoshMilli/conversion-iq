@@ -877,49 +877,51 @@ class ConversionIQ_AI
      *                     cta_strength, readability_score, engagement_score,
      *                     trust_score, competitive_insight. Null on failure.
      */
-    public static function score_competitor( $html_text, $url, $name, $business ) {
+    public static function score_competitor( $url, $name_hint, $business ) {
         $industry  = $business['industry']  ?? 'Not specified';
         $product   = $business['product']   ?? 'Not specified';
         $audience  = $business['audience']  ?? 'Not specified';
 
-        // Cap content — 5 000 chars is ample for scoring without wasting tokens.
-        $content = substr( trim( $html_text ), 0, 5000 );
+        $system_prompt = 'You are a senior CRO (Conversion Rate Optimisation) analyst with expert knowledge of how real websites look, feel, and convert visitors.
 
-        $system_prompt = 'You are a CRO analyst. Score competitor landing pages using this rubric (0-100 integers):
+Your task: score a competitor website based on your existing knowledge of it. Do NOT fabricate scores — if you have limited knowledge of a site, use conservative (lower) scores and note it in competitive_insight.
 
-clarity_score    — how clearly the page communicates its value proposition
-emotional_score  — how well the copy connects emotionally with its audience
-cta_strength     — strength and prominence of calls-to-action
-readability_score — how easy the page is to scan and read
-engagement_score — interactivity and media richness
-trust_score      — credibility signals: testimonials, badges, social proof
+Scoring rubric (0–100 integers — major consumer brands typically score 55–75):
+  clarity_score     — how clearly the homepage communicates its core value proposition
+  emotional_score   — how well copy and imagery connect emotionally with the target audience
+  cta_strength      — prominence, urgency, and effectiveness of calls-to-action
+  readability_score — how easy the page is to scan, digest, and navigate
+  engagement_score  — visual richness, interactivity, and ability to hold attention
+  trust_score       — social proof, reviews, badges, guarantees, credibility signals
 
 overall_score = round(clarity*0.20 + emotional*0.15 + cta*0.20 + readability*0.15 + engagement*0.15 + trust*0.15)
 
-Also write competitive_insight: one sentence stating the single biggest CRO strength or weakness versus a typical ' . $industry . ' competitor.
+Also include:
+  business_name       — real display name of this business (e.g. "Airbnb", not the URL)
+  competitive_insight — one precise, actionable sentence naming the single biggest CRO strength OR weakness this competitor has relative to our business, and what we should do about it
 
 Return ONLY valid JSON, no markdown, no commentary:
-{"clarity_score":0,"emotional_score":0,"cta_strength":0,"readability_score":0,"engagement_score":0,"trust_score":0,"overall_score":0,"competitive_insight":""}';
+{"clarity_score":0,"emotional_score":0,"cta_strength":0,"readability_score":0,"engagement_score":0,"trust_score":0,"overall_score":0,"business_name":"","competitive_insight":""}';
 
-        $user_prompt = "Score this competitor page for a {$industry} business.
+        $user_prompt = "Score the CRO quality of this competitor for a {$industry} business.
 
-OUR BUSINESS: {$product} targeting {$audience}.
-COMPETITOR: {$name} ({$url})
+OUR BUSINESS: {$product}, targeting {$audience}.
+COMPETITOR URL: {$url}
+DISPLAY NAME HINT: {$name_hint}
 
-PAGE CONTENT:
-{$content}
+Using your knowledge of this website, score its homepage or primary landing page from the perspective of a first-time visitor in our target market. Consider: above-the-fold clarity, headline strength, CTA placement and urgency, social proof visibility, copy tone, and overall visual engagement.
 
-Return the JSON scores.";
+Return only the JSON.";
 
         $start = microtime( true );
-        ciq_log( 'Competitors: scoring "' . $name . '" via SaaS AI proxy (' . strlen( $content ) . ' chars)' );
+        ciq_log( 'Competitors: scoring "' . $name_hint . '" via GPT knowledge (no scrape) — url=' . $url );
 
-        $result = self::call_chat_endpoint( $system_prompt, $user_prompt );
+        $result = self::call_chat_endpoint( $system_prompt, $user_prompt, 600 );
 
         if ( $result ) {
-            ciq_log( 'Competitors: ✅ scored "' . $name . '" in ' . round( microtime(true) - $start, 2 ) . 's' );
+            ciq_log( 'Competitors: ✅ scored "' . ( $result['business_name'] ?? $name_hint ) . '" overall=' . ( $result['overall_score'] ?? '?' ) . ' in ' . round( microtime(true) - $start, 2 ) . 's' );
         } else {
-            ciq_log( 'Competitors: ❌ scoring failed for "' . $name . '"' );
+            ciq_log( 'Competitors: ❌ scoring failed for "' . $name_hint . '"' );
         }
 
         return $result;
@@ -937,6 +939,7 @@ Return the JSON scores.";
     private static function call_chat_endpoint( $system, $user, $max_tokens = 350 ) {
         $license_key = self::get_license_key();
         if ( empty( $license_key ) ) {
+            ciq_log( 'Competitors: ❌ no license key — competitor scoring skipped' );
             return null;
         }
 
@@ -976,9 +979,10 @@ Return the JSON scores.";
         $submit_data = json_decode( wp_remote_retrieve_body( $submit_response ), true );
         $job_id = isset( $submit_data['job_id'] ) ? $submit_data['job_id'] : null;
         if ( ! $job_id ) {
-            ciq_log( 'Competitors: no job_id in submit response' );
+            ciq_log( 'Competitors: no job_id in submit response — raw: ' . substr( wp_remote_retrieve_body( $submit_response ), 0, 200 ) );
             return null;
         }
+        ciq_log( 'Competitors: job submitted — job_id=' . $job_id );
 
         // ── Step 2: Poll for result ───────────────────────────────────────────
         $poll_url  = self::SAAS_API_URL . '/api/ai-proxy/result/' . rawurlencode( $job_id );
@@ -992,10 +996,14 @@ Return the JSON scores.";
         for ( $attempt = 1; $attempt <= 20; $attempt++ ) {
             sleep( 5 );
             $poll_response = wp_remote_get( $poll_url, $poll_args );
-            if ( is_wp_error( $poll_response ) ) continue;
+            if ( is_wp_error( $poll_response ) ) {
+                ciq_log( 'Competitors: poll attempt ' . $attempt . ' error — ' . $poll_response->get_error_message() );
+                continue;
+            }
 
             $poll_data  = json_decode( wp_remote_retrieve_body( $poll_response ), true );
             $job_status = isset( $poll_data['status'] ) ? $poll_data['status'] : 'unknown';
+            ciq_log( 'Competitors: poll attempt ' . $attempt . ' — status=' . $job_status );
 
             if ( $job_status === 'complete' ) { $data = $poll_data; break; }
             if ( $job_status === 'failed' || $job_status === 'not_found' ) {
@@ -1479,7 +1487,11 @@ Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact struc
   \"lead_intelligence_summary\": null,
   \"audience_fit_analysis\": null,
   \"ai_used\": true
-}";
+}
+
+NOTE: Only include \"lead_intelligence_summary\" and \"audience_fit_analysis\" if a VISITOR INTELLIGENCE
+section appears in the user prompt. If no such section is present, omit both keys entirely.
+";
     }
 
     /**
@@ -1514,8 +1526,13 @@ Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact struc
         }
         $page_type_block .= "\nSCORING EMPHASIS FOR THIS PAGE TYPE:\n{$scoring_emphasis}\n";
 
-        // Get webhook statistics for lead intelligence context
-        $webhook_stats = self::get_webhook_statistics($url);
+        // Get webhook statistics for lead intelligence context.
+        // Only query KnockKnock data when the feature is enabled on this plan
+        // AND an API key is actually configured — avoids unnecessary DB hits and
+        // ensures audience_fit_analysis is never requested without real data.
+        $kk_enabled    = ConversionIQ_Config_Manager::can('knockknock')
+                         && ! empty( get_option( ConversionIQ_KnockKnock_API::OPT_KEY, '' ) );
+        $webhook_stats = $kk_enabled ? self::get_webhook_statistics($url) : null;
         $leads_context = '';
 
         if ($webhook_stats) {
