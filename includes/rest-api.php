@@ -1243,13 +1243,9 @@ function conversioniq_save_settings( WP_REST_Request $request )
     unset($params['openai_api_key']);
 
     // Save KnockKnock settings separately
-    if (isset($params['knockknock_company_id'])) {
-        update_option('conversioniq_knockknock_company_id', sanitize_text_field($params['knockknock_company_id']));
-        unset($params['knockknock_company_id']);
-    }
-    if (isset($params['knockknock_webhook_secret'])) {
-        update_option('conversioniq_knockknock_webhook_secret', sanitize_text_field($params['knockknock_webhook_secret']));
-        unset($params['knockknock_webhook_secret']);
+    if (isset($params['knockknock_api_key'])) {
+        update_option('conversioniq_knockknock_api_key', sanitize_text_field($params['knockknock_api_key']));
+        unset($params['knockknock_api_key']);
     }
 
     update_option('conversion_iq_settings', wp_json_encode($params));
@@ -1263,9 +1259,8 @@ function conversioniq_get_settings()
     $decoded = json_decode($v, true);
 
     // Add KnockKnock settings
-    $decoded['knockknock_company_id'] = get_option('conversioniq_knockknock_company_id', '');
-    $decoded['knockknock_webhook_secret'] = get_option('conversioniq_knockknock_webhook_secret', '');
-    $decoded['knockknock_webhook_url'] = home_url('/wp-json/conversioniq/v1/webhook');
+    $decoded['knockknock_api_key']  = get_option('conversioniq_knockknock_api_key', '');
+    $decoded['knockknock_last_sync'] = get_option('conversioniq_knockknock_last_sync', '');
 
     return rest_ensure_response($decoded);
 }
@@ -1828,10 +1823,11 @@ $results = array();
                         'goal'        => $business_data['goal'] ?? null,
                         'pain_points' => $business_data['pain_points'] ?? null,
                     ),
-                    'lead_intelligence'  => isset($ai['lead_intelligence_summary']) ? $ai['lead_intelligence_summary'] : null,
-                    'cro_checklist'      => isset($ai['cro_checklist']) ? $ai['cro_checklist'] : null,
-                    'plan'               => ConversionIQ_Config_Manager::get_plan(),
-                    'page_type'          => $ai['page_type'] ?? null,
+                    'lead_intelligence'      => isset($ai['lead_intelligence_summary']) ? $ai['lead_intelligence_summary'] : null,
+                    'audience_fit_analysis'  => isset($ai['audience_fit_analysis'])     ? $ai['audience_fit_analysis']     : null,
+                    'cro_checklist'          => isset($ai['cro_checklist'])              ? $ai['cro_checklist']              : null,
+                    'plan'                   => ConversionIQ_Config_Manager::get_plan(),
+                    'page_type'              => $ai['page_type'] ?? null,
                 ));
 
                 // Track usage for analytics
@@ -3392,9 +3388,10 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
                                     'goal'        => $business['goal'] ?? null,
                                     'pain_points' => $business['pain_points'] ?? null,
                                 ),
-                                'lead_intelligence'  => isset($ai_result['lead_intelligence_summary']) ? $ai_result['lead_intelligence_summary'] : null,
-                                'cro_checklist'      => isset($ai_result['cro_checklist']) ? $ai_result['cro_checklist'] : null,
-                                'plan'               => ConversionIQ_Config_Manager::get_plan(),
+                                'lead_intelligence'      => isset($ai_result['lead_intelligence_summary']) ? $ai_result['lead_intelligence_summary'] : null,
+                                'audience_fit_analysis'  => isset($ai_result['audience_fit_analysis'])     ? $ai_result['audience_fit_analysis']     : null,
+                                'cro_checklist'          => isset($ai_result['cro_checklist'])              ? $ai_result['cro_checklist']              : null,
+                                'plan'                   => ConversionIQ_Config_Manager::get_plan(),
                             ));
 
                             $supabase_sync->track_usage('analyze_page');

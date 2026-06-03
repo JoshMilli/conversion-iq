@@ -840,7 +840,7 @@ class ConversionIQ_Reports
                 array("title" => "Performance Analysis", "desc" => "Detailed scores, trends, and metric breakdowns"),
             );
             // Lead Intelligence is conditional
-            $has_lead_data_for_toc = isset($data['webhook_stats']) || !empty(get_option('conversioniq_knockknock_company_id', ''));
+            $has_lead_data_for_toc = isset($data['webhook_stats']) || !empty(get_option('conversioniq_knockknock_api_key', ''));
             if ($has_lead_data_for_toc) {
                 $toc_items[] = array("title" => "Growth Machine Analysis", "desc" => "Visitor intelligence, company identification, and geographic data");
             }
@@ -1748,13 +1748,13 @@ class ConversionIQ_Reports
         </div>';
 
             // ============ PAGE 4.5: LEAD INTELLIGENCE SUMMARY ============
-            $knockknock_company_id = get_option('conversioniq_knockknock_company_id', '');
-            $is_knockknock_configured = !empty($knockknock_company_id);
+            $knockknock_api_key = get_option('conversioniq_knockknock_api_key', '');
+            $is_knockknock_configured = !empty($knockknock_api_key);
             
             ciq_log('=== LEAD INTELLIGENCE SECTION ===');
             ciq_log('📋 Audit ID: ' . ($audit['id'] ?? 'unknown'));
             ciq_log('📋 Page URL: ' . ($audit['page_url'] ?? 'unknown'));
-            ciq_log('📋 KnockKnock Company ID configured: ' . ($is_knockknock_configured ? 'YES (' . $knockknock_company_id . ')' : 'NO (empty)'));
+            ciq_log('📋 KnockKnock API key configured: ' . ($is_knockknock_configured ? 'YES' : 'NO (empty)'));
             ciq_log('📋 Data keys in audit: ' . json_encode(array_keys($data)));
             ciq_log('📋 webhook_stats in stored data: ' . (isset($data['webhook_stats']) ? 'YES' : 'NO'));
             ciq_log('📋 lead_intelligence_summary in stored data: ' . (isset($data['lead_intelligence_summary']) ? 'YES' : 'NO'));

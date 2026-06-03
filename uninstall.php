@@ -32,8 +32,8 @@ $options = array(
     'conversioniq_saas_config_updated_at',
     'conversioniq_ga_credentials',
     'conversioniq_github_token',
-    'conversioniq_knockknock_company_id',
-    'conversioniq_knockknock_webhook_secret',
+    'conversioniq_knockknock_api_key',
+    'conversioniq_knockknock_last_sync',
     'conversioniq_organization_id',
     'conversioniq_account',
 );
@@ -57,6 +57,10 @@ if ($timestamp) {
 $timestamp = wp_next_scheduled('conversioniq_poll_audit_jobs');
 if ($timestamp) {
     wp_unschedule_event($timestamp, 'conversioniq_poll_audit_jobs');
+}
+$timestamp = wp_next_scheduled('conversioniq_knockknock_sync');
+if ($timestamp) {
+    wp_unschedule_event($timestamp, 'conversioniq_knockknock_sync');
 }
 
 // Clean up transients

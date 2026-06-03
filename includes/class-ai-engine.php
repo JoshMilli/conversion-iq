@@ -1476,6 +1476,8 @@ Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact struc
       \"Specific challenge 2 for converting visitors in this industry\"
     ]
   },
+  \"lead_intelligence_summary\": null,
+  \"audience_fit_analysis\": null,
   \"ai_used\": true
 }";
     }
@@ -1518,33 +1520,83 @@ Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact struc
 
         if ($webhook_stats) {
             ciq_log('📊 Webhook stats loaded: ' . $webhook_stats['total_interactions'] . ' interactions, page visitors: ' . $webhook_stats['page_specific_visitors']);
-            
+
             $page_visitors = $webhook_stats['page_specific_visitors'];
-            $site_total = (int)$webhook_stats['total_site_leads'] + (int)$webhook_stats['total_site_visitors'];
-            $leads_context = "\n\nLEAD INTELLIGENCE DATA:\n";
-            $leads_context .= "Site-wide: {$site_total} identified visitors. This page: {$page_visitors} ({$webhook_stats['site_contribution_pct']}% of site). ";
-            $leads_context .= "Peak: {$webhook_stats['peak_weekday']} at {$webhook_stats['peak_hour']}:00. ";
-            
-            if (!empty($webhook_stats['top_companies'])) {
-                $leads_context .= "Top companies: " . implode(', ', array_keys(array_slice($webhook_stats['top_companies'], 0, 3, true))) . ". ";
-            }
+            $site_total    = (int)$webhook_stats['total_site_leads'] + (int)$webhook_stats['total_site_visitors'];
+
+            $leads_context  = "\n\n════════════════════════════════════════════════════════\n";
+            $leads_context .= "VISITOR INTELLIGENCE (KnockKnock real-visitor data)\n";
+            $leads_context .= "════════════════════════════════════════════════════════\n";
+            $leads_context .= "All figures below are from real identified visitors synced via the KnockKnock API.\n";
+            $leads_context .= "RULE: Use ONLY these numbers in your output. Never fabricate or estimate visitor stats.\n\n";
+
+            // ── Volume ─────────────────────────────────────────────────────────
+            $leads_context .= "REACH\n";
+            $leads_context .= "• Site-wide identified visitors (all pages, all time): {$site_total}\n";
+            $leads_context .= "• Visitors on THIS specific page: {$page_visitors} ({$webhook_stats['site_contribution_pct']}% of site traffic)\n";
+            $leads_context .= "• Peak engagement window: {$webhook_stats['peak_weekday']}s at {$webhook_stats['peak_hour']}:00\n\n";
+
+            // ── Actual audience ───────────────────────────────────────────────
+            $leads_context .= "ACTUAL AUDIENCE (who is really landing on this page)\n";
             if (!empty($webhook_stats['top_industries'])) {
-                $leads_context .= "Industries: " . implode(', ', array_keys(array_slice($webhook_stats['top_industries'], 0, 3, true))) . ". ";
+                $leads_context .= "• Top industries: " . implode(', ', array_keys(array_slice($webhook_stats['top_industries'], 0, 5, true))) . "\n";
             }
             if (!empty($webhook_stats['top_job_titles'])) {
-                $leads_context .= "Job titles: " . implode(', ', array_keys(array_slice($webhook_stats['top_job_titles'], 0, 3, true))) . ". ";
-            }
-            if (!empty($webhook_stats['decision_maker_tiers'])) {
-                $tier_parts = array();
-                foreach ($webhook_stats['decision_maker_tiers'] as $tier => $count) {
-                    $tier_parts[] = $tier . ' (' . $count . ')';
-                }
-                $leads_context .= "Decision-maker tiers: " . implode(', ', $tier_parts) . ". ";
+                $leads_context .= "• Top job titles: " . implode(', ', array_keys(array_slice($webhook_stats['top_job_titles'], 0, 5, true))) . "\n";
             }
             if (!empty($webhook_stats['top_locations'])) {
-                $leads_context .= "Locations: " . implode(', ', array_keys(array_slice($webhook_stats['top_locations'], 0, 3, true))) . ". ";
+                $leads_context .= "• Top locations: " . implode(', ', array_keys(array_slice($webhook_stats['top_locations'], 0, 5, true))) . "\n";
             }
-            $leads_context .= "\nUse ONLY these real numbers in lead_intelligence_summary. Do NOT invent stats.\n";
+
+            // ── Decision-maker tier breakdown (with %) ────────────────────────
+            if (!empty($webhook_stats['decision_maker_tiers'])) {
+                $tier_parts = array();
+                $tier_total = array_sum($webhook_stats['decision_maker_tiers']);
+                foreach ($webhook_stats['decision_maker_tiers'] as $tier => $count) {
+                    $pct          = $tier_total > 0 ? round(($count / $tier_total) * 100) : 0;
+                    $tier_parts[] = "{$tier}: {$count} ({$pct}%)";
+                }
+                $leads_context .= "• Decision-maker tiers: " . implode(', ', $tier_parts) . "\n";
+            }
+            $leads_context .= "\n";
+
+            // ── Company intelligence (full profiles) ──────────────────────────
+            if (!empty($webhook_stats['company_intelligence'])) {
+                $leads_context .= "COMPANY PROFILES (top companies with identified visitors)\n";
+                foreach ($webhook_stats['company_intelligence'] as $co) {
+                    $co_line  = "• {$co['company']}";
+                    if (!empty($co['industry'])) $co_line .= " [{$co['industry']}]";
+                    $co_line .= " — {$co['count']} visit(s)";
+                    if (!empty($co['last_seen'])) {
+                        $co_line .= ', last seen ' . date('M j Y', strtotime($co['last_seen']));
+                    }
+                    if (!empty($co['contacts'])) {
+                        $contact_strs = array();
+                        foreach ($co['contacts'] as $c) {
+                            $parts = array_filter(array($c['name'], $c['title']));
+                            if (!empty($parts)) $contact_strs[] = implode(', ', $parts);
+                        }
+                        if (!empty($contact_strs)) {
+                            $co_line .= ' [contacts: ' . implode('; ', $contact_strs) . ']';
+                        }
+                    }
+                    $leads_context .= $co_line . "\n";
+                }
+                $leads_context .= "\n";
+            }
+
+            // ── Audience-fit gap analysis ──────────────────────────────────────
+            $leads_context .= "AUDIENCE FIT ANALYSIS REQUIRED\n";
+            $leads_context .= "• Intended target audience (from business profile): {$audience}\n";
+            $leads_context .= "• Actual visitor audience: see ACTUAL AUDIENCE section above\n";
+            $leads_context .= "You MUST compare these two. Assess whether the real visitors match the intended audience.\n";
+            $leads_context .= "Look for misalignments in seniority (e.g. targeting executives but getting individual contributors), ";
+            $leads_context .= "industry (e.g. targeting B2B SaaS but getting agencies), or geography.\n";
+            $leads_context .= "If well-matched, confirm alignment and explain WHY the content is resonating.\n";
+            $leads_context .= "If misaligned, explain how the page messaging, headline, and CTA should adapt to either:\n";
+            $leads_context .= "  (a) better convert the ACTUAL visitors arriving, or\n";
+            $leads_context .= "  (b) filter them out and attract more of the INTENDED audience.\n";
+            $leads_context .= "════════════════════════════════════════════════════════\n";
         }
 
         // Cap content length — 15 000 chars (~3 750 tokens) stays well within GPT-4o's
@@ -1561,7 +1613,27 @@ Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact struc
         // Build lead intelligence JSON fragment if data exists
         $lead_json_fragment = '';
         if ($webhook_stats) {
-            $lead_json_fragment = "\n\nInclude this additional field in your JSON output:\n\"lead_intelligence_summary\": {\n  \"insight\": \"2-3 sentences analyzing what lead data reveals about page performance\",\n  \"recommendations\": [\"Action item based on lead patterns\", \"Action item 2\", \"Action item 3\"]\n}";
+            $lead_json_fragment = '
+
+VISITOR INTELLIGENCE OUTPUT REQUIREMENTS:
+Because VISITOR INTELLIGENCE data was provided above, you MUST include the following two additional fields in your JSON output. These fields are displayed on the published report — write them with the quality and specificity of the rest of your analysis.
+
+"lead_intelligence_summary": {
+  "insight": "2-3 sentences. State what the real visitor data reveals about this page\'s reach and conversion performance. Reference actual numbers: page visitor count, site-wide total, peak time. Do NOT make generic statements — ground every sentence in the data above.",
+  "recommendations": [
+    "Specific action item grounded in the visitor patterns (e.g. if peak is Tuesday 14:00, say what to do with that)",
+    "Specific action item grounded in top industries or job titles visiting",
+    "Specific action item grounded in which companies visited and whether they converted"
+  ]
+},
+
+"audience_fit_analysis": {
+  "alignment": "<one of: matched | partial | misaligned>",
+  "summary": "1-2 sentences comparing the INTENDED audience (from business profile) against the ACTUAL visitor industries, titles, and seniority tiers. Name both audiences explicitly.",
+  "gap": "If alignment is partial or misaligned: describe the exact gap in concrete terms (e.g. \'Intended: C-suite SaaS buyers. Actual: 72% are Managers and Individual Contributors from marketing agencies\'). Empty string if alignment=matched.",
+  "messaging_implication": "One specific, actionable sentence about how the headline, copy tone, or CTA should change based on the alignment finding — reference an actual element on THIS page.",
+  "top_actual_segment": "The single dominant real visitor segment in plain English (e.g. \'Marketing Managers at mid-size agencies\')"
+}';
         }
 
         // Screenshot availability notice — critical for honest visual scoring.
@@ -1879,6 +1951,8 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
         );
 
         ciq_log('✅ Returning success=true with data (overall_score: ' . $parsed['overall_score'] . ')');
+        ciq_log('🔍 audience_fit_analysis in AI response: ' . (isset($parsed['audience_fit_analysis']) ? json_encode($parsed['audience_fit_analysis']) : 'NOT PRESENT'));
+        ciq_log('🔍 lead_intelligence_summary in AI response: ' . (isset($parsed['lead_intelligence_summary']) ? 'present' : 'NOT PRESENT'));
         return array('success' => true, 'data' => $parsed);
     }
 
@@ -1913,6 +1987,7 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
                 )
             ),
             'lead_intelligence_summary' => null,
+            'audience_fit_analysis'     => null,
             'functionality_suggestions' => array(
                     array(
                     'title' => 'Fix AI Integration',

@@ -98,13 +98,13 @@ export default function App() {
   const [showLicenseKey, setShowLicenseKey] = useState(false);
   const [fullLicenseKey, setFullLicenseKey] = useState('');
 
-  // KnockKnock Webhook state
-  const [knockKnockCompanyId, setKnockKnockCompanyId] = useState('');
-  const [knockKnockWebhookSecret, setKnockKnockWebhookSecret] = useState('');
-  const [knockKnockWebhookUrl, setKnockKnockWebhookUrl] = useState('');
-  const [showKnockKnockSecret, setShowKnockKnockSecret] = useState(false);
+  // KnockKnock API state
+  const [knockKnockApiKey, setKnockKnockApiKey] = useState('');
+  const [showKnockKnockApiKey, setShowKnockKnockApiKey] = useState(false);
+  const [knockKnockLastSync, setKnockKnockLastSync] = useState('');
   const [knockKnockLeads, setKnockKnockLeads] = useState<any[]>([]);
   const [knockKnockLeadsLoading, setKnockKnockLeadsLoading] = useState(false);
+  const [knockKnockSyncing, setKnockKnockSyncing] = useState(false);
   const [knockKnockSearchQuery, setKnockKnockSearchQuery] = useState('');
   const [knockKnockTypeFilter, setKnockKnockTypeFilter] = useState<'all' | 'lead' | 'visitor'>('all');
   const [knockKnockCurrentPage, setKnockKnockCurrentPage] = useState(1);
@@ -112,6 +112,8 @@ export default function App() {
   const knockKnockItemsPerPage = 20;
   const [knockKnockStats, setKnockKnockStats] = useState({ totalLeads: 0, totalVisitors: 0, totalToday: 0 });
   const [selectedLead, setSelectedLead] = useState<any>(null);
+  const [kkDateFrom, setKkDateFrom] = useState('');
+  const [kkDateTo, setKkDateTo] = useState('');
   const [visitorTrend, setVisitorTrend] = useState<{ month: string; label: string; visitors: number; leads: number }[]>([]);
 
 
@@ -158,9 +160,8 @@ export default function App() {
         console.log('✓ Settings loaded');
         setSettings(r.data);
         // Load KnockKnock settings
-        setKnockKnockCompanyId(r.data.knockknock_company_id || '');
-        setKnockKnockWebhookSecret(r.data.knockknock_webhook_secret || '');
-        setKnockKnockWebhookUrl(r.data.knockknock_webhook_url || '');
+        setKnockKnockApiKey(r.data.knockknock_api_key || '');
+        setKnockKnockLastSync(r.data.knockknock_last_sync || '');
         // Chain business profile fetch so it always merges AFTER setSettings(r.data)
         return axios.get(api('business-profile'), { headers: { 'X-WP-Nonce': nonce } });
       })
@@ -407,11 +408,10 @@ export default function App() {
   };
 
 
-  // KnockKnock webhook functions
+  // KnockKnock API functions
   const handleSaveKnockKnockSettings = async () => {
-    // Require at least one authentication method
-    if (!knockKnockCompanyId.trim() && !knockKnockWebhookSecret.trim()) {
-      setNotice('❌ Please enter either a Company ID or Webhook Secret (or both)');
+    if (!knockKnockApiKey.trim()) {
+      setNotice('❌ Please enter an API key');
       return;
     }
 
@@ -419,8 +419,7 @@ export default function App() {
     try {
       const response = await axios.post(api('settings'), {
         ...settings,
-        knockknock_company_id: knockKnockCompanyId,
-        knockknock_webhook_secret: knockKnockWebhookSecret
+        knockknock_api_key: knockKnockApiKey,
       }, { headers: { 'X-WP-Nonce': nonce } });
 
       if (response.data.success) {
@@ -436,61 +435,73 @@ export default function App() {
   };
 
   const fetchKnockKnockLeads = async () => {
-    console.log('=== Fetching KnockKnock Leads ===');
     setKnockKnockLeadsLoading(true);
     try {
-      const url = api('webhooks');
-      console.log('Fetching from:', url);
-      const response = await axios.get(url, { headers: { 'X-WP-Nonce': nonce } });
-      console.log('Response status:', response.status);
-      console.log('Response data:', response.data);
-      
+      const params: Record<string, string> = {};
+      if (kkDateFrom) params.date_from = kkDateFrom;
+      if (kkDateTo)   params.date_to   = kkDateTo;
+      const response = await axios.get(api('kk-leads'), { headers: { 'X-WP-Nonce': nonce }, params });
       if (response.data.success) {
-        console.log('Leads found:', response.data.leads?.length || 0);
-        console.log('Lead data:', response.data.leads);
         setKnockKnockLeads(response.data.leads || []);
-      } else {
-        console.warn('Success flag is false:', response.data);
+        if (response.data.last_sync) setKnockKnockLastSync(response.data.last_sync);
       }
     } catch (err: any) {
       console.error('Failed to load KnockKnock leads:', err);
-      console.error('Error response:', err.response?.data);
     } finally {
       setKnockKnockLeadsLoading(false);
-      console.log('=== Fetch Complete ===');
     }
   };
 
-  const copyKnockKnockUrl = () => {
-    navigator.clipboard.writeText(knockKnockWebhookUrl);
-    setNotice('✅ Webhook URL copied to clipboard!');
+  const triggerKnockKnockSync = async (fullResync = false) => {
+    setKnockKnockSyncing(true);
+    try {
+      const response = await axios.post(
+        api('kk-sync'),
+        { full_resync: fullResync },
+        { headers: { 'X-WP-Nonce': nonce } }
+      );
+      if (response.data.success) {
+        setKnockKnockLastSync(response.data.last_sync || '');
+        await fetchKnockKnockLeads();
+        const count = response.data.records_synced;
+        setNotice('✅ Sync complete' + (typeof count === 'number' ? ` — ${count} record${count !== 1 ? 's' : ''} synced` : '!'));
+      }
+    } catch (err: any) {
+      setNotice('❌ Sync failed: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setKnockKnockSyncing(false);
+    }
   };
 
   // Load KnockKnock leads when Visitor Insights sub-tab is opened
   useEffect(() => {
-    const hasAuth = knockKnockCompanyId || knockKnockWebhookSecret;
-
-    if (activeTab === 'account' && activeSubTab === 'knockknock' && hasAuth) {
+    if (activeTab === 'account' && activeSubTab === 'knockknock' && knockKnockApiKey) {
       fetchKnockKnockLeads();
       // Load monthly visitor trend
       axios.get(api('visitor-trend'), { headers: { 'X-WP-Nonce': nonce } })
         .then(r => { if (r.data?.months) setVisitorTrend(r.data.months); })
         .catch(() => {});
     }
-  }, [activeTab, activeSubTab, knockKnockCompanyId, knockKnockWebhookSecret]);
+  }, [activeTab, activeSubTab, knockKnockApiKey]);
 
-  // Auto-refresh leads every 30 seconds when on Visitor Insights sub-tab
+  // Re-fetch when date filter changes
   useEffect(() => {
-    const hasAuth = knockKnockCompanyId || knockKnockWebhookSecret;
+    if (activeTab === 'account' && activeSubTab === 'knockknock' && knockKnockApiKey) {
+      fetchKnockKnockLeads();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kkDateFrom, kkDateTo]);
 
-    if (activeTab === 'account' && activeSubTab === 'knockknock' && hasAuth) {
+  // Auto-refresh leads every 60 seconds when on Visitor Insights sub-tab
+  useEffect(() => {
+    if (activeTab === 'account' && activeSubTab === 'knockknock' && knockKnockApiKey) {
       const intervalId = setInterval(() => {
         fetchKnockKnockLeads();
-      }, 30000);
+      }, 60000);
 
       return () => clearInterval(intervalId);
     }
-  }, [activeTab, activeSubTab, knockKnockCompanyId, knockKnockWebhookSecret]);
+  }, [activeTab, activeSubTab, knockKnockApiKey]);
 
   const handlePageSelect = (id: number) => {
     setSelectedPages(p => {
@@ -1466,7 +1477,7 @@ export default function App() {
 
             {canUse('knockknock') && (<>
             {/* Statistics Cards */}
-            {(knockKnockCompanyId || knockKnockWebhookSecret) && knockKnockLeads.length > 0 && (() => {
+            {knockKnockApiKey && knockKnockLeads.length > 0 && (() => {
               const thisMonth  = visitorTrend[0]  ?? { visitors: 0, leads: 0, label: 'This Month' };
               const lastMonth  = visitorTrend[1]  ?? { visitors: 0, leads: 0, label: 'Last Month' };
               const visitorDelta = thisMonth.visitors - lastMonth.visitors;
@@ -1506,49 +1517,20 @@ export default function App() {
 
             {/* Configuration Section */}
             <div style={{ background: T.bgSubtle, borderRadius: 12, padding: 24, marginBottom: 32, border: `1px solid ${T.border}` }}>
-              <h3 style={{ margin: '0 0 20px 0', fontSize: 20, fontWeight: 600, color: T.textPrimary }}>⚙️ Webhook Configuration</h3>
+              <h3 style={{ margin: '0 0 20px 0', fontSize: 20, fontWeight: 600, color: T.textPrimary }}>⚙️ API Configuration</h3>
               
               <div style={{ display: 'grid', gap: 20 }}>
-                {/* Company ID */}
+                {/* API Key */}
                 <div>
                   <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: T.textPrimary, fontSize: 14 }}>
-                    Client Company ID {!knockKnockWebhookSecret && <span style={{ color: '#ef4444' }}>*</span>}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Enter your Visitor Insights Company ID"
-                    value={knockKnockCompanyId}
-                    onChange={(e) => setKnockKnockCompanyId(e.target.value)}
-                    style={{ 
-                      width: '100%', 
-                      padding: '12px 16px', 
-                      border: `1px solid ${T.border}`, 
-                      borderRadius: 8, 
-                      fontSize: 14, 
-                      outline: 'none', 
-                      transition: 'border 0.2s',
-                      background: T.bgInput,
-                      color: T.textPrimary
-                    }}
-                    onFocus={(e) => e.currentTarget.style.borderColor = T.primary}
-                    onBlur={(e) => e.currentTarget.style.borderColor = T.border}
-                  />
-                  <p style={{ fontSize: 12, color: T.textMuted, marginTop: 6, marginBottom: 0 }}>
-                    Optional if webhook secret is configured
-                  </p>
-                </div>
-
-                {/* Webhook Secret */}
-                <div>
-                  <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: T.textPrimary, fontSize: 14 }}>
-                    Webhook Secret Key {!knockKnockCompanyId && <span style={{ color: '#ef4444' }}>*</span>}
+                    API Key <span style={{ color: '#ef4444' }}>*</span>
                   </label>
                   <div style={{ position: 'relative' }}>
                     <input
-                      type={showKnockKnockSecret ? 'text' : 'password'}
-                      placeholder="Enter webhook secret for HMAC validation"
-                      value={knockKnockWebhookSecret}
-                      onChange={(e) => setKnockKnockWebhookSecret(e.target.value)}
+                      type={showKnockKnockApiKey ? 'text' : 'password'}
+                      placeholder="Paste your KnockKnock API key"
+                      value={knockKnockApiKey}
+                      onChange={(e) => setKnockKnockApiKey(e.target.value)}
                       style={{ 
                         width: '100%', 
                         padding: '12px 40px 12px 16px', 
@@ -1559,13 +1541,14 @@ export default function App() {
                         transition: 'border 0.2s',
                         background: T.bgInput,
                         color: T.textPrimary,
-                        fontFamily: showKnockKnockSecret ? 'monospace' : 'inherit'
+                        fontFamily: showKnockKnockApiKey ? 'monospace' : 'inherit',
+                        boxSizing: 'border-box',
                       }}
                       onFocus={(e) => e.currentTarget.style.borderColor = T.primary}
                       onBlur={(e) => e.currentTarget.style.borderColor = T.border}
                     />
                     <button
-                      onClick={() => setShowKnockKnockSecret(!showKnockKnockSecret)}
+                      onClick={() => setShowKnockKnockApiKey(!showKnockKnockApiKey)}
                       style={{
                         position: 'absolute',
                         right: 12,
@@ -1578,69 +1561,67 @@ export default function App() {
                         fontSize: 18,
                         color: T.textMuted
                       }}
-                      title={showKnockKnockSecret ? 'Hide' : 'Show'}
+                      title={showKnockKnockApiKey ? 'Hide' : 'Show'}
                     >
-                      {showKnockKnockSecret ? '👁️' : '👁️‍🗨️'}
+                      {showKnockKnockApiKey ? '👁️' : '👁️‍🗨️'}
                     </button>
                   </div>
                   <p style={{ fontSize: 12, color: T.textMuted, marginTop: 6, marginBottom: 0 }}>
-                    <strong>Recommended:</strong> HMAC signature validation for secure webhooks
+                    Generate from the KnockKnock dashboard: <strong>Settings → Webhooks → API Key → Generate API Key</strong>. One key per client site.
                   </p>
                 </div>
 
-                {/* Webhook URL */}
-                <div>
-                  <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: T.textPrimary, fontSize: 14 }}>
-                    Webhook Endpoint URL
-                  </label>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <input
-                      type="text"
-                      value={knockKnockWebhookUrl}
-                      readOnly
-                      style={{ 
-                        flex: 1, 
-                        padding: '12px 16px', 
-                        border: `1px solid ${T.border}`, 
-                        borderRadius: 8, 
-                        fontSize: 13, 
-                        background: T.bgSubtle,
-                        color: T.textPrimary,
-                        fontFamily: 'monospace'
-                      }}
-                    />
+                {/* Last sync status */}
+                {knockKnockLastSync && (
+                  <div style={{ fontSize: 13, color: T.textMuted }}>
+                    Last synced: <strong>{new Date(knockKnockLastSync).toLocaleString()}</strong>
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, flexWrap: 'wrap', gap: 12 }}>
+                  <div style={{ display: 'flex', gap: 12 }}>
                     <button
-                      onClick={copyKnockKnockUrl}
+                      onClick={() => triggerKnockKnockSync(false)}
+                      disabled={knockKnockSyncing || !knockKnockApiKey}
                       style={{
-                        padding: '12px 20px',
-                        background: T.primary,
-                        color: T.btnPrimaryText,
+                        padding: '10px 24px',
+                        background: (knockKnockSyncing || !knockKnockApiKey) ? '#d1d5db' : T.primary,
+                        color: '#fff',
                         border: 'none',
                         borderRadius: 8,
                         fontSize: 14,
                         fontWeight: 600,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        transition: 'background 0.2s'
+                        cursor: (knockKnockSyncing || !knockKnockApiKey) ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = T.primaryHover}
-                      onMouseLeave={(e) => e.currentTarget.style.background = T.primary}
                     >
-                      📋 Copy
+                      {knockKnockSyncing ? '⏳ Syncing…' : '🔄 Sync Now'}
+                    </button>
+                    <button
+                      onClick={() => triggerKnockKnockSync(true)}
+                      disabled={knockKnockSyncing || !knockKnockApiKey}
+                      style={{
+                        padding: '10px 24px',
+                        background: 'transparent',
+                        color: T.textSecondary,
+                        border: `1px solid ${T.border}`,
+                        borderRadius: 8,
+                        fontSize: 14,
+                        fontWeight: 600,
+                        cursor: (knockKnockSyncing || !knockKnockApiKey) ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      title="Clear watermark and re-pull all records from the beginning"
+                    >
+                      ↺ Full Re-sync
                     </button>
                   </div>
-                  <p style={{ fontSize: 12, color: T.textMuted, marginTop: 6, marginBottom: 0 }}>
-                    Configure this URL in your Visitor Insights webhook settings
-                  </p>
-                </div>
-
-                {/* Save Button */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
                   <button
                     onClick={handleSaveKnockKnockSettings}
                     disabled={loading}
                     style={{
-                      padding: '12px 32px',
+                      padding: '10px 32px',
                       background: loading ? '#d1d5db' : '#10b981',
                       color: '#fff',
                       border: 'none',
@@ -1653,21 +1634,21 @@ export default function App() {
                     onMouseEnter={(e) => !loading && (e.currentTarget.style.background = '#059669')}
                     onMouseLeave={(e) => !loading && (e.currentTarget.style.background = '#10b981')}
                   >
-                    {loading ? '💾 Saving...' : '💾 Save Configuration'}
+                    {loading ? '💾 Saving...' : '💾 Save API Key'}
                   </button>
                 </div>
               </div>
             </div>
 
             {/* Leads & Visitors Data Section */}
-            {(!knockKnockCompanyId && !knockKnockWebhookSecret) ? (
+            {!knockKnockApiKey ? (
               <div style={{ background: 'rgba(251,191,36,0.08)', borderRadius: 12, padding: 32, textAlign: 'center', border: `1px solid rgba(251,191,36,0.2)` }}>
                 <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
                 <h3 style={{ fontSize: 20, fontWeight: 600, color: T.textPrimary, marginBottom: 8 }}>
-                  Authentication Required
+                  API Key Required
                 </h3>
                 <p style={{ fontSize: 15, color: T.textSecondary, marginBottom: 0 }}>
-                  Configure your Company ID or Webhook Secret above to start receiving webhook data
+                  Enter your KnockKnock API key above and save to start syncing visitor data
                 </p>
               </div>
             ) : (
@@ -1719,6 +1700,60 @@ export default function App() {
                         <option value="lead">🎯 Leads Only</option>
                         <option value="visitor">👤 Visitors Only</option>
                       </select>
+
+                      {/* Date Range */}
+                      <input
+                        type="date"
+                        value={kkDateFrom}
+                        onChange={(e) => setKkDateFrom(e.target.value)}
+                        title="From date"
+                        style={{
+                          padding: '8px 12px',
+                          border: `1px solid ${T.border}`,
+                          background: T.bgInput,
+                          color: T.textPrimary,
+                          borderRadius: 8,
+                          fontSize: 14,
+                          outline: 'none',
+                          cursor: 'pointer',
+                          colorScheme: 'dark'
+                        }}
+                      />
+                      <span style={{ color: T.textMuted, fontSize: 13, alignSelf: 'center' }}>to</span>
+                      <input
+                        type="date"
+                        value={kkDateTo}
+                        onChange={(e) => setKkDateTo(e.target.value)}
+                        title="To date"
+                        style={{
+                          padding: '8px 12px',
+                          border: `1px solid ${T.border}`,
+                          background: T.bgInput,
+                          color: T.textPrimary,
+                          borderRadius: 8,
+                          fontSize: 14,
+                          outline: 'none',
+                          cursor: 'pointer',
+                          colorScheme: 'dark'
+                        }}
+                      />
+                      {(kkDateFrom || kkDateTo) && (
+                        <button
+                          onClick={() => { setKkDateFrom(''); setKkDateTo(''); }}
+                          title="Clear date filter"
+                          style={{
+                            padding: '6px 10px',
+                            background: 'transparent',
+                            color: T.textMuted,
+                            border: `1px solid ${T.border}`,
+                            borderRadius: 8,
+                            fontSize: 13,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ✕ Clear
+                        </button>
+                      )}
                       
                       {/* View Mode Toggle */}
                       <div style={{ display: 'flex', border: `1px solid ${T.border}`, borderRadius: 8, overflow: 'hidden' }}>
@@ -1773,6 +1808,23 @@ export default function App() {
                       >
                         {knockKnockLeadsLoading ? '⏳' : '🔄 Refresh'}
                       </button>
+                      <button
+                        onClick={() => triggerKnockKnockSync(false)}
+                        disabled={knockKnockSyncing}
+                        style={{
+                          padding: '8px 16px',
+                          background: T.btnGhost,
+                          color: T.textSecondary,
+                          border: `1px solid ${T.border}`,
+                          borderRadius: 8,
+                          fontSize: 14,
+                          fontWeight: 600,
+                          cursor: knockKnockSyncing ? 'not-allowed' : 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {knockKnockSyncing ? '⏳ Syncing…' : '☁️ Sync API'}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1810,8 +1862,8 @@ export default function App() {
                           </div>
                           <div style={{ fontSize: 14, color: '#3b82f6' }}>
                             {knockKnockLeads.length === 0 
-                              ? 'Send a test webhook from Visitor Insights to get started'
-                              : 'Try adjusting your search or filter criteria'}
+                              ? 'Click “Sync Now” above to pull data from the KnockKnock API'
+                              : 'Try adjusting your search, type filter, or date range'}
                           </div>
                         </div>
                       );
