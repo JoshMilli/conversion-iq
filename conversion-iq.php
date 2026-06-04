@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 2.4.2
+ * Version: 2.4.3
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'CONVERSION_IQ_VERSION', '2.4.2' );
+define( 'CONVERSION_IQ_VERSION', '2.4.3' );
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
@@ -64,6 +64,16 @@ if ( defined( 'CONVERSIONIQ_GITHUB_TOKEN' ) ) {
 } elseif ( $gh_token = get_option( 'conversioniq_github_token', '' ) ) {
     $conversionIQUpdateChecker->setAuthentication( $gh_token );
 }
+
+// Automatically apply updates to this plugin on all client sites.
+// WordPress background cron checks every ~12 hours; when a new version is
+// detected on GitHub, this approves the update without requiring manual action.
+add_filter('auto_update_plugins', function($update, $item) {
+    if (isset($item->plugin) && $item->plugin === plugin_basename(__FILE__)) {
+        return true;
+    }
+    return $update;
+}, 10, 2);
 
 // Clear cache after plugin updates
 add_action('upgrader_process_complete', function($upgrader_object, $options) {
