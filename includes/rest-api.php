@@ -191,24 +191,39 @@ function conversioniq_extract_html_structure( $html, $page_url = '' )
         $cro_signals[] = 'CTA Above the Fold: UNCONFIRMED FROM HTML (visual item — HTML could not confirm a CTA; use screenshot as primary evidence)';
     }
 
-    // 2. Trust Signals — image alt text, class names for certs/awards/badges, and client logo bars
+    // 2. Trust Signals — image alt text, class names for certs/awards/badges, client logo bars,
+    //    case studies, and previous work / portfolio sections.
     $trust_imgs = array();
     if (preg_match_all('/<img[^>]*alt=[\x22\x27]([^\x22\x27]*(?:cert|award|badge|accredit|iso|ssl|secure|verified|partner|member|guarantee)[^\x22\x27]*)[\x22\x27][^>]*>/i', $html, $img_alts)) {
         $trust_imgs = array_map('wp_strip_all_tags', $img_alts[1]);
     }
-    $has_trust_section  = preg_match('/(?:class|id)=[\x22\x27][^\x22\x27]*(?:trust|badge|cert|award|accredit|guarantee)[^\x22\x27]*[\x22\x27]/i', $html);
-    $has_trust_text     = preg_match('/\b(?:certified|accredited|award[- ]winning|ISO[- ]\d+|BBB|google\s+partner|microsoft\s+partner|as\s+seen\s+in)\b/i', $html);
-    // Client logo bars and "featured in" sections are also strong trust signals
-    $has_logo_bar       = preg_match('/(?:class|id)=[\x22\x27][^\x22\x27]*(?:featured[-_]?in|as[-_]?seen|client[-_]?logo|logo[-_]?bar|media[-_]?logo|brand[-_]?logo|partner[-_]?logo|press[-_]?logo|featured[-_]?clients|client[-_]?strip|logo[-_]?strip)[^\x22\x27]*[\x22\x27]/i', $html);
-    $has_featured_text  = preg_match('/\b(?:featured\s+(?:in|clients?)|as\s+seen\s+in|our\s+clients?|clients?\s+include|trusted\s+by|worked\s+with|in\s+the\s+press|press\s+coverage|media\s+coverage)\b/i', $html);
+    // Generic "logo" alt text (client logos) — exclude common site/header logo labels
+    $client_logo_imgs = array();
+    if (preg_match_all('/<img[^>]*alt=[\x22\x27]([^\x22\x27]*\blogo\b[^\x22\x27]*)[\x22\x27][^>]*>/i', $html, $logo_alts)) {
+        $client_logo_imgs = array_values( array_filter( array_map( 'wp_strip_all_tags', $logo_alts[1] ), function ( $alt ) {
+            return ! preg_match( '/\b(?:site[-_\s]logo|header[-_\s]logo|brand[-_\s]logo|company[-_\s]logo|main[-_\s]logo)\b/i', $alt );
+        } ) );
+    }
+    $has_trust_section   = preg_match('/(?:class|id)=[\x22\x27][^\x22\x27]*(?:trust|badge|cert|award|accredit|guarantee)[^\x22\x27]*[\x22\x27]/i', $html);
+    $has_trust_text      = preg_match('/\b(?:certified|accredited|award[- ]winning|ISO[- ]\d+|BBB|google\s+partner|microsoft\s+partner|as\s+seen\s+in)\b/i', $html);
+    // Client logo bars and "featured in" sections
+    $has_logo_bar        = preg_match('/(?:class|id)=[\x22\x27][^\x22\x27]*(?:featured[-_]?in|as[-_]?seen|client[-_]?logo|logo[-_]?bar|media[-_]?logo|brand[-_]?logo|partner[-_]?logo|press[-_]?logo|featured[-_]?clients|client[-_]?strip|logo[-_]?strip|logos[-_]?section|client[-_]?grid)[^\x22\x27]*[\x22\x27]/i', $html);
+    $has_featured_text   = preg_match('/\b(?:featured\s+(?:in|clients?)|as\s+seen\s+in|our\s+clients?|clients?\s+include|trusted\s+by|worked\s+with|in\s+the\s+press|press\s+coverage|media\s+coverage)\b/i', $html);
+    // Case studies and previous work / portfolio — strong trust signals even without cert badges
+    $has_case_study_cls  = preg_match('/(?:class|id)=[\x22\x27][^\x22\x27]*(?:case[-_]?stud|success[-_]?stor|client[-_]?result|project[-_]?result|work[-_]?(?:showcase|example|sample|highlight)|our[-_]?work|previous[-_]?work|portfolio[-_]?(?:item|card|grid|section))[^\x22\x27]*[\x22\x27]/i', $html);
+    $has_case_study_text = preg_match('/\b(?:case\s+stud(?:y|ies)|success\s+stor(?:y|ies)|client\s+results?|project\s+results?|previous\s+work|our\s+work|work\s+we[\x27\x22]?ve\s+done|portfolio)\b/i', $html);
     if ( ! empty( $trust_imgs ) ) {
         $cro_signals[] = 'Trust Signals (Certs/Awards): YES — trust image(s) with alt: "' . implode('", "', array_slice($trust_imgs, 0, 3)) . '"';
     } elseif ( $has_trust_section || $has_trust_text ) {
         $cro_signals[] = 'Trust Signals (Certs/Awards): YES — trust-related class/text detected on page';
     } elseif ( $has_logo_bar || $has_featured_text ) {
         $cro_signals[] = 'Trust Signals (Certs/Awards): LIKELY — client/partner logo section or "featured in" text detected (logos are image-only; verify against screenshot)';
+    } elseif ( $has_case_study_cls || $has_case_study_text ) {
+        $cro_signals[] = 'Trust Signals (Certs/Awards): LIKELY — case study / previous work / portfolio section detected; client work examples are strong trust signals — verify visuals against screenshot';
+    } elseif ( ! empty( $client_logo_imgs ) ) {
+        $cro_signals[] = 'Trust Signals (Certs/Awards): LIKELY — logo image(s) found (e.g. "' . implode('", "', array_slice( $client_logo_imgs, 0, 3 )) . '"); likely client logos — verify against screenshot';
     } else {
-        $cro_signals[] = 'Trust Signals (Certs/Awards): UNCONFIRMED FROM HTML (visual item — client logos and award badges are image-only; use screenshot as primary evidence)';
+        $cro_signals[] = 'Trust Signals (Certs/Awards): UNCONFIRMED FROM HTML (visual item — client logos, case study images, and award badges are image-only; use screenshot or browser data as primary evidence)';
     }
 
     // 3. Inline Social Proof â€” testimonials (already handled above), star ratings, review counts
@@ -233,19 +248,26 @@ function conversioniq_extract_html_structure( $html, $page_url = '' )
 
     // 5. Sticky CTA in Nav — nav element containing a button or CTA-style link
     // First pass: CTA-class button/link in nav/header
-    if (preg_match('/<(?:nav|header)[^>]*>[\\s\\S]{0,3000}?<(?:button|a)[^>]*(?:btn|button|cta|get-started|start|try|buy|book|request|sign-up|signup)[^>]*>/i', $html)) {
+    if (preg_match('/<(?:nav|header)[^>]*>[\s\S]{0,3000}?<(?:button|a)[^>]*(?:btn|button|cta|get-started|start|try|buy|book|request|sign-up|signup)[^>]*>/i', $html)) {
         $cro_signals[] = 'Sticky CTA in Nav: YES — CTA button/link detected inside nav or header element';
     // Second pass: any button/link with CTA-action text inside nav/header (catches custom themes)
-    } elseif (preg_match('/<(?:nav|header)[^>]*>([\\s\\S]{0,5000}?)<\/(?:nav|header)>/i', $html, $nav_block_m) &&
+    } elseif (preg_match('/<(?:nav|header)[^>]*>([\s\S]{0,5000}?)<\/(?:nav|header)>/i', $html, $nav_block_m) &&
               preg_match_all('/<(?:button|a)[^>]*>([^<]{3,80})<\/(?:button|a)>/i', $nav_block_m[1], $nav_link_m) &&
               ! empty( array_filter( array_map( 'wp_strip_all_tags', $nav_link_m[1] ), function( $t ) {
                   return preg_match('/\b(?:book|get|start|join|contact|try|request|enquire|apply|buy|shop|sign\s*up|free|consult|speak|schedule|reserve|access|claim)\b/i', trim($t) );
               } ) ) ) {
         $cro_signals[] = 'Sticky CTA in Nav: YES — CTA-action link/button detected in nav/header element';
+    // Third pass: inline position:fixed/sticky style on nav/header containing a button/link
+    } elseif (preg_match('/<(?:nav|header)[^>]*style=[\x22\x27][^\x22\x27]*position\s*:\s*(?:fixed|sticky)[^\x22\x27]*[\x22\x27][^>]*>[\s\S]{0,3000}?<(?:button|a)[^>]*/i', $html)) {
+        $cro_signals[] = 'Sticky CTA in Nav: LIKELY — nav/header with inline position:fixed or position:sticky contains a button/link (screenshot cannot confirm sticky behaviour; rely on this HTML signal and browser data)';
+    // Fourth pass: well-known sticky-nav class patterns with a button anywhere on page
+    } elseif (preg_match('/(?:class|id)=[\x22\x27][^\x22\x27]*(?:sticky[-_](?:nav|header|bar|menu)|fixed[-_](?:nav|header|bar|menu)|nav[-_]sticky|header[-_]sticky|header[-_]fixed|js[-_]sticky|is[-_]sticky|navbar[-_]fixed|navbar[-_]sticky)[^\x22\x27]*[\x22\x27]/i', $html) &&
+              preg_match('/<(?:button|a)[^>]*(?:btn|cta|button)[^>]*>/i', $html)) {
+        $cro_signals[] = 'Sticky CTA in Nav: LIKELY — sticky/fixed-nav class with a CTA button detected (screenshot only shows initial page state and cannot confirm sticky behaviour; treat this HTML signal as primary evidence)';
     } elseif (preg_match('/(?:class|id)=[\x22\x27][^\x22\x27]*(?:sticky|fixed)[^\x22\x27]*[\x22\x27]/i', $html) && preg_match('/<(?:button|a)[^>]*(?:btn|cta)[^>]*>/i', $html)) {
         $cro_signals[] = 'Sticky CTA in Nav: POSSIBLE — sticky/fixed element with CTA detected';
     } else {
-        $cro_signals[] = 'Sticky CTA in Nav: UNCONFIRMED FROM HTML (visual item — use screenshot to check for a persistent CTA button in the navigation bar)';
+        $cro_signals[] = 'Sticky CTA in Nav: UNCONFIRMED FROM HTML (NOTE: a screenshot only captures the initial page state before scrolling — a sticky nav that hides on load is invisible in the screenshot. Use the [BROWSER-CONFIRMED] nav_cta signal from the JS tracker as primary evidence when available; fall back to HTML class detection above)';
     }
 
     // 6. Reassurance Micro-copy (friction reducers near CTAs)
@@ -425,6 +447,48 @@ function conversioniq_extract_html_structure( $html, $page_url = '' )
 }
 
 /**
+ * Render a page's full front-end content for auditing — page-builder aware.
+ *
+ * apply_filters('the_content', $post->post_content) does NOT capture Elementor pages:
+ * Elementor stores the layout in the `_elementor_data` post meta and leaves
+ * post_content empty, so entire sections (problem/solution blocks, stat bars,
+ * multi-step widgets, section-level CTAs) never reach the analyzer. When the page was
+ * built with Elementor, render it through Elementor's own API so ALL sections are
+ * included; otherwise fall back to the_content (Gutenberg, Divi, Beaver, classic).
+ *
+ * @param  WP_Post $post
+ * @return string  Rendered HTML of the page body.
+ */
+function conversioniq_render_page_content( $post ) {
+    if ( ! ( $post instanceof WP_Post ) ) {
+        return '';
+    }
+    $post_id = $post->ID;
+
+    if ( class_exists( '\\Elementor\\Plugin' ) ) {
+        $is_elementor = ( get_post_meta( $post_id, '_elementor_edit_mode', true ) === 'builder' )
+            || ! empty( get_post_meta( $post_id, '_elementor_data', true ) );
+        if ( $is_elementor ) {
+            try {
+                $frontend = isset( \Elementor\Plugin::$instance->frontend ) ? \Elementor\Plugin::$instance->frontend : null;
+                if ( $frontend && method_exists( $frontend, 'get_builder_content_for_display' ) ) {
+                    $html = $frontend->get_builder_content_for_display( $post_id, false );
+                    if ( is_string( $html ) && trim( wp_strip_all_tags( $html ) ) !== '' ) {
+                        ciq_log( 'Content: rendered Elementor builder content (post ' . $post_id . ', ' . strlen( $html ) . ' chars)' );
+                        return $html;
+                    }
+                    ciq_log( 'Content: Elementor render returned empty for post ' . $post_id . ' — falling back to the_content' );
+                }
+            } catch ( \Throwable $e ) {
+                ciq_log( 'Content: Elementor render error for post ' . $post_id . ' — ' . $e->getMessage() . '; falling back to the_content' );
+            }
+        }
+    }
+
+    return apply_filters( 'the_content', $post->post_content );
+}
+
+/**
  * Extract readable body text from a fully rendered HTML page.
  *
  * This is used as a fallback for page-builder sites (Elementor, Divi, Beaver Builder)
@@ -445,12 +509,40 @@ function conversioniq_extract_body_text( $html ) {
         $html = preg_replace( '/<' . $tag . '[\s>][\s\S]*?<\/' . $tag . '>/i', ' ', $html );
     }
 
+    // ── Preserve structural markers before stripping tags ──────────────────
+    // Headings — mark type so the AI knows section boundaries
+    $html = preg_replace( '/<h1[^>]*>/i',  "\n[H1] ", $html );
+    $html = preg_replace( '/<\/h1>/i',      "\n",      $html );
+    $html = preg_replace( '/<h2[^>]*>/i',  "\n[H2] ", $html );
+    $html = preg_replace( '/<\/h2>/i',      "\n",      $html );
+    $html = preg_replace( '/<h3[^>]*>/i',  "\n[H3] ", $html );
+    $html = preg_replace( '/<\/h3>/i',      "\n",      $html );
+    $html = preg_replace( '/<h4[^>]*>/i',  "\n[H4] ", $html );
+    $html = preg_replace( '/<\/h4>/i',      "\n",      $html );
+
+    // Buttons and CTA links — mark so the AI knows these are interactive copy
+    $html = preg_replace( '/<button[^>]*>/i',                                            "\n[BUTTON] ", $html );
+    $html = preg_replace( '/<a[^>]*class="[^"]*\b(?:btn|button|cta)[^"]*"[^>]*>/i',     "\n[CTA] ",    $html );
+
+    // Section boundaries — mark where major sections divide
+    $html = preg_replace( '/<\/section>/i', "\n---\n", $html );
+
+    // Paragraph and block breaks — preserve visual separation as newlines
+    $html = preg_replace( '/<\/p>/i',   "\n", $html );
+    $html = preg_replace( '/<br[^>]*>/i', "\n", $html );
+    $html = preg_replace( '/<\/li>/i',  "\n", $html );
+
     // Strip all remaining HTML tags
     $text = wp_strip_all_tags( $html );
 
-    // Collapse whitespace and decode HTML entities
+    // Decode HTML entities
     $text = html_entity_decode( $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
-    $text = preg_replace( '/\s+/', ' ', $text );
+
+    // Collapse runs of spaces but preserve newlines (they are structural markers)
+    $text = preg_replace( '/[^\S\n]+/', ' ', $text );
+
+    // Collapse 3+ consecutive newlines to 2 to avoid excessive blank space
+    $text = preg_replace( '/\n{3,}/', "\n\n", $text );
 
     return trim( $text );
 }
@@ -793,6 +885,44 @@ add_action('rest_api_init', function () {
         register_rest_route('conversioniq/v1', '/remote-audit', array(
             'methods'             => 'POST',
             'callback'            => 'conversioniq_remote_audit',
+            'permission_callback' => '__return_true',
+        ));
+
+        // Pending implementation reviews — powers the "Changes Pending" banner in the WP admin.
+        // Cached per-user for 60s to avoid hammering Supabase on every page load.
+        register_rest_route('conversioniq/v1', '/pending-reviews', array(
+            'methods'             => 'GET',
+            'callback'            => 'conversioniq_pending_reviews',
+            'permission_callback' => function () { return current_user_can( 'manage_options' ); },
+        ));
+
+        // Apply approved implementation changes — authenticated by X-CIQ-API-Key.
+        // Canonical slug (v2.5.0+). Legacy slug kept below for backward compatibility.
+        register_rest_route('conversioniq/v1', '/implementations/apply', array(
+            'methods'             => 'POST',
+            'callback'            => 'conversioniq_apply_changes',
+            'permission_callback' => '__return_true',
+        ));
+
+        // Legacy slug — kept so older SaaS versions and direct curl calls still work.
+        register_rest_route('conversioniq/v1', '/apply-changes', array(
+            'methods'             => 'POST',
+            'callback'            => 'conversioniq_apply_changes',
+            'permission_callback' => '__return_true',
+        ));
+
+        // Publish a draft created by apply/apply-changes — authenticated by X-CIQ-API-Key.
+        // Canonical slug (v2.5.0+). Legacy slug kept below for backward compatibility.
+        register_rest_route('conversioniq/v1', '/implementations/publish', array(
+            'methods'             => 'POST',
+            'callback'            => 'conversioniq_publish_draft',
+            'permission_callback' => '__return_true',
+        ));
+
+        // Legacy slug.
+        register_rest_route('conversioniq/v1', '/publish-draft', array(
+            'methods'             => 'POST',
+            'callback'            => 'conversioniq_publish_draft',
             'permission_callback' => '__return_true',
         ));
 
@@ -1644,10 +1774,11 @@ $results = array();
         if (!$post)
             continue;
 
-        // Get clean page content.
-        // apply_filters('the_content') runs page-builder render hooks (Elementor, Divi,
-        // Gutenberg) so we get actual readable copy rather than raw block/widget JSON.
-        $rendered_content = apply_filters( 'the_content', $post->post_content );
+        // Get clean page content. conversioniq_render_page_content() is builder-aware:
+        // it renders Elementor via its own API (post_content is empty for Elementor) and
+        // falls back to the_content for Gutenberg/Divi/Beaver/classic — so ALL sections
+        // reach the analyzer, not just whatever the_content happened to render.
+        $rendered_content = conversioniq_render_page_content( $post );
         $content          = wp_strip_all_tags( $rendered_content );
         // Decode HTML entities (&amp; &nbsp; &#8211; etc.) so the AI reads clean prose.
         $content = html_entity_decode( $content, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
@@ -1816,6 +1947,40 @@ $results = array();
         }
         // ── End sprint fetch ──────────────────────────────────────────────────
 
+        // ── GSC page-level search intent (enriches copy rewrites with real queries) ──
+        // Fetches the top search queries that actually drive traffic to this specific page.
+        // Used by the AI to anchor copy rewrites in proven search demand.
+        // Returns null gracefully if GSC is not connected — audit proceeds without it.
+        $gsc_page_queries = null;
+        try {
+            $ga_instance = new ConversionIQ_Google_Analytics();
+            if ( $ga_instance->is_gsc_connected() ) {
+                $gsc_page_queries = $ga_instance->fetch_gsc_page_queries( $page_url, 90 );
+                if ( $gsc_page_queries ) {
+                    ciq_log( 'GSC page queries: ' . count( $gsc_page_queries ) . ' queries fetched for ' . $page_url );
+                } else {
+                    ciq_log( 'GSC page queries: none returned for ' . $page_url . ' (no organic traffic data)' );
+                }
+            } else {
+                ciq_log( 'GSC page queries: skipped — GSC not connected' );
+            }
+        } catch ( Exception $e ) {
+            ciq_log( 'GSC page queries: exception — ' . $e->getMessage() );
+        }
+        // ── End GSC fetch ─────────────────────────────────────────────────────
+
+        // Deterministic, ordered copy inventory: hero + next 5 sections, full hero copy.
+        // This becomes the authoritative section list the AI rewrites, so sections are
+        // never skipped and the hero always yields heading + sub-heading + CTA.
+        $copy_inventory = array();
+        if ( class_exists( 'ConversionIQ_Copy_Inventory' ) ) {
+            try {
+                $copy_inventory = ConversionIQ_Copy_Inventory::extract( $post, 6, $rendered_content );
+            } catch ( Throwable $inv_e ) {
+                ciq_log( 'Copy inventory: extraction error — ' . $inv_e->getMessage() );
+            }
+        }
+
         $payload = array(
             'business' => $business,
             'page' => array(
@@ -1827,6 +1992,8 @@ $results = array();
                 'screenshot_url' => $screenshot_url,
                 'core_web_vitals' => $core_web_vitals,
                 'sprint_context' => $sprint_context,
+                'gsc_page_queries' => $gsc_page_queries,
+                'copy_inventory' => $copy_inventory,
             ),
         );
 
@@ -1999,6 +2166,21 @@ $results = array();
                     }
                 } else {
                     ciq_log('Supabase sync: ❌ send_audit() returned false — audit NOT in Supabase, CWV trigger will NOT fire');
+                }
+
+                // ── Create implementation review from audit rewrites ──────────
+                if ( ! empty( $ai['rewrites'] ) && $report_token ) {
+                    try {
+                        $supabase_sync->create_implementation_review_from_audit(
+                            $report_token,
+                            $page_url,
+                            $post->post_title ?? '',
+                            $ai['rewrites'],
+                            isset( $post ) ? (int) $post->ID : 0
+                        );
+                    } catch ( Exception $review_ex ) {
+                        ciq_log( 'create_impl_review: exception — ' . $review_ex->getMessage() );
+                    }
                 }
 
                 // ── Sprint close: write post-audit results back to open sprints ──
@@ -3183,6 +3365,13 @@ function conversioniq_license_activate(WP_REST_Request $request)
     // Pre-fetch screenshots for all tracked pages in the background
     conversioniq_heatmap_prefetch_screenshots();
 
+    // Schedule a follow-up config sync (mirrors what the plugin activation hook does)
+    // so the SaaS backend reliably receives the plugin version and sync endpoint
+    // even if the synchronous calls above raced with org setup on the SaaS side.
+    if ( ! wp_next_scheduled( 'conversioniq_sync_config' ) ) {
+        wp_schedule_single_event( time() + 30, 'conversioniq_sync_config' );
+    }
+
     return rest_ensure_response(array(
         'success'  => true,
         'message'  => 'License activated successfully!',
@@ -3406,9 +3595,9 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
 
             $log[] = '  Ã°Å¸â€â€ž Running audit for: ' . $page->post_title;
 
-            // Get page content — render page-builder blocks via the_content filter.
+            // Get page content — builder-aware (Elementor via its API, else the_content).
             $page_url = get_permalink($page_id);
-            $rendered_content = apply_filters( 'the_content', $page->post_content );
+            $rendered_content = conversioniq_render_page_content( $page );
             $content          = wp_strip_all_tags( $rendered_content );
             $content = html_entity_decode( $content, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
             $content = trim( preg_replace( '/\s+/', ' ', $content ) );
@@ -3436,6 +3625,16 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
             $business_settings = get_option('conversion_iq_settings', '{}');
             $business = json_decode($business_settings, true);
 
+            // Deterministic copy inventory (hero + next 5 sections, full hero copy).
+            $copy_inventory = array();
+            if ( class_exists( 'ConversionIQ_Copy_Inventory' ) ) {
+                try {
+                    $copy_inventory = ConversionIQ_Copy_Inventory::extract( $page, 6, $rendered_content );
+                } catch ( Throwable $inv_e ) {
+                    ciq_log( 'Copy inventory: extraction error — ' . $inv_e->getMessage() );
+                }
+            }
+
             // Prepare payload for AI analysis
             $payload = array(
                 'business' => $business,
@@ -3445,6 +3644,7 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
                     'url' => $page_url,
                     'word_count' => str_word_count($content),
                     'html_structure' => $html_structure,
+                    'copy_inventory' => $copy_inventory,
                 ),
             );
 
@@ -5136,4 +5336,258 @@ function conversioniq_get_last_seo_audit( WP_REST_Request $request ) {
     }
 
     return new WP_REST_Response( array( 'success' => true, 'data' => null ), 200 );
+}
+
+// ── Implementation Apply & Publish ───────────────────────────────────────────
+
+/**
+ * GET /pending-reviews
+ *
+ * Returns the org's pending implementation-review batches so the WP admin panel
+ * can render a "Changes Pending" banner that deep-links to the SaaS.
+ *
+ * Response:
+ *   {
+ *     count             : int,      // number of pending review batches
+ *     total_changes     : int,      // total change objects across all pending batches
+ *     first_page_title  : string,   // page title of the most recent pending batch (for the banner)
+ *     latest_review_id  : string,   // UUID of the most recent pending batch (for deep-link)
+ *     organization_id   : string,   // org UUID (for deep-link)
+ *     reviews           : array     // full list (up to 5) — [{id,page_url,page_title,changes_count,created_at}]
+ *   }
+ *
+ * Cached for 60s per user via transient to keep page loads snappy and avoid
+ * hammering Supabase — the SaaS side generates review batches asynchronously
+ * so a stale cache is fine.
+ */
+function conversioniq_pending_reviews( WP_REST_Request $request ) {
+    $user_id       = get_current_user_id();
+    $transient_key = 'ciq_pending_reviews_' . intval( $user_id );
+
+    // Allow a caller to bust the cache after an audit completes (?refresh=1).
+    if ( intval( $request->get_param( 'refresh' ) ) !== 1 ) {
+        $cached = get_transient( $transient_key );
+        if ( is_array( $cached ) ) {
+            return new WP_REST_Response( $cached, 200 );
+        }
+    }
+
+    if ( ! class_exists( 'ConversionIQ_Supabase_Sync' ) ) {
+        $empty = array(
+            'count'            => 0,
+            'total_changes'    => 0,
+            'first_page_title' => '',
+            'latest_review_id' => '',
+            'organization_id'  => '',
+            'reviews'          => array(),
+        );
+        return new WP_REST_Response( $empty, 200 );
+    }
+
+    $supabase = new ConversionIQ_Supabase_Sync();
+    $reviews  = $supabase->fetch_pending_implementation_reviews( 5 );
+
+    $total_changes = 0;
+    foreach ( $reviews as $r ) {
+        $total_changes += intval( $r['changes_count'] );
+    }
+
+    $first_title = '';
+    $latest_id   = '';
+    if ( ! empty( $reviews[0] ) ) {
+        $first_title = ! empty( $reviews[0]['page_title'] ) ? $reviews[0]['page_title'] : $reviews[0]['page_url'];
+        $latest_id   = $reviews[0]['id'];
+    }
+
+    $payload = array(
+        'count'            => count( $reviews ),
+        'total_changes'    => $total_changes,
+        'first_page_title' => $first_title,
+        'latest_review_id' => $latest_id,
+        'organization_id'  => $supabase->get_organization_id(),
+        'reviews'          => $reviews,
+    );
+
+    set_transient( $transient_key, $payload, 60 );
+
+    return new WP_REST_Response( $payload, 200 );
+}
+
+/**
+ * POST /apply-changes
+ *
+ * Applies a set of approved implementation changes to a WordPress post.
+ * Authenticated by X-CIQ-API-Key header (same secret as /remote-audit).
+ * Called by the SaaS dashboard when the user approves changes.
+ *
+ * Required body:
+ *   review_id   : string  — UUID of the implementation_reviews row
+ *   audit_token : string  — report_token of the source audit
+ *   post_id     : int     — WP post ID to apply changes to
+ *   pre_score   : int     — overall_score from the source audit (for sprint tracking)
+ *   changes     : array   — approved change objects (decision = "approved")
+ *
+ * Returns:
+ *   { success, draft_url, plugin_version, results: [{change_id, status, error_code, error_message}] }
+ */
+function conversioniq_apply_changes( WP_REST_Request $request ) {
+    // ── Auth ──────────────────────────────────────────────────────────────
+    $provided_key = $request->get_header( 'X-CIQ-API-Key' );
+    $stored_key   = get_option( 'conversioniq_remote_secret', '' );
+
+    if ( empty( $provided_key ) || empty( $stored_key ) || ! hash_equals( $stored_key, $provided_key ) ) {
+        ciq_log( 'apply-changes: 401 — invalid or missing X-CIQ-API-Key' );
+        return new WP_REST_Response( array( 'success' => false, 'message' => 'Unauthorized' ), 401 );
+    }
+
+    // ── Rate limit: one apply per post per 60 seconds ─────────────────────
+    $body    = $request->get_json_params();
+    $post_id = absint( $body['post_id'] ?? 0 );
+    if ( $post_id <= 0 ) {
+        return new WP_REST_Response( array( 'success' => false, 'message' => 'post_id is required and must be a positive integer.' ), 400 );
+    }
+
+    $rate_key = 'ciq_apply_lock_' . $post_id;
+    if ( get_transient( $rate_key ) ) {
+        ciq_log( 'apply-changes: 429 — rate limited for post_id=' . $post_id );
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => 'An apply operation for this page is already in progress. Try again in 60 seconds.',
+        ), 429 );
+    }
+    set_transient( $rate_key, 1, 60 );
+
+    // ── Validate post ─────────────────────────────────────────────────────
+    $post = get_post( $post_id );
+    if ( ! $post || ! in_array( $post->post_status, array( 'publish', 'draft', 'private' ), true ) ) {
+        ciq_log( 'apply-changes: post_not_found — post_id=' . $post_id );
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => 'Post ID ' . $post_id . ' not found or is not a published/draft post.',
+        ), 404 );
+    }
+
+    $changes   = $body['changes']   ?? array();
+    $pre_score = intval( $body['pre_score'] ?? 0 );
+    $page_url  = get_permalink( $post );
+
+    if ( empty( $changes ) ) {
+        return new WP_REST_Response( array( 'success' => false, 'message' => 'No changes provided.' ), 400 );
+    }
+
+    ciq_log( 'apply-changes: post_id=' . $post_id . ' changes=' . count( $changes ) . ' pre_score=' . $pre_score );
+
+    // ── Apply changes ─────────────────────────────────────────────────────
+    $applier = new ConversionIQ_Implementation_Applier();
+    $result  = $applier->apply_all( $changes, $post );
+
+    // ── Create sprint row for impact measurement ──────────────────────────
+    if ( $result['success'] && $pre_score > 0 ) {
+        try {
+            $applied_titles = array();
+            foreach ( $changes as $change ) {
+                if ( ! empty( $change['title'] ) ) {
+                    $applied_titles[] = sanitize_text_field( $change['title'] );
+                }
+            }
+            $supabase = new ConversionIQ_Supabase_Sync();
+            $sprint_id = $supabase->create_sprint_for_implementation( $page_url, $pre_score, $applied_titles );
+            if ( $sprint_id ) {
+                ciq_log( 'apply-changes: sprint created — sprint_id=' . $sprint_id );
+            }
+        } catch ( Exception $e ) {
+            ciq_log( 'apply-changes: sprint creation exception — ' . $e->getMessage() );
+        }
+    }
+
+    // Log each per-change result
+    foreach ( $result['results'] as $r ) {
+        $status = $r['status'];
+        $id     = $r['change_id'];
+        $err    = $r['error_message'] ? ' — ' . $r['error_message'] : '';
+        if ( $status === 'applied' ) {
+            ciq_log( 'apply-changes: ✅ ' . $status . ' change_id=' . $id );
+        } else {
+            ciq_log( 'apply-changes: ' . ( $status === 'failed' ? '❌' : '⚠️' ) . ' ' . $status . ' change_id=' . $id . $err );
+        }
+    }
+
+    return new WP_REST_Response( array_merge( $result, array(
+        'plugin_version' => defined( 'CONVERSION_IQ_VERSION' ) ? CONVERSION_IQ_VERSION : 'unknown',
+    ) ), 200 );
+}
+
+/**
+ * POST /publish-draft
+ *
+ * Publishes a WordPress draft created by /apply-changes.
+ * Authenticated by X-CIQ-API-Key header.
+ *
+ * Required body:
+ *   draft_id : int  — ID of the WP draft post to publish
+ *
+ * Returns:
+ *   { success, published_url }
+ */
+function conversioniq_publish_draft( WP_REST_Request $request ) {
+    // ── Auth ──────────────────────────────────────────────────────────────
+    $provided_key = $request->get_header( 'X-CIQ-API-Key' );
+    $stored_key   = get_option( 'conversioniq_remote_secret', '' );
+
+    if ( empty( $provided_key ) || empty( $stored_key ) || ! hash_equals( $stored_key, $provided_key ) ) {
+        return new WP_REST_Response( array( 'success' => false, 'message' => 'Unauthorized' ), 401 );
+    }
+
+    $body     = $request->get_json_params();
+    $draft_id = absint( $body['draft_id'] ?? 0 );
+
+    if ( $draft_id <= 0 ) {
+        return new WP_REST_Response( array( 'success' => false, 'message' => 'draft_id is required.' ), 400 );
+    }
+
+    $draft = get_post( $draft_id );
+    if ( ! $draft ) {
+        return new WP_REST_Response( array( 'success' => false, 'message' => 'Draft ID ' . $draft_id . ' not found.' ), 404 );
+    }
+
+    if ( $draft->post_status !== 'draft' ) {
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => 'Post ' . $draft_id . ' is not a draft (status: ' . $draft->post_status . ').',
+        ), 400 );
+    }
+
+    // Confirm this was created by CIQ (has the source reference meta)
+    $source_id = get_post_meta( $draft_id, '_ciq_source_post_id', true );
+    if ( ! $source_id ) {
+        ciq_log( 'publish-draft: draft_id=' . $draft_id . ' has no _ciq_source_post_id — refusing to publish' );
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => 'This draft was not created by Conversion IQ and cannot be published via this endpoint.',
+        ), 403 );
+    }
+
+    $updated = wp_update_post( array(
+        'ID'          => $draft_id,
+        'post_status' => 'publish',
+    ), true );
+
+    if ( is_wp_error( $updated ) ) {
+        ciq_log( 'publish-draft: wp_update_post failed — ' . $updated->get_error_message() );
+        return new WP_REST_Response( array(
+            'success' => false,
+            'message' => 'Failed to publish: ' . $updated->get_error_message(),
+        ), 500 );
+    }
+
+    $published_url = get_permalink( $draft_id );
+    ciq_log( 'publish-draft: ✅ published draft_id=' . $draft_id . ' source_id=' . $source_id . ' url=' . $published_url );
+
+    return new WP_REST_Response( array(
+        'success'       => true,
+        'live_url'      => $published_url,  // dashboard expects live_url
+        'published_url' => $published_url,  // kept for backward compat
+        'draft_id'      => $draft_id,
+        'source_id'     => (int) $source_id,
+    ), 200 );
 }

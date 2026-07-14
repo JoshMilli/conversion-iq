@@ -9,6 +9,14 @@ class ConversionIQ_AI
     const SAAS_API_URL = 'https://conversioniq-app.com';
 
     /**
+     * Authoritative copy inventory for the current audit (hero + next sections, in order).
+     * Set at the start of analyze()/analyze_chunked(); consumed by build_user_prompt()
+     * (to tell the AI exactly which sections to rewrite) and by the rewrite reconciler.
+     * @var array
+     */
+    private static $copy_inventory = array();
+
+    /**
      * Get license key for authenticating all SaaS AI proxy calls.
      * The AI API key lives only on conversioniq-app.com — never on the WP site.
      */
@@ -34,6 +42,9 @@ class ConversionIQ_AI
         $business = isset($payload['business']) ? $payload['business'] : array();
         $screenshot_url  = isset($payload['page']['screenshot_url'])  ? $payload['page']['screenshot_url']  : null;
         $sprint_context  = isset($payload['page']['sprint_context'])   ? $payload['page']['sprint_context']   : '';
+        $gsc_page_queries = isset($payload['page']['gsc_page_queries']) ? $payload['page']['gsc_page_queries'] : null;
+        self::$copy_inventory = ( isset($payload['page']['copy_inventory']) && is_array($payload['page']['copy_inventory']) )
+            ? $payload['page']['copy_inventory'] : array();
 
         // Check if content is too long and needs chunking
         if (strlen($page_content) > 15000) {
@@ -43,7 +54,7 @@ class ConversionIQ_AI
 
         // Build the AI prompts (system = rubric/persona, user = page content)
         $system_prompt = self::build_system_prompt();
-        $user_prompt = self::build_user_prompt($page_title, $page_content, $page_url, $word_count, $html_structure, $business, $screenshot_url, $sprint_context);
+        $user_prompt = self::build_user_prompt($page_title, $page_content, $page_url, $word_count, $html_structure, $business, $screenshot_url, $sprint_context, $gsc_page_queries);
 
         // Call Abacus.ai API
         $start_time = microtime(true);
@@ -65,7 +76,12 @@ class ConversionIQ_AI
         if ($ai_response && isset($ai_response['success']) && $ai_response['success']) {
             ciq_log('✅ AI analysis successful, returning data');
             $result = $ai_response['data'];
-            
+
+            // Snap rewrites to the deterministic inventory (exact original + selector).
+            if ( isset($result['rewrites']) && is_array($result['rewrites']) ) {
+                $result['rewrites'] = self::reconcile_rewrites_with_inventory($result['rewrites']);
+            }
+
             // Attach raw webhook stats to the audit data so reports can show real numbers
             $webhook_stats = self::get_webhook_statistics($page_url);
             if ($webhook_stats) {
@@ -93,6 +109,8 @@ class ConversionIQ_AI
         $content        = isset($payload['page']['content'])        ? $payload['page']['content']        : '';
         $screenshot_url = isset($payload['page']['screenshot_url']) ? $payload['page']['screenshot_url'] : null;
         $sprint_context = isset($payload['page']['sprint_context']) ? $payload['page']['sprint_context'] : '';
+        self::$copy_inventory = ( isset($payload['page']['copy_inventory']) && is_array($payload['page']['copy_inventory']) )
+            ? $payload['page']['copy_inventory'] : array();
 
         ciq_log('🔍 Starting chunked analysis (batch) for: ' . $page_title);
 
@@ -141,11 +159,13 @@ class ConversionIQ_AI
                     . "- CTA visual prominence: assess the button's colour contrast, size, and spacing.\n"
                     . "- Layout density & whitespace: judge readability_score from actual typography visible in the screenshot.\n"
                     . "- Trust signals: look for badge images, star-rating widgets, team/founder photos.\n"
-                    . "- Visual richness: identify images, graphics, or video thumbnails that inform engagement_score.";
+                    . "- Visual richness: identify images, graphics, or video thumbnails that inform engagement_score.\n"
+                    . "- COPY SECTIONS (for rewrites): Scan the full screenshot and list every distinct copy-bearing section you can see — hero headline, hero subheadline, announcement bar, feature/step headings and their descriptions, stat labels, section intro text, testimonials heading, CTA buttons, secondary links. "
+                    .   "You MUST generate a rewrite for each section where the copy could be sharper. Match each section to its verbatim text in CONTENT for the 'original' field.";
                 $messages[] = array('role' => 'user', 'content' => array(
                     array('type' => 'text',      'text'      => $user_prompt),
                     array('type' => 'text',      'text'      => $visual_instruction),
-                    array('type' => 'image_url', 'image_url' => array('url' => $chunk_shot, 'detail' => 'low')),
+                    array('type' => 'image_url', 'image_url' => array('url' => $chunk_shot, 'detail' => 'auto')),
                 ));
             } else {
                 $messages[] = array('role' => 'user', 'content' => $user_prompt);
@@ -498,13 +518,34 @@ class ConversionIQ_AI
         $limited_suggestions = array_slice($all_suggestions, 0, 15);
         ciq_log('📝 Combined ' . count($all_suggestions) . ' suggestions, limited to ' . count($limited_suggestions));
 
-        // Use first section's rewrites and insights (or merge them)
+        // Merge rewrites from EVERY section. Previously only the first chunk's
+        // rewrites were kept, which silently dropped the copy suggestions for every
+        // later section of a long (chunked) page — the root of "sections don't match
+        // the page". Dedupe by section + original so a block isn't rewritten twice.
+        $merged_rewrites = array();
+        $seen_rewrites   = array();
+        foreach ($all_scores as $section_result) {
+            if (empty($section_result['rewrites']) || !is_array($section_result['rewrites'])) continue;
+            foreach ($section_result['rewrites'] as $rw) {
+                if (!is_array($rw)) continue;
+                $key = strtolower(trim(($rw['section'] ?? '') . '|' . ($rw['original'] ?? '')));
+                if ($key === '|' || isset($seen_rewrites[$key])) continue;
+                $seen_rewrites[$key] = true;
+                $merged_rewrites[]   = $rw;
+            }
+        }
+        $merged_rewrites = array_slice($merged_rewrites, 0, 20); // cap generously — cover the whole page
+        $merged_rewrites = self::reconcile_rewrites_with_inventory($merged_rewrites);
+        ciq_log('✍️ Merged ' . count($merged_rewrites) . ' rewrite(s) across ' . $count . ' section(s)');
+
+        // Insights / recommendations / checklist are page-level; the first chunk
+        // carries the screenshot-grounded analysis, so use it as the base.
         $first_section = $all_scores[0];
 
         $result = array_merge($averaged, array(
             'suggestions' => $limited_suggestions,
             'functionality_suggestions' => $all_functionality_suggestions,
-            'rewrites' => isset($first_section['rewrites']) ? $first_section['rewrites'] : array(),
+            'rewrites' => $merged_rewrites,
             'insights' => isset($first_section['insights']) ? $first_section['insights'] : array(),
             'recommendations' => isset($first_section['recommendations']) ? $first_section['recommendations'] : array(),
             'cro_checklist' => isset($first_section['cro_checklist']) ? $first_section['cro_checklist'] : null,
@@ -1262,7 +1303,9 @@ Return only the JSON.";
 
         return "You are an expert conversion rate optimization (CRO) analyst. You produce consistent, calibrated scores based on a fixed rubric. You never guess or estimate — you score only what is present on the page.{$section_context}
 
-LANGUAGE RULE: Regardless of the page content language, ALL output must be in English.
+LANGUAGE RULE:
+- Write all ANALYSIS and EXPLANATION output in English: scores, suggestions, functionality_suggestions, cro_checklist, insights, recommendations, and every \"why\" / \"explanation\" / \"score_impact\" field.
+- Write all CUSTOMER-FACING COPY in the SAME language as the page content being audited — specifically the \"original\" and \"rewrite\" fields of every item in the \"rewrites\" array. Detect the language from the page CONTENT. If the page is in Spanish, these fields are in Spanish; if French, French; and so on. The \"rewrite\" is published verbatim onto the live page, so it MUST match the page's language, locale, spelling, and tone. NEVER translate the suggested copy into English.
 
 ─── SCORING RUBRIC (0-100, integer only) ───
 
@@ -1362,10 +1405,10 @@ For ALL items: if a screenshot is present, your \"explanation\" sentence MUST in
 
 Elements to evaluate:
 1. CTA Above the Fold — Is there a call-to-action button visible without scrolling? [VISUAL — use screenshot]
-2. Trust Signals (Certs, Awards) — Are there visible certification badges, award images, or credential logos? [VISUAL — image-only badges are invisible in HTML text; use screenshot]
+2. Trust Signals (Certs, Awards) — Are there visible trust elements on the page? This includes: certification/award badges, credential logos, client logo bars ('as seen in' / 'trusted by' sections), case study thumbnails or previews, previous work / portfolio showcase sections, and media/partner logo strips. ANY of these count. [VISUAL — these elements are image-only and invisible in HTML text; use screenshot. If the HTML signal says LIKELY (case study, logo bar, or portfolio section detected), treat that as strong supporting evidence and only mark absent if neither the screenshot nor HTML confirm anything.]
 3. Inline Social Proof — Are there testimonials, review widgets, star ratings, or headshot photos within the body? [VISUAL — rendered star-rating widgets may not appear in HTML; use screenshot]
 4. Urgency / Scarcity Elements — Is there urgency or scarcity language (limited time, limited spots, countdown)? [COPY — use HTML/text]
-5. Sticky CTA in Nav — Is there a persistent CTA button visible in the navigation bar? [VISUAL — use screenshot]
+5. Sticky CTA in Nav — Is there a persistent CTA button in the navigation bar that remains visible while scrolling? [PRIMARILY HTML/BROWSER — IMPORTANT: a screenshot captures only the initial page state BEFORE the user scrolls. A sticky nav that collapses on load or only becomes fixed after scrolling will NOT appear in the screenshot. Therefore: (a) if the HTML signal says YES or LIKELY (CTA in nav/header or sticky/fixed nav detected), set present=true even if the nav button is absent from the screenshot; (b) if a [BROWSER-CONFIRMED] nav_cta signal is present, that is ground-truth — set present=true; (c) use the screenshot only as supplementary confirmation, never as the sole reason to mark this absent.]
 6. Reassurance Micro-copy — Are there friction-reducing phrases near CTAs (\"No credit card required\", \"Cancel anytime\")? [COPY — use HTML/text]
 7. Clear Visual Hierarchy — Does the rendered page show clear heading sizes, whitespace, and layout weight? [VISUAL — heading tags alone do not confirm visual weight; use screenshot]
 8. Mobile-First UX — Does the page layout and copy suggest mobile-optimised design? [COPY/STRUCTURE — use HTML]
@@ -1389,7 +1432,13 @@ You MUST produce the following exact counts. Fewer items will be treated as an i
 - insights.strengths: EXACTLY 3 items, each citing a specific score or page element; when a screenshot is present, at least 1 strength must reference a positive visual observation
 - insights.weaknesses: EXACTLY 3 items, each citing the specific score it relates to; when a screenshot is present, at least 1 weakness must reference a visual finding from the screenshot
 - insights.opportunities: EXACTLY 3 items with expected outcomes
-- rewrites: ALL 16 keys populated (headline, subheadline, primary_cta, secondary_cta, value_proposition, social_proof_intro, feature_1 through feature_5, faq_answer_1 through faq_answer_3, closing_statement)
+- rewrites: MINIMUM 8 objects, and produce ONE for EVERY distinct copy-bearing section that appears in CONTENT — do not stop at a fixed number. Content-rich pages commonly have 12–15 rewriteable sections; cover them ALL. You MUST scan the entire page top to bottom and include, wherever present: hero headline, hero subheadline/supporting paragraph, announcement/rating text, EVERY section heading (H2/H3) AND its intro paragraph, problem lists and solution lists (each list's heading), stat/metric labels, feature descriptions, every step's title and description in a process/how-it-works block, testimonials heading and testimonial quotes, the about/mission heading and its paragraph, and EVERY CTA button or secondary link — including section-level CTAs that repeat down the page. Do NOT limit yourself to the hero + one or two canonical sections; middle-of-page sections (problem/solution blocks, stat bars, multi-step widgets) are frequently the ones most in need of a rewrite. Each object rewrites a copy element that ACTUALLY EXISTS in CONTENT — do NOT invent sections. Quote the real current text verbatim in \"original\". Write \"rewrite\" in the company's industry-specific voice and tone, calibrated to their product, target audience, and pain points. Never produce generic, template-sounding copy. Rules:
+  • \"original\" must be a direct quote (or close paraphrase) of the actual text on the page — never a placeholder
+  • \"rewrite\" must read as if a senior copywriter wrote it specifically for this business and audience — concrete, benefit-led, no buzzwords
+  • \"why\" must reference a specific conversion principle or score gap (e.g. \"Adds specificity that lifts clarity_score — the current copy doesn't explain the outcome\")
+  • \"score_impact\" lists which 1–2 scores this change primarily improves
+  • \"section\" must name the page's ACTUAL section — its real heading text or an accurate description of that block. The section names in the OUTPUT FORMAT example below are ILLUSTRATIVE ONLY; do NOT force generic labels onto sections that do not exist on this page
+  • Write \"original\" and \"rewrite\" in the SAME language as the page content; only \"why\" and \"score_impact\" are in English
 
 Do NOT truncate or omit items to save tokens. Every field above is required.
 
@@ -1426,23 +1475,22 @@ Return ONLY valid JSON (no markdown, no code blocks, no commentary). Exact struc
     {\"element\": \"Exit Intent Suggestion\", \"present\": false, \"explanation\": \"Page-specific one-sentence finding\", \"priority\": \"low\"},
     {\"element\": \"Progress Indicators\", \"present\": false, \"explanation\": \"Page-specific one-sentence finding\", \"priority\": \"low\"}
   ],
-  \"rewrites\": {
-    \"headline\": \"Improved headline\",
-    \"subheadline\": \"Improved subheadline\",
-    \"primary_cta\": \"Primary CTA text\",
-    \"secondary_cta\": \"Secondary CTA text\",
-    \"value_proposition\": \"Clear value proposition\",
-    \"social_proof_intro\": \"Testimonials section intro\",
-    \"feature_1\": \"Feature description 1\",
-    \"feature_2\": \"Feature description 2\",
-    \"feature_3\": \"Feature description 3\",
-    \"feature_4\": \"Feature description 4\",
-    \"feature_5\": \"Feature description 5\",
-    \"faq_answer_1\": \"Top FAQ answer\",
-    \"faq_answer_2\": \"Second FAQ answer\",
-    \"faq_answer_3\": \"Third FAQ answer\",
-    \"closing_statement\": \"Closing conversion statement\"
-  },
+  \"rewrites\": [
+    {
+      \"section\": \"Hero Headline\",
+      \"original\": \"Exact current headline text from the page\",
+      \"rewrite\": \"Sharper, benefit-driven alternative written in the company's voice and calibrated to the target audience's specific pain point\",
+      \"why\": \"The current headline names the service but not the outcome — this version leads with the specific result the audience wants, directly addressing the clarity_score gap\",
+      \"score_impact\": \"clarity, emotional\"
+    },
+    {
+      \"section\": \"Primary CTA\",
+      \"original\": \"Exact CTA text from the page\",
+      \"rewrite\": \"Stronger CTA that reduces friction and states what happens next\",
+      \"why\": \"Action-oriented CTAs with a concrete next step outperform generic labels — directly improves cta_strength\",
+      \"score_impact\": \"cta_strength\"
+    }
+  ],
   \"insights\": {
     \"executive_summary\": \"2-3 sentences: conversion health, #1 priority, positive tone. Reference scores.\",
     \"strengths\": [\"Strength 1 — cite specific score\", \"Strength 2 — cite page element\", \"Strength 3 — cite evidence\"],
@@ -1498,7 +1546,7 @@ section appears in the user prompt. If no such section is present, omit both key
      * Build the user prompt — page content, business context, lead intelligence.
      * This changes for every audit.
      */
-    private static function build_user_prompt($title, $content, $url, $word_count, $html_structure, $business, $screenshot_url = null, $sprint_context = '')
+    private static function build_user_prompt($title, $content, $url, $word_count, $html_structure, $business, $screenshot_url = null, $sprint_context = '', $gsc_page_queries = null)
     {
         $industry = isset($business['industry']) ? $business['industry'] : 'Not specified';
         $product = isset($business['product']) ? $business['product'] : 'Not specified';
@@ -1657,7 +1705,9 @@ Because VISITOR INTELLIGENCE data was provided above, you MUST include the follo
         // When no screenshot was captured, explicitly tell the model so it does not
         // fabricate visual observations for the visual-evidence CRO checklist items.
         $screenshot_notice = '';
-        if ( ! $screenshot_url ) {
+        if ( $screenshot_url ) {
+            $screenshot_notice = '';
+        } else {
             $screenshot_notice = "\nSCREENSHOT NOTICE: No page screenshot is available for this audit. "
                 . "However, the HTML structure data may include a 'Real Browser Signals' section containing "
                 . "ground-truth observations from real visitor sessions collected by the JS tracker. "
@@ -1669,6 +1719,36 @@ Because VISITOR INTELLIGENCE data was provided above, you MUST include the follo
                 . "and set explanation to a statement based solely on HTML evidence (e.g. \"Assessed from HTML signals only — no screenshot available\"). "
                 . "Do not include screenshot-observation phrases in suggestions or insights.\n";
         }
+
+        // ── Build GSC search intent context (injected when available) ─────────
+        // This grounds copy rewrites in real, quantified search demand for this page.
+        // When GSC data is available, the AI must use the actual query language.
+        // When absent (GSC not connected), fall back silently — no placeholder text needed.
+        $gsc_context = '';
+        if ( ! empty( $gsc_page_queries ) && is_array( $gsc_page_queries ) ) {
+            $gsc_context  = "\n════════════════════════════════════════════════════════\n";
+            $gsc_context .= "SEARCH INTENT DATA (Google Search Console — real queries for THIS page)\n";
+            $gsc_context .= "════════════════════════════════════════════════════════\n";
+            $gsc_context .= "These are the exact search queries driving real traffic to this specific URL. ";
+            $gsc_context .= "They represent PROVEN DEMAND — people searched these phrases and found this page.\n";
+            $gsc_context .= "COPY REWRITE INSTRUCTION: All headline and hero copy rewrites MUST incorporate the language ";
+            $gsc_context .= "of the highest-click queries naturally. The H1 rewrite in particular should reflect the #1 query. ";
+            $gsc_context .= "Do NOT invent new keywords — use only the queries listed below.\n\n";
+            $gsc_context .= "Top queries landing on this page (sorted by clicks, 90-day window):\n";
+            foreach ( array_slice( $gsc_page_queries, 0, 10 ) as $i => $q ) {
+                $gsc_context .= ( $i + 1 ) . '. "' . esc_html( $q['query'] ) . '"'
+                    . ' — ' . $q['clicks'] . ' clicks'
+                    . ', pos ' . $q['position']
+                    . ', ' . $q['impressions'] . ' impressions';
+                if ( $i === 0 ) $gsc_context .= ' ← HIGHEST INTENT — use this in H1/hero headline rewrite';
+                $gsc_context .= "\n";
+            }
+            $gsc_context .= "\nRULE: The copy rewrites section (\"rewrites\") MUST contain a rewrite for the H1/hero headline "
+                . "that incorporates the #1 query above. The \"why\" field for that rewrite must reference "
+                . 'the specific query and its click volume (e.g., "340 real visitors searched this phrase").';
+            $gsc_context .= "\n";
+        }
+        // ── End GSC context ───────────────────────────────────────────────────
 
         $prompt = "Analyze this {$page_type} page for conversion optimization.
 
@@ -1682,19 +1762,116 @@ BUSINESS CONTEXT:
 {$page_type_block}{$screenshot_notice}
 PAGE: {$title} ({$word_count} words)
 
-CONTENT:
+CONTENT (structural markers: [H1]/[H2]/[H3]/[H4] = headings, [BUTTON] = button label, [CTA] = call-to-action link, --- = section boundary. Use these to identify copy sections accurately):
 {$content}
 
 HTML STRUCTURE:
 {$html_structure}{$leads_context}
+{$gsc_context}
+Score this page using the rubric from your instructions. Apply the SCORING EMPHASIS above when calibrating scores — it overrides generic rubric defaults for this specific page type. Audit every EXPECTED STRUCTURAL ELEMENT listed above and incorporate missing-element findings into your weaknesses, suggestions, or quick_wins. Provide all suggestions referencing SPECIFIC page elements. Connect recommendations to actual weaknesses (cite scores). Compute overall_score using the weights specified.
 
-Score this page using the rubric from your instructions. Apply the SCORING EMPHASIS above when calibrating scores — it overrides generic rubric defaults for this specific page type. Audit every EXPECTED STRUCTURAL ELEMENT listed above and incorporate missing-element findings into your weaknesses, suggestions, or quick_wins. Provide all suggestions referencing SPECIFIC page elements. Connect recommendations to actual weaknesses (cite scores). Compute overall_score using the weights specified.{$lead_json_fragment}";
+COPY REWRITE RULES — apply these when generating the \"rewrites\" array:
+1. IDENTIFY SECTIONS USING THE SCREENSHOT: If a screenshot is available, use it to identify the visual sections on the page (hero, features block, social proof, pricing, CTA section, etc.) and their reading order. Match those visual sections to the corresponding copy in CONTENT. Do NOT transcribe or quote text directly from the screenshot image — screenshots are for section identification only, not for verbatim quoting.
+2. QUOTE THE ACTUAL TEXT: \"original\" must be lifted verbatim from the CONTENT above. Use the [H1]/[H2]/[H3]/[BUTTON]/[CTA] markers to locate specific copy elements — these indicate headings, button labels, and call-to-action links. Never invent or paraphrase placeholder text for the \"original\" field.
+3. WRITE FOR THIS BUSINESS: the \"rewrite\" must sound like a senior copywriter who deeply understands the {$industry} industry and is writing specifically for {$audience}. Reference {$pain_points} where relevant. Avoid buzzwords, corporate speak, and generic phrases like \"quality solutions\" or \"tailored services\".
+4. ONLY rewrite sections that exist on the page and where improvement is meaningful — skip sections where the current copy already scores well.
+5. Each rewrite should be immediately usable — no brackets, no placeholders, no \"[Company Name]\" tokens.
+6. Tone must match the rest of the page (professional, friendly, technical, etc.) while being sharper and more conversion-focused.
+7. LANGUAGE: Detect the language of the CONTENT above and write BOTH \"original\" and \"rewrite\" in that exact language. The rewrite is published directly onto the live page, so it must never be in a different language than the surrounding copy (a Spanish page gets Spanish rewrites, not English). Keep \"why\"/\"score_impact\" in English.
+8. SECTION LABELS: Name each rewrite's \"section\" after the page's ACTUAL section — the real heading text or an accurate short description of that block. Do NOT force generic/canonical labels onto sections that don't exist on this page; label only sections that genuinely appear in the CONTENT.{$lead_json_fragment}";
 
         if ( $sprint_context !== '' ) {
             $prompt .= $sprint_context;
         }
 
+        // Authoritative, ordered section list (hero + next sections). When present it is
+        // the source of truth for the rewrites array — the AI must not skip or invent.
+        $prompt .= self::build_copy_inventory_block();
+
         return $prompt;
+    }
+
+    /**
+     * Build the "AUTHORITATIVE COPY SECTIONS" block from the deterministic inventory.
+     * Returns '' when no inventory is available (falls back to screenshot/CONTENT-based
+     * discovery). Listing exact text + selectors here is what stops the model missing
+     * sections and guarantees the hero heading / sub-heading / CTA are always covered.
+     */
+    private static function build_copy_inventory_block(): string {
+        $inv = self::$copy_inventory;
+        if ( empty( $inv ) || ! is_array( $inv ) ) return '';
+
+        $lines = array();
+        $n = 0;
+        foreach ( $inv as $item ) {
+            $text = trim( (string) ( $item['text'] ?? '' ) );
+            if ( $text === '' ) continue;
+            $n++;
+            $sel = trim( (string) ( $item['selector'] ?? '' ) );
+            $lines[] = $n . '. [' . ( $item['section_label'] ?? 'Section' ) . ']'
+                . ( $sel !== '' ? ' (selector: ' . $sel . ')' : '' )
+                . ' "' . str_replace( '"', "'", mb_substr( $text, 0, 300 ) ) . '"';
+        }
+        if ( empty( $lines ) ) return '';
+
+        return "\n\n=== AUTHORITATIVE COPY SECTIONS (rewrite THESE) ===\n"
+            . "These are the EXACT copy elements from the top of the page, in order (hero first). "
+            . "Your \"rewrites\" array MUST be built from this list: return one object per section below "
+            . "that can be improved, using the EXACT \"original\" text shown and the \"section\" label shown, "
+            . "and set \"target\" to the selector shown. Do NOT invent, rename, merge, or skip sections, and "
+            . "do NOT add sections that are not in this list. MANDATORY: always include the Hero Heading, "
+            . "Hero Sub-heading, and Hero CTA. Follow the LANGUAGE rule (rewrite in the page's language).\n"
+            . implode( "\n", $lines ) . "\n";
+    }
+
+    /**
+     * Snap AI-returned rewrites to the deterministic inventory: overwrite \"original\"
+     * with the exact stored text, attach the exact \"target\" selector, and use the
+     * inventory's section label. Guarantees the applier's before-text matches and the
+     * change targets the right element. Rewrites that don't match any inventory item are
+     * kept as-is (so nothing is lost when the inventory is unavailable).
+     */
+    private static function reconcile_rewrites_with_inventory( array $rewrites ): array {
+        $inv = self::$copy_inventory;
+        if ( empty( $inv ) || ! is_array( $inv ) ) return $rewrites;
+
+        // Index inventory by normalised text for matching.
+        $by_text = array();
+        foreach ( $inv as $item ) {
+            $key = self::norm_text( (string) ( $item['text'] ?? '' ) );
+            if ( $key !== '' && ! isset( $by_text[ $key ] ) ) $by_text[ $key ] = $item;
+        }
+
+        foreach ( $rewrites as &$rw ) {
+            if ( ! is_array( $rw ) ) continue;
+            $orig = self::norm_text( (string) ( $rw['original'] ?? '' ) );
+            $match = null;
+            if ( $orig !== '' && isset( $by_text[ $orig ] ) ) {
+                $match = $by_text[ $orig ];
+            } elseif ( $orig !== '' ) {
+                // Fallback: substring containment either way (handles minor quoting drift).
+                foreach ( $by_text as $k => $item ) {
+                    if ( strpos( $k, $orig ) !== false || strpos( $orig, $k ) !== false ) { $match = $item; break; }
+                }
+            }
+            if ( $match ) {
+                $rw['original'] = $match['text'];                       // exact current copy
+                $rw['section']  = $match['section_label'] ?? ( $rw['section'] ?? '' );
+                if ( ! empty( $match['selector'] ) ) $rw['target'] = $match['selector'];
+                if ( ! empty( $match['role'] ) )     $rw['role']   = $match['role'];
+            }
+        }
+        unset( $rw );
+        return $rewrites;
+    }
+
+    /** Lowercase + collapse whitespace + unify curly quotes for tolerant text matching. */
+    private static function norm_text( string $s ): string {
+        $s = html_entity_decode( $s, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+        $s = str_replace( array( "\xE2\x80\x99", "\xE2\x80\x98", "\xC2\xB4", '`' ), "'", $s );
+        $s = str_replace( array( "\xE2\x80\x9C", "\xE2\x80\x9D" ), '"', $s );
+        $s = preg_replace( '/\s+/', ' ', trim( $s ) );
+        return function_exists( 'mb_strtolower' ) ? mb_strtolower( $s, 'UTF-8' ) : strtolower( $s );
     }
 
     /**
@@ -1740,9 +1917,9 @@ Score this page using the rubric from your instructions. Apply the SCORING EMPHA
             $visual_instruction = "A full-page screenshot of this page is attached. This screenshot is AUTHORITATIVE for all visual CRO checklist items (1,2,3,5,7,11,13).\n\n"
                 . "CRITICAL: CRO Structural Signals marked 'UNCONFIRMED FROM HTML' or 'NOT DETECTED' for visual items mean the HTML parser could not detect the element — NOT that it is absent. For visual items, base present=true/false SOLELY on what you directly observe in this screenshot:\n"
                 . "- Item 1 (CTA Above the Fold): Is there a clearly styled button or CTA link visible without scrolling?\n"
-                . "- Item 2 (Trust Signals): Are there ANY logos, badges, or credential images visible — client logos, 'as seen in' bars, award badges, or media/brand logos all count.\n"
+                . "- Item 2 (Trust Signals): Look for ANY of the following — certification/award badge images, client logo bars, 'as seen in' / 'trusted by' logo strips, case study preview cards or thumbnails, previous work / portfolio section images, media/partner logo grids. Any one of these makes present=true. If the HTML signal says LIKELY (case study or logo bar detected), actively look for these in the screenshot before marking absent.\n"
                 . "- Item 3 (Inline Social Proof): Are testimonial cards, review quotes, headshots, or star-rating widgets visible?\n"
-                . "- Item 5 (Sticky CTA in Nav): Is there a button in the navigation/header bar?\n"
+                . "- Item 5 (Sticky CTA in Nav): Is there a button or CTA link in the navigation/header area? IMPORTANT — the screenshot only captures the initial page state before scrolling; a sticky nav that hides on load and appears on scroll will NOT be visible here. If the HTML signal says YES or LIKELY for this item, set present=true regardless of what the screenshot shows. Do NOT mark absent based solely on the screenshot.\n"
                 . "- Item 7 (Clear Visual Hierarchy): Does the layout show clear heading weight, whitespace, and visual flow?\n\n"
                 . "Additionally assess for scoring: CTA button colour contrast, size, and spacing (cta_strength); layout density and whitespace (readability_score); images/graphics richness (engagement_score).\n"
                 . "Cite specific visual observations in suggestions (e.g. 'The screenshot shows the CTA button is below the fold'). Do not invent visual details.";

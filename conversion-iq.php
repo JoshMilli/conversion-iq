@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 2.4.3
+ * Version: 2.5.0
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'CONVERSION_IQ_VERSION', '2.4.3' );
+define( 'CONVERSION_IQ_VERSION', '2.5.0' );
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
@@ -114,10 +114,56 @@ if (!function_exists('ciq_log')) {
     }
 }
 
+/**
+ * Structured apply-flow logger.
+ *
+ * Writes every entry to both the PHP error log and a dated flat file at
+ * wp-content/uploads/conversioniq/apply-log-YYYY-MM-DD.log so logs from
+ * concurrent jobs can be grepped by review_id.
+ *
+ * @param string       $review_id  UUID of the implementation_reviews row.
+ * @param string       $stage      All-caps label, e.g. 'JOB_PICKED_UP'.
+ * @param array|string $data       Structured data (encoded to JSON) or a plain string.
+ */
+if ( ! function_exists( 'ciq_apply_log' ) ) {
+    function ciq_apply_log( string $review_id, string $stage, $data = null ): void {
+        $ts      = gmdate( 'c' );
+        $short   = substr( $review_id, 0, 8 );
+        $prefix  = '[CIQ-APPLY] ' . $ts . ' review=' . $short . ' | ' . $stage;
+        $body    = '';
+        if ( $data !== null ) {
+            $body = ' ' . ( is_string( $data )
+                ? $data
+                : json_encode( $data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
+        }
+        $line = $prefix . $body;
+
+        error_log( $line );
+
+        // Write to dated log file (created lazily, directory created if missing).
+        static $dirs_ready = array();
+        if ( function_exists( 'wp_upload_dir' ) ) {
+            $upload = wp_upload_dir( null, false );
+            $dir    = $upload['basedir'] . '/conversioniq';
+            if ( ! isset( $dirs_ready[ $dir ] ) ) {
+                if ( ! is_dir( $dir ) ) {
+                    wp_mkdir_p( $dir );
+                    @file_put_contents( $dir . '/index.php', '<?php // Silence is golden.' );
+                }
+                $dirs_ready[ $dir ] = true;
+            }
+            $file = $dir . '/apply-log-' . gmdate( 'Y-m-d' ) . '.log';
+            @file_put_contents( $file, $line . PHP_EOL, FILE_APPEND | LOCK_EX );
+        }
+    }
+}
+
 // Include required files
 require_once CONVERSION_IQ_DIR . 'includes/class-config-manager.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-database.php';
+require_once CONVERSION_IQ_DIR . 'includes/class-implementation-applier.php';
 require_once CONVERSION_IQ_DIR . 'includes/rest-api.php';
+require_once CONVERSION_IQ_DIR . 'includes/class-copy-inventory.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-ai-engine.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-seo-analyzer.php';
 require_once CONVERSION_IQ_DIR . 'includes/class-reports.php';
@@ -170,6 +216,11 @@ add_action( 'init', function() {
     // Schedule 2-minute audit-job poller if not already scheduled
     if ( ! wp_next_scheduled( 'conversioniq_poll_audit_jobs' ) ) {
         wp_schedule_event( time() + 120, 'conversioniq_twominutes', 'conversioniq_poll_audit_jobs' );
+    }
+
+    // Schedule 2-minute implementation review poller if not already scheduled
+    if ( ! wp_next_scheduled( 'conversioniq_poll_implementation_jobs' ) ) {
+        wp_schedule_event( time() + 120, 'conversioniq_twominutes', 'conversioniq_poll_implementation_jobs' );
     }
 
     // Schedule weekly SEO full-site sweep if not already scheduled
@@ -512,6 +563,529 @@ function conversioniq_poll_audit_jobs_handler() {
 }
 // ── End Audit Jobs Poller ──────────────────────────────────────────────────
 
+// ── Implementation Review Pollers ─────────────────────────────────────────────
+
+add_action( 'conversioniq_poll_implementation_jobs', 'conversioniq_poll_implementation_jobs_handler' );
+
+// Fallback: also run on every admin page load, throttled to once per 2 minutes.
+// Uses a separate transient so it doesn't interfere with the audit jobs throttle.
+add_action( 'admin_init', function() {
+    if ( get_transient( 'ciq_impl_poll_throttle' ) ) return;
+    set_transient( 'ciq_impl_poll_throttle', 1, 120 );
+    conversioniq_poll_implementation_jobs_handler();
+} );
+
+/**
+ * Resolve a queue row (page_id + page_url) to a valid, editable WP_Post.
+ *
+ * The page_id stored by the SaaS can be a crc32 hash rather than a real WP
+ * post ID when the audit data was retrieved from history rather than run live.
+ * For the home page it is also common for the stored ID to drift after the
+ * site's Reading Settings change. Resolution order:
+ *
+ *  1. page_id > 0 and get_post() returns an accessible post → use it.
+ *  2. page_url matches the site front page:
+ *     a. show_on_front = 'page' → use page_on_front option.
+ *     b. show_on_front = 'posts' → no single page exists; throw with a
+ *        customer-facing message explaining how to fix it.
+ *  3. url_to_postid( page_url ) → validate and return.
+ *  4. get_page_by_path( URL path ) → validate and return.
+ *  5. Nothing resolves → throw with a specific message (never the raw ID).
+ *
+ * @param int    $page_id  Raw page_id from the implementation_reviews row.
+ * @param string $page_url Raw page_url from the same row.
+ * @return WP_Post         Resolved, editable post.
+ * @throws Exception       With a customer-readable message on all failure paths.
+ */
+function ciq_resolve_implementation_post( int $page_id, string $page_url ): WP_Post {
+    $ok_statuses = array( 'publish', 'draft', 'private' );
+
+    // Step 1: trust the stored ID when it resolves cleanly.
+    if ( $page_id > 0 ) {
+        $post = get_post( $page_id );
+        if ( $post instanceof WP_Post && in_array( $post->post_status, $ok_statuses, true ) ) {
+            ciq_log( 'ciq_resolve: using stored page_id=' . $page_id );
+            return $post;
+        }
+        ciq_log( 'ciq_resolve: stored page_id=' . $page_id . ' invalid (status=' . ( $post ? $post->post_status : 'null' ) . '), falling back to URL' );
+    }
+
+    // Normalize for front-page comparison (strip scheme, www, trailing slash).
+    $strip = function( string $u ): string {
+        return rtrim( preg_replace( '#^https?://(www\.)?#i', '', $u ), '/' );
+    };
+    $is_front = ( $strip( $page_url ) === $strip( home_url() ) );
+
+    // Step 2: front-page URL.
+    if ( $is_front ) {
+        $show_on_front = get_option( 'show_on_front', 'posts' );
+        if ( $show_on_front === 'page' ) {
+            $front_id = (int) get_option( 'page_on_front', 0 );
+            if ( $front_id > 0 ) {
+                $post = get_post( $front_id );
+                if ( $post instanceof WP_Post && in_array( $post->post_status, $ok_statuses, true ) ) {
+                    ciq_log( 'ciq_resolve: resolved home page via page_on_front=' . $front_id . ' (stored page_id was ' . $page_id . ')' );
+                    return $post;
+                }
+            }
+            throw new Exception( 'Could not load the static front page (Settings › Reading). It may have been deleted or set to an invalid page.' );
+        }
+        // show_on_front === 'posts' — no single editable post backs the home feed.
+        throw new Exception( 'Your home page shows your latest posts feed, so there is no single page to edit. Go to Settings › Reading, choose "A static page", select a Front page, then run this again.' );
+    }
+
+    // Step 3: let WordPress resolve the URL directly.
+    if ( ! empty( $page_url ) ) {
+        $resolved_id = url_to_postid( $page_url );
+        if ( $resolved_id > 0 ) {
+            $post = get_post( $resolved_id );
+            if ( $post instanceof WP_Post && in_array( $post->post_status, $ok_statuses, true ) ) {
+                ciq_log( 'ciq_resolve: resolved via url_to_postid=' . $resolved_id . ' (stored page_id was ' . $page_id . ')' );
+                return $post;
+            }
+        }
+
+        // Step 4: path-based fallback.
+        $path = trim( parse_url( $page_url, PHP_URL_PATH ) ?? '', '/' );
+        if ( $path ) {
+            foreach ( array( 'page', 'post' ) as $ptype ) {
+                $page = get_page_by_path( $path, OBJECT, $ptype );
+                if ( $page instanceof WP_Post && in_array( $page->post_status, $ok_statuses, true ) ) {
+                    ciq_log( 'ciq_resolve: resolved via get_page_by_path path=' . $path . ' type=' . $ptype );
+                    return $page;
+                }
+            }
+        }
+    }
+
+    // Step 5: genuinely not found.
+    throw new Exception( 'The page for this recommendation no longer exists on your site (it may have been deleted). URL: ' . $page_url );
+}
+
+function conversioniq_poll_implementation_jobs_handler() {
+    $org_id = get_option( 'conversioniq_organization_id', '' );
+    if ( ! $org_id ) return;
+
+    $supabase = new ConversionIQ_Supabase_Sync();
+
+    // ── Apply queue (queued_apply → applying → applied | partial) ─────────────
+    $apply_job = $supabase->fetch_pending_implementation_job( 'queued_apply' );
+    if ( $apply_job ) {
+        $review_id = $apply_job['id'];
+
+        // Decode changes early — needed for Stage 1 counts before we claim.
+        $all_changes = is_array( $apply_job['changes'] )
+            ? $apply_job['changes']
+            : json_decode( $apply_job['changes'] ?? '[]', true );
+        if ( ! is_array( $all_changes ) ) $all_changes = array();
+
+        $approved_pre = array_values( array_filter( $all_changes, function( $c ) {
+            return ( $c['decision'] ?? '' ) === 'approved';
+        } ) );
+
+        // ── Stage 1: Job picked up ────────────────────────────────────────
+        ciq_apply_log( $review_id, 'JOB_PICKED_UP', array(
+            'review_id'        => $review_id,
+            'organization_id'  => $org_id,
+            'raw_page_id'      => $apply_job['page_id']    ?? null,
+            'page_url'         => $apply_job['page_url']   ?? '',
+            'page_title'       => $apply_job['page_title'] ?? '',
+            'total_changes'    => count( $all_changes ),
+            'approved_changes' => count( $approved_pre ),
+        ) );
+
+        $supabase->claim_implementation_review( $review_id, 'applying' );
+
+        try {
+            // ── Stage 2: Target resolution ────────────────────────────────
+            $raw_page_id = absint( $apply_job['page_id'] ?? 0 );
+            $page_url    = $apply_job['page_url'] ?? '';
+
+            try {
+                $post = ciq_resolve_implementation_post( $raw_page_id, $page_url );
+                ciq_apply_log( $review_id, 'TARGET_RESOLVED', array(
+                    'raw_page_id'      => $raw_page_id,
+                    'resolved_post_id' => $post->ID,
+                    'post_type'        => $post->post_type,
+                    'post_status'      => $post->post_status,
+                    'post_title'       => $post->post_title,
+                    'resolution'       => ( $raw_page_id === $post->ID ) ? 'stored_id' : 'url_fallback',
+                ) );
+            } catch ( Exception $resolve_ex ) {
+                ciq_apply_log( $review_id, 'TARGET_RESOLUTION_FAILED', array(
+                    'raw_page_id' => $raw_page_id,
+                    'page_url'    => $page_url,
+                    'error'       => $resolve_ex->getMessage(),
+                ) );
+                throw $resolve_ex;
+            }
+
+            // Index all changes by id for fast lookup when merging results back.
+            $changes_by_id = array();
+            foreach ( $all_changes as $c ) {
+                if ( isset( $c['id'] ) ) $changes_by_id[ $c['id'] ] = $c;
+            }
+
+            $approved = $approved_pre;
+            if ( empty( $approved ) ) {
+                throw new Exception( 'No approved changes in this review batch.' );
+            }
+
+            // ── Run the applier ───────────────────────────────────────────
+            $applier = new ConversionIQ_Implementation_Applier();
+            $result  = $applier->apply_all( $approved, $post );
+
+            // Build per-change results map keyed by change_id.
+            $results_map = array();
+            foreach ( $result['results'] as $r ) {
+                $results_map[ $r['change_id'] ] = $r;
+            }
+
+            // Build per-change QA map (Layer-1 read-back verification) keyed by change_id.
+            $qa_map = array();
+            foreach ( ( $result['qa'] ?? array() ) as $q ) {
+                if ( isset( $q['change_id'] ) ) $qa_map[ $q['change_id'] ] = $q;
+            }
+
+            // ── Stage 3: Per-change log ───────────────────────────────────
+            // Types currently handled by the switch in apply_all().
+            $supported_types = array(
+                'copy_rewrite', 'reassurance_copy', 'urgency_copy',
+                'headline_rewrite', 'cta_swap',
+                'meta_title', 'meta_description', 'og_image',
+                'focus_keyword', 'alt_text', 'insert_block',
+                'schema_inject', 'sticky_cta_css',
+            );
+
+            foreach ( $approved as $change ) {
+                $cid       = $change['id']   ?? '';
+                $ctype     = $change['type'] ?? '';
+                $supported = in_array( $ctype, $supported_types, true );
+                $r         = $results_map[ $cid ] ?? array(
+                    'status'        => 'unknown',
+                    'error_code'    => null,
+                    'error_message' => null,
+                );
+                $action = $r['status'];
+
+                $entry = array(
+                    'change_id'     => $cid,
+                    'type'          => $ctype,
+                    'target'        => $change['target'] ?? null,
+                    'supported'     => $supported,
+                    'before_length' => strlen( $change['before'] ?? '' ),
+                    'after_length'  => strlen( $change['after']  ?? '' ),
+                    'action'        => $action,
+                );
+
+                if ( $action === 'applied' ) {
+                    $entry['before_preview'] = mb_substr( $change['before'] ?? '', 0, 120 );
+                    $entry['after_preview']  = mb_substr( $change['after']  ?? '', 0, 120 );
+                } elseif ( $action === 'skipped' || $action === 'failed' ) {
+                    $entry['error_code'] = $r['error_code'];
+                    $entry['reason']     = $r['error_message'];
+                }
+
+                ciq_apply_log( $review_id, 'CHANGE', $entry );
+            }
+
+            // ── Stage 4: Preview staged (in place — no clone, same post/URL) ──
+            $live_url = $result['final_url'] ?? get_permalink( $post );
+            ciq_apply_log( $review_id, 'PREVIEW_STAGED', array(
+                'staged'      => $result['draft_url'] !== null,
+                'preview_url' => $result['draft_url'],
+                'preview_id'  => $result['preview_id'] ?? null,
+                'token'       => ! empty( $result['preview_token'] ) ? substr( $result['preview_token'], 0, 4 ) . '…' : null,
+                'live_url'    => $live_url,
+                'post_id'     => $post->ID,
+                'note'        => $result['draft_url']
+                    ? 'Edited content staged on the SAME post; shareable ciq_token preview link keeps the live permalink — works logged-in or logged-out, no new page created.'
+                    : 'No previewable content change (meta/SEO-only, or nothing matched exactly).',
+            ) );
+
+            // ── Build updated changes + counts ────────────────────────────
+            $updated_changes = array_map( function( $change ) use ( $results_map, $qa_map ) {
+                $cid = $change['id'] ?? '';
+                if ( isset( $results_map[ $cid ] ) ) {
+                    $r = $results_map[ $cid ];
+                    $change['apply_status'] = $r['status'];
+                    $change['apply_error']  = ( $r['status'] !== 'applied' ) ? $r['error_message'] : null;
+                    $change['applied_at']   = gmdate( 'c' );
+                }
+                if ( isset( $qa_map[ $cid ] ) ) {
+                    $q = $qa_map[ $cid ];
+                    $change['qa_verified'] = $q['verified'];              // true | false | null
+                    $change['qa_warnings'] = array_values( $q['warnings'] ?? array() );
+                }
+                return $change;
+            }, $all_changes );
+
+            $applied_count  = count( array_filter( $result['results'], fn( $r ) => $r['status'] === 'applied' ) );
+            $skipped_count  = count( array_filter( $result['results'], fn( $r ) => $r['status'] === 'skipped' ) );
+            $failed_count   = count( array_filter( $result['results'], fn( $r ) => $r['status'] === 'failed'  ) );
+            $total_approved = count( $approved );
+
+            // QA tallies: applied changes that failed read-back, and total warnings.
+            $qa_unverified = 0;
+            $qa_warnings   = 0;
+            foreach ( $qa_map as $q ) {
+                if ( ( $q['verified'] ?? null ) === false ) $qa_unverified++;
+                $qa_warnings += count( $q['warnings'] ?? array() );
+            }
+
+            $counts_str = $total_approved . ' changes: ' . $applied_count . ' applied, '
+                . $skipped_count . ' skipped, ' . $failed_count . ' failed.';
+
+            if ( $applied_count === 0 ) {
+                $final_status = 'partial';
+                $apply_error  = $counts_str . ' No changes were applied.';
+            } elseif ( $skipped_count > 0 || $failed_count > 0 ) {
+                $final_status = 'partial';
+                $apply_error  = $counts_str;
+                if ( $result['draft_url'] ) {
+                    $apply_error .= ' The edited content is staged — preview it before publishing.';
+                }
+            } else {
+                $final_status = 'applied';
+                $apply_error  = null;
+            }
+
+            // Surface QA outcomes in the human-facing message.
+            if ( $qa_unverified > 0 ) {
+                $apply_error = ( $apply_error ? $apply_error . ' ' : $counts_str . ' ' )
+                    . 'QA: ' . $qa_unverified . ' applied change(s) could not be verified — please review the preview.';
+            } elseif ( $qa_warnings > 0 ) {
+                $apply_error = ( $apply_error ? $apply_error . ' ' : '' )
+                    . 'QA: ' . $qa_warnings . ' layout warning(s) — review the preview before publishing.';
+            }
+
+            $writeback_payload = array(
+                'status'      => $final_status,
+                'draft_url'   => $result['draft_url'],
+                'applied_at'  => gmdate( 'c' ),
+                'apply_error' => $apply_error,
+                'changes'     => $updated_changes,
+            );
+            // The full shareable preview link (with the token) is carried in draft_url —
+            // that is what the dashboard's "Preview Draft" button opens. We also report
+            // the drafted post ID; patch_implementation_review() drops it gracefully if
+            // the column doesn't exist, so draft_url is always the reliable path.
+            if ( ! empty( $result['preview_id'] ) ) $writeback_payload['preview_id'] = $result['preview_id'];
+
+            // ── Stage 5a: QA read-back results ────────────────────────────
+            ciq_apply_log( $review_id, 'QA_RESULT', array(
+                'unverified' => $qa_unverified,
+                'warnings'   => $qa_warnings,
+                'details'    => array_map( function( $q ) {
+                    return array(
+                        'change_id' => $q['change_id'] ?? '',
+                        'type'      => $q['type']      ?? '',
+                        'verified'  => $q['verified']  ?? null,
+                        'method'    => $q['method']    ?? '',
+                        'warnings'  => $q['warnings']  ?? array(),
+                    );
+                }, array_values( $qa_map ) ),
+            ) );
+
+            // ── Stage 5: Summary before writeback ─────────────────────────
+            ciq_apply_log( $review_id, 'SUMMARY', array(
+                'total_approved' => $total_approved,
+                'applied'        => $applied_count,
+                'skipped'        => $skipped_count,
+                'failed'         => $failed_count,
+                'qa_unverified'  => $qa_unverified,
+                'qa_warnings'    => $qa_warnings,
+                'final_status'   => $final_status,
+                'draft_url_set'  => $result['draft_url'] !== null,
+                'draft_url'      => $result['draft_url'],
+                'apply_error'    => $apply_error,
+                'patching'       => array(
+                    'status'      => $final_status,
+                    'draft_url'   => $result['draft_url'],
+                    'applied_at'  => $writeback_payload['applied_at'],
+                    'apply_error' => $apply_error,
+                    // 'changes' omitted from log — too large; per-change detail is in CHANGE entries above
+                ),
+            ) );
+
+            // ── Writeback ─────────────────────────────────────────────────
+            $wb = $supabase->complete_implementation_review( $review_id, $writeback_payload );
+
+            // ── Stage 6: Writeback result ─────────────────────────────────
+            ciq_apply_log( $review_id, 'WRITEBACK_RESULT', array(
+                'http_code' => $wb['code'],
+                'ok'        => $wb['ok'],
+                'body'      => $wb['code'] >= 400 ? $wb['body'] : null,
+            ) );
+
+            ciq_log( 'impl_poller: apply done review_id=' . $review_id . ' status=' . $final_status
+                . ' applied=' . $applied_count . ' skipped=' . $skipped_count . ' failed=' . $failed_count );
+
+        } catch ( Exception $e ) {
+            ciq_apply_log( $review_id, 'EXCEPTION', array( 'message' => $e->getMessage() ) );
+            ciq_log( 'impl_poller: apply exception review_id=' . $review_id . ' — ' . $e->getMessage() );
+            $supabase->complete_implementation_review( $review_id, array(
+                'status'      => 'partial',
+                'apply_error' => $e->getMessage(),
+            ) );
+        }
+    }
+
+    // ── Publish queue (queued_publish → publishing → applied) ─────────────────
+    // Publishing applies the approved changes to the SAME live post in place —
+    // it never touches a clone. The permalink, post ID and URL stay identical.
+    $publish_job = $supabase->fetch_pending_implementation_job( 'queued_publish' );
+    if ( $publish_job ) {
+        $review_id = $publish_job['id'];
+        ciq_log( 'impl_poller: found publish job review_id=' . $review_id );
+
+        $all_changes = is_array( $publish_job['changes'] )
+            ? $publish_job['changes']
+            : json_decode( $publish_job['changes'] ?? '[]', true );
+        if ( ! is_array( $all_changes ) ) $all_changes = array();
+        $approved = array_values( array_filter( $all_changes, function ( $c ) {
+            return ( $c['decision'] ?? '' ) === 'approved';
+        } ) );
+
+        $supabase->claim_implementation_review( $review_id, 'publishing' );
+
+        try {
+            $post = ciq_resolve_implementation_post(
+                absint( $publish_job['page_id'] ?? 0 ),
+                $publish_job['page_url'] ?? ''
+            );
+            $live_url = get_permalink( $post );
+
+            ciq_apply_log( $review_id, 'PUBLISH_START', array(
+                'post_id'   => $post->ID,
+                'live_url'  => $live_url,
+                'approved'  => count( $approved ),
+            ) );
+
+            if ( empty( $approved ) ) {
+                throw new Exception( 'No approved changes in this review batch.' );
+            }
+
+            // Commit the approved changes onto the live post IN PLACE.
+            $applier = new ConversionIQ_Implementation_Applier();
+            $result  = $applier->apply_all( $approved, $post, 'publish' );
+
+            $results_map = array();
+            foreach ( $result['results'] as $r ) {
+                $results_map[ $r['change_id'] ] = $r;
+            }
+
+            $applied_count = count( array_filter( $result['results'], fn( $r ) => $r['status'] === 'applied' ) );
+            $failed_count  = count( array_filter( $result['results'], fn( $r ) => $r['status'] === 'failed'  ) );
+
+            // Merge per-change publish results back into the changes array.
+            $updated_changes = array_map( function ( $change ) use ( $results_map ) {
+                $cid = $change['id'] ?? '';
+                if ( isset( $results_map[ $cid ] ) ) {
+                    $r = $results_map[ $cid ];
+                    $change['apply_status'] = $r['status'];
+                    $change['apply_error']  = ( $r['status'] !== 'applied' ) ? $r['error_message'] : null;
+                    $change['applied_at']   = gmdate( 'c' );
+                }
+                return $change;
+            }, $all_changes );
+
+            $final_status = ( $failed_count === 0 && $applied_count > 0 ) ? 'applied' : 'partial';
+            $final_url    = $result['final_url'] ?? $live_url; // MUST equal the original page URL
+
+            ciq_apply_log( $review_id, 'PUBLISH_DONE', array(
+                'post_id'       => $post->ID,
+                'final_url'     => $final_url,
+                'url_unchanged' => ( $final_url === $live_url ),
+                'applied'       => $applied_count,
+                'failed'        => $failed_count,
+                'final_status'  => $final_status,
+            ) );
+
+            $supabase->complete_implementation_review( $review_id, array(
+                'status'      => $final_status,
+                'draft_url'   => null, // change is now live on the original URL
+                'applied_at'  => gmdate( 'c' ),
+                'apply_error' => $failed_count > 0
+                    ? ( $applied_count . ' published, ' . $failed_count . ' failed (before text not found).' )
+                    : null,
+                'changes'     => $updated_changes,
+            ) );
+
+            ciq_log( 'impl_poller: publish done review_id=' . $review_id . ' status=' . $final_status
+                . ' applied=' . $applied_count . ' failed=' . $failed_count . ' url=' . $final_url );
+
+        } catch ( Exception $e ) {
+            ciq_apply_log( $review_id, 'PUBLISH_EXCEPTION', array( 'message' => $e->getMessage() ) );
+            ciq_log( 'impl_poller: publish exception review_id=' . $review_id . ' — ' . $e->getMessage() );
+            $supabase->complete_implementation_review( $review_id, array(
+                'status'      => 'partial',
+                'apply_error' => $e->getMessage(),
+            ) );
+        }
+    }
+}
+
+/**
+ * Render staged edits on a shareable preview request for the SAME post.
+ *
+ * The apply step stages edited content in the `_ciq_preview_data` post meta (never a
+ * clone) along with a random token, and hands back a link like
+ * `{permalink}?ciq_preview={id}&ciq_token={token}`. On such a request we validate the
+ * token against the stored one and swap the staged content in for that request only,
+ * leaving the live page unchanged until publish. We deliberately avoid WordPress's
+ * preview=true/preview_nonce mechanism: that nonce is bound to one user and throws
+ * "Sorry, you are not allowed to preview drafts." for anyone else, so it can't be
+ * shared. The page here stays published, so the token link works for logged-in admins
+ * and logged-out clients alike:
+ *   • classic: replace post_content via the_content
+ *   • Elementor: serve the staged _elementor_data via the get_post_metadata filter
+ */
+function ciq_render_staged_preview() {
+    if ( is_admin() ) return;
+    if ( empty( $_GET['ciq_preview'] ) || empty( $_GET['ciq_token'] ) ) return;
+    if ( ! class_exists( 'ConversionIQ_Implementation_Applier' ) ) return;
+
+    $post_id = (int) $_GET['ciq_preview'];
+    if ( $post_id <= 0 ) return;
+
+    $staged = get_post_meta( $post_id, ConversionIQ_Implementation_Applier::PREVIEW_META, true );
+    if ( empty( $staged ) || ! is_array( $staged ) || empty( $staged['token'] ) ) return;
+
+    // Constant-time token check. Only a holder of the exact token sees the staged copy.
+    $token = sanitize_text_field( wp_unslash( $_GET['ciq_token'] ) );
+    if ( ! hash_equals( (string) $staged['token'], $token ) ) return;
+
+    // Only overlay when the main query actually resolved to this post.
+    if ( get_queried_object_id() !== $post_id ) return;
+
+    // Classic / Gutenberg: swap post_content for the previewed post.
+    if ( ! empty( $staged['post_content'] ) ) {
+        add_filter( 'the_content', function ( $content ) use ( $post_id, $staged ) {
+            if ( in_the_loop() && get_the_ID() === $post_id ) {
+                return $staged['post_content'];
+            }
+            return $content;
+        }, 1 );
+    }
+
+    // Elementor: return the staged widget tree for this post's _elementor_data.
+    if ( ! empty( $staged['elementor'] ) && is_array( $staged['elementor'] ) ) {
+        $json = wp_json_encode( $staged['elementor'] ); // unslashed, as get_post_meta returns it
+        add_filter( 'get_post_metadata', function ( $value, $object_id, $meta_key ) use ( $post_id, $json ) {
+            if ( $object_id === $post_id && $meta_key === '_elementor_data' ) {
+                return array( $json );
+            }
+            return $value;
+        }, 10, 3 );
+        if ( class_exists( '\\Elementor\\Plugin' ) && isset( \Elementor\Plugin::$instance->files_manager ) ) {
+            try { \Elementor\Plugin::$instance->files_manager->clear_cache(); } catch ( \Throwable $t ) {}
+        }
+    }
+}
+add_action( 'wp', 'ciq_render_staged_preview' );
+// ── End Implementation Review Pollers ─────────────────────────────────────────
+
 // Activation hook
 function conversioniq_install() {
     ConversionIQ_DB::create_tables();
@@ -551,6 +1125,11 @@ function conversioniq_install() {
     // Ensure the 2-minute audit-job poller is scheduled
     if ( ! wp_next_scheduled( 'conversioniq_poll_audit_jobs' ) ) {
         wp_schedule_event( time() + 120, 'conversioniq_twominutes', 'conversioniq_poll_audit_jobs' );
+    }
+
+    // Ensure the 2-minute implementation review poller is scheduled
+    if ( ! wp_next_scheduled( 'conversioniq_poll_implementation_jobs' ) ) {
+        wp_schedule_event( time() + 120, 'conversioniq_twominutes', 'conversioniq_poll_implementation_jobs' );
     }
 
     // Push version + sync endpoint to SaaS on activation/reactivation.

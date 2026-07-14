@@ -22,7 +22,13 @@ export type Audit = {
     why: string;
     icon?: string;
   }[];
-  rewrites?: Record<string, string>;
+  rewrites?: Array<{
+    section: string;
+    original: string;
+    rewrite: string;
+    why?: string;
+    score_impact?: string;
+  }> | Record<string, string>;
   page_id?: number;
   page_title?: string;
   page_url?: string;

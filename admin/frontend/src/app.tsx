@@ -83,6 +83,44 @@ export default function App() {
   const [scoreHistory, setScoreHistory] = useState<any[]>([]);
   const [overviewPageFilter, setOverviewPageFilter] = useState<string>('all');
 
+  // Implementation review notification — persistent banner driven by
+  // GET /pending-reviews (which proxies to Supabase). Surfaces every review
+  // batch the SaaS has generated so the user can jump to the SaaS
+  // Implementations page to approve/deny changes.
+  //
+  // Also refetches ~5s after a successful audit since the SaaS generates
+  // the review batch asynchronously and it may not exist yet at audit-complete.
+  type PendingReviewsPayload = {
+    count: number;
+    total_changes: number;
+    first_page_title: string;
+    latest_review_id: string;
+    organization_id: string;
+  };
+  const [pendingReviews, setPendingReviews] = useState<PendingReviewsPayload | null>(null);
+  const [pendingReviewsDismissed, setPendingReviewsDismissed] = useState(false);
+  const pendingRefetchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchPendingReviews = React.useCallback((refresh = false) => {
+    axios
+      .get(api('pending-reviews'), {
+        headers: { 'X-WP-Nonce': nonce },
+        params: refresh ? { refresh: 1 } : undefined,
+      })
+      .then(r => {
+        if (r?.data && typeof r.data.count === 'number') {
+          setPendingReviews(r.data);
+          // A fresh batch of pending reviews should re-show the banner even
+          // if the user dismissed a previous notification.
+          if (r.data.count > 0) setPendingReviewsDismissed(false);
+        }
+      })
+      .catch(err => {
+        // Silent fail — banner is a nice-to-have, not critical
+        console.debug('pending-reviews fetch failed:', err?.message);
+      });
+  }, []);
+
 
   const [auditProgress, setAuditProgress] = useState({
     isRunning: false,
@@ -222,6 +260,10 @@ export default function App() {
         }
       })
       .catch(err => console.error('✗ Failed to re-fetch business profile:', err?.message));
+
+    // Fetch pending implementation reviews from the SaaS so the banner survives
+    // page reloads (not just the just-ran-an-audit case).
+    fetchPendingReviews();
 
     // Restore audit history from Supabase so data survives reinstalls
     axios.get(api('audits/supabase'), { headers: { 'X-WP-Nonce': nonce } })
@@ -650,6 +692,19 @@ export default function App() {
             currentIndex: prev.totalPages,
             message: '🎉 Audit complete!'
           }));
+          // Refresh pending implementation reviews — the SaaS generates the
+          // review batch asynchronously after receiving the audit, so poll a
+          // few times before giving up. Bust the WP-side 60s cache each poll.
+          if (pendingRefetchTimerRef.current) {
+            clearTimeout(pendingRefetchTimerRef.current);
+          }
+          const pollAt = [4000, 10000, 20000];
+          pollAt.forEach(delay => {
+            const t = setTimeout(() => fetchPendingReviews(true), delay);
+            // Store only the last so we can cancel on unmount; earlier ones
+            // are short-lived and fine to let fire.
+            pendingRefetchTimerRef.current = t;
+          });
           setTimeout(() => {
             setNotice(null);
             setProgress(0);
@@ -866,6 +921,109 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* Implementation Review Banner — persistent, driven by /pending-reviews.
+            Survives page reloads so users don't lose track of pending changes. */}
+        {pendingReviews && pendingReviews.count > 0 && !pendingReviewsDismissed && !auditProgress.isRunning && (() => {
+          const count           = pendingReviews.count;
+          const totalChanges    = pendingReviews.total_changes;
+          const pageTitle       = pendingReviews.first_page_title;
+          const reviewId        = pendingReviews.latest_review_id;
+          const orgId           = pendingReviews.organization_id;
+          const deepLinkParams  = new URLSearchParams();
+          if (orgId)    deepLinkParams.set('org', orgId);
+          if (reviewId) deepLinkParams.set('review', reviewId);
+          const qs = deepLinkParams.toString();
+          const href = `https://conversioniq-app.com/implementations${qs ? `?${qs}` : ''}`;
+
+          // Headline: prefer "N improvements ready to review for [Page]" when we know both.
+          let headline: string;
+          if (totalChanges > 0 && pageTitle) {
+            headline = `${totalChanges} improvement${totalChanges !== 1 ? 's' : ''} ready to review for "${pageTitle}"`;
+          } else if (count > 1) {
+            headline = `${count} pages have improvements ready to review`;
+          } else if (pageTitle) {
+            headline = `Improvements ready for "${pageTitle}"`;
+          } else {
+            headline = 'Improvements ready to review';
+          }
+
+          return (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 16,
+              background: 'linear-gradient(135deg, rgba(245,158,11,0.12) 0%, rgba(245,158,11,0.06) 100%)',
+              border: `1px solid ${T.primaryBorder}`,
+              borderRadius: 12,
+              padding: '14px 20px',
+              marginBottom: 20,
+              boxShadow: `0 2px 12px rgba(245,158,11,0.08)`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 20 }}>⚡</span>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: T.textPrimary, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>{headline}</span>
+                    {count > 1 && (
+                      <span style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        background: T.primary,
+                        color: T.btnPrimaryText,
+                      }}>
+                        +{count - 1} more page{count - 1 !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 13, color: T.textSecondary, marginTop: 2 }}>
+                    Approve or deny AI-generated changes on your account dashboard. Approved changes are applied as a WordPress draft — nothing goes live until you publish.
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    padding: '8px 18px',
+                    background: T.btnPrimary,
+                    color: T.btnPrimaryText,
+                    borderRadius: 8,
+                    fontWeight: 700,
+                    fontSize: 13,
+                    textDecoration: 'none',
+                    whiteSpace: 'nowrap' as const,
+                    boxShadow: '0 2px 8px rgba(245,158,11,0.25)',
+                  }}
+                >
+                  Review Changes →
+                </a>
+                <button
+                  onClick={() => setPendingReviewsDismissed(true)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: T.textMuted,
+                    cursor: 'pointer',
+                    fontSize: 18,
+                    lineHeight: 1,
+                    padding: '4px 6px',
+                    borderRadius: 6,
+                  }}
+                  title="Dismiss until next audit"
+                  aria-label="Dismiss notification"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Tab Navigation */}
         <div style={{ background: T.bgCard, borderRadius: 12, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.2)', border: `1px solid ${T.border}`, overflow: 'hidden' }}>

@@ -33,3 +33,6 @@ yarn-error.log*
 *.temp
 *.bak
 *.backup
+
+# Packaged release archives (built, not source)
+*.zip

@@ -1643,6 +1643,525 @@ class ConversionIQ_Supabase_Sync {
         ) );
     }
 
+    // ── Implementation Review Pollers ─────────────────────────────────────────
+
+    /**
+     * Fetch the oldest implementation_reviews row for this org with the given status.
+     *
+     * @param string $status  'queued_apply' | 'queued_publish'
+     * @return array|null
+     */
+    public function fetch_pending_implementation_job( string $status ): ?array {
+        if ( ! $this->supabase_anon_key || ! $this->organization_id ) {
+            error_log( '[CIQ] fetch_pending_implementation_job: missing credentials — aborting' );
+            return null;
+        }
+
+        $url = add_query_arg( array(
+            'organization_id' => 'eq.' . $this->organization_id,
+            'status'          => 'eq.' . $status,
+            'order'           => 'created_at.asc',
+            'limit'           => '1',
+        ), $this->supabase_url . '/rest/v1/implementation_reviews' );
+
+        error_log( '[CIQ] fetch_pending_implementation_job: GET ' . $url );
+
+        $response = wp_remote_get( $url, array(
+            'headers' => array(
+                'apikey'        => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                'X-API-Key'     => $this->api_key,
+            ),
+            'timeout' => 10,
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            error_log( '[CIQ] fetch_pending_implementation_job: wp_error — ' . $response->get_error_message() );
+            return null;
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        $body = wp_remote_retrieve_body( $response );
+        error_log( '[CIQ] fetch_pending_implementation_job: HTTP ' . $code );
+
+        if ( $code !== 200 ) return null;
+
+        $rows = json_decode( $body, true );
+        return ( is_array( $rows ) && ! empty( $rows ) ) ? $rows[0] : null;
+    }
+
+    /**
+     * Claim an implementation_reviews row by setting its status.
+     *
+     * @param string $review_id UUID
+     * @param string $status    'applying' | 'publishing'
+     * @return bool
+     */
+    public function claim_implementation_review( string $review_id, string $status ): bool {
+        return $this->patch_implementation_review( $review_id, array( 'status' => $status ) )['ok'];
+    }
+
+    /**
+     * Write the final result back to an implementation_reviews row.
+     *
+     * Returns an array with:
+     *   'ok'   => bool   — true when HTTP 200 or 204
+     *   'code' => int    — raw HTTP status code
+     *   'body' => string — response body (empty on 204)
+     *
+     * @param string $review_id UUID
+     * @param array  $data      Columns to PATCH
+     * @return array{ok: bool, code: int, body: string}
+     */
+    public function complete_implementation_review( string $review_id, array $data ): array {
+        return $this->patch_implementation_review( $review_id, $data );
+    }
+
+    /**
+     * PATCH one implementation_reviews row.
+     *
+     * @param string $review_id
+     * @param array  $data
+     * @return array{ok: bool, code: int, body: string}
+     */
+    private function patch_implementation_review( string $review_id, array $data ): array {
+        if ( ! $this->supabase_anon_key ) return array( 'ok' => false, 'code' => 0, 'body' => '' );
+
+        $result = $this->do_patch_implementation_review( $review_id, $data );
+
+        // If Supabase rejects an unknown column (preview_id / preview_nonce may not
+        // exist in the implementation_reviews schema), strip those optional preview
+        // fields and retry so the core writeback (status/draft_url/changes) still lands.
+        // The shareable link is still delivered via draft_url regardless.
+        $optional = array( 'preview_id', 'preview_nonce' );
+        $has_optional = (bool) array_intersect( $optional, array_keys( $data ) );
+        if ( ! $result['ok'] && $result['code'] === 400 && $has_optional ) {
+            $body_l = strtolower( $result['body'] );
+            if ( strpos( $body_l, 'preview_id' ) !== false
+                 || strpos( $body_l, 'preview_nonce' ) !== false
+                 || strpos( $body_l, 'pgrst204' ) !== false
+                 || strpos( $body_l, "could not find the" ) !== false ) {
+                foreach ( $optional as $k ) unset( $data[ $k ] );
+                error_log( '[CIQ] patch_implementation_review: retrying without preview_id/preview_nonce (column not in schema)' );
+                $result = $this->do_patch_implementation_review( $review_id, $data );
+            }
+        }
+
+        return $result;
+    }
+
+    /** Raw single PATCH to an implementation_reviews row. */
+    private function do_patch_implementation_review( string $review_id, array $data ): array {
+        $url = $this->supabase_url . '/rest/v1/implementation_reviews?id=eq.' . urlencode( $review_id );
+        error_log( '[CIQ] patch_implementation_review: PATCH ' . $url . ' — ' . json_encode( $data ) );
+
+        $response = wp_remote_request( $url, array(
+            'method'  => 'PATCH',
+            'headers' => array(
+                'apikey'        => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                'Content-Type'  => 'application/json',
+                'X-API-Key'     => $this->api_key,
+                'Prefer'        => 'return=minimal',
+            ),
+            'body'    => json_encode( $data ),
+            'timeout' => 10,
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            error_log( '[CIQ] patch_implementation_review: wp_error — ' . $response->get_error_message() );
+            return array( 'ok' => false, 'code' => 0, 'body' => $response->get_error_message() );
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        $body = wp_remote_retrieve_body( $response );
+        error_log( '[CIQ] patch_implementation_review: HTTP ' . $code . ' — ' . ( $body ?: '(empty)' ) );
+
+        return array(
+            'ok'   => ( $code === 200 || $code === 204 ),
+            'code' => (int) $code,
+            'body' => (string) $body,
+        );
+    }
+
+    /**
+     * Append rows to implementation_change_logs for per-change audit trail.
+     *
+     * @param string $review_id      UUID of the parent implementation_reviews row
+     * @param array  $results        Array of {change_id, status, error_code, error_message}
+     * @param array  $changes_by_id  Original changes indexed by id, used to pull change_type
+     * @param string $plugin_version e.g. '2.5.0'
+     */
+    public function log_implementation_changes( string $review_id, array $results, array $changes_by_id, string $plugin_version ): void {
+        if ( ! $this->supabase_anon_key || empty( $results ) ) return;
+
+        $rows = array();
+        foreach ( $results as $r ) {
+            $cid    = $r['change_id'] ?? '';
+            $rows[] = array(
+                'review_id'      => $review_id,
+                'change_id'      => $cid,
+                'change_type'    => $changes_by_id[ $cid ]['type'] ?? '',
+                'status'         => $r['status']        ?? 'unknown',
+                'error_message'  => $r['error_message'] ?? null,
+                'error_code'     => $r['error_code']    ?? null,
+                'applied_at'     => gmdate( 'c' ),
+                'plugin_version' => $plugin_version,
+            );
+        }
+
+        $url = $this->supabase_url . '/rest/v1/implementation_change_logs';
+        error_log( '[CIQ] log_implementation_changes: POST ' . count( $rows ) . ' row(s) for review_id=' . $review_id );
+
+        $response = wp_remote_post( $url, array(
+            'headers' => array(
+                'apikey'        => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                'Content-Type'  => 'application/json',
+                'X-API-Key'     => $this->api_key,
+                'Prefer'        => 'return=minimal',
+            ),
+            'body'    => json_encode( $rows ),
+            'timeout' => 10,
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            error_log( '[CIQ] log_implementation_changes: wp_error — ' . $response->get_error_message() );
+            return;
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        error_log( '[CIQ] log_implementation_changes: HTTP ' . $code );
+    }
+
+    // ── Implementation Review Creation ───────────────────────────────────────
+
+    /**
+     * Fetch the most recent audit for a page in this organization, returning its
+     * report_token, page_url and rewrites. Used so implementation reviews are always
+     * built from the newest audit (never a cached/older one).
+     *
+     * @param string $page_url
+     * @return array|null  ['report_token'=>…, 'page_url'=>…, 'rewrites'=>…] or null.
+     */
+    public function fetch_latest_audit_for_page( string $page_url ): ?array {
+        if ( ! $this->supabase_anon_key || $page_url === '' ) return null;
+        if ( ! $this->organization_id && ! $this->ensure_organization() ) return null;
+
+        $select = 'report_token,page_url,rewrites';
+        $url = $this->supabase_url . '/rest/v1/audits'
+            . '?organization_id=eq.' . urlencode( $this->organization_id )
+            . '&page_url=eq.' . urlencode( $page_url )
+            . '&select=' . $select
+            . '&order=created_at.desc'
+            . '&limit=1';
+
+        $response = wp_remote_get( $url, array(
+            'headers' => array(
+                'apikey'        => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                'X-API-Key'     => $this->api_key,
+                'Accept'        => 'application/json',
+            ),
+            'timeout' => 15,
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            ciq_log( 'fetch_latest_audit_for_page: wp_error — ' . $response->get_error_message() );
+            return null;
+        }
+        $code = wp_remote_retrieve_response_code( $response );
+        if ( $code !== 200 ) {
+            ciq_log( 'fetch_latest_audit_for_page: HTTP ' . $code );
+            return null;
+        }
+        $rows = json_decode( wp_remote_retrieve_body( $response ), true );
+        return ( is_array( $rows ) && ! empty( $rows[0] ) ) ? $rows[0] : null;
+    }
+
+    /**
+     * Create an implementation_reviews row built directly from an audit's rewrites.
+     *
+     * Called immediately after send_audit() so audit_token is always the freshest
+     * report_token and `after` values are byte-for-byte what the audit stored.
+     * Never invents copy — all text comes from $rewrites.
+     *
+     * @param string $report_token Audit report_token.
+     * @param string $page_url     Canonical page URL.
+     * @param string $page_title   Human page title.
+     * @param mixed  $rewrites     $ai['rewrites'] — either a sequential array of
+     *                             {section,original,rewrite,why,score_impact} objects
+     *                             or a legacy flat object of slot→text pairs.
+     * @param int    $wp_post_id   Resolved WP post ID (0 = unresolvable).
+     * @return string|false UUID of the created row, or false on failure.
+     */
+    public function create_implementation_review_from_audit(
+        string $report_token,
+        string $page_url,
+        string $page_title,
+        $rewrites,
+        int $wp_post_id = 0
+    ) {
+        if ( ! $this->supabase_anon_key || ! $this->organization_id ) return false;
+
+        // STEP 1 + 2: always build from the LATEST audit for this page, reading its
+        // rewrites straight from the audits table so the changes are byte-for-byte
+        // what /reports/{token}/copy-content renders. Fall back to the passed-in
+        // token/rewrites only if the DB read fails.
+        $latest = $this->fetch_latest_audit_for_page( $page_url );
+        if ( is_array( $latest ) && ! empty( $latest['report_token'] ) ) {
+            $report_token = (string) $latest['report_token'];
+            if ( ! empty( $latest['rewrites'] ) ) {
+                $rewrites = $latest['rewrites'];
+            }
+            ciq_log( 'create_impl_review: using latest audit token=' . substr( $report_token, 0, 8 ) . '… for ' . $page_url );
+        } else {
+            ciq_log( 'create_impl_review: latest-audit fetch failed; using caller-provided token/rewrites for ' . $page_url );
+        }
+
+        if ( empty( $rewrites ) ) {
+            ciq_log( 'create_impl_review: skipping — no rewrites for ' . $page_url );
+            return false;
+        }
+
+        $changes = $this->rewrites_to_changes( $rewrites );
+        if ( empty( $changes ) ) {
+            ciq_log( 'create_impl_review: skipping — rewrites mapped to 0 changes for ' . $page_url );
+            return false;
+        }
+        ciq_log( 'create_impl_review: mapped ' . count( $changes ) . ' change(s) from audit rewrites for ' . $page_url );
+
+        $payload = array(
+            'organization_id' => $this->organization_id,
+            'audit_token'     => $report_token,
+            'page_url'        => $page_url,
+            'page_title'      => $page_title ?: null,
+            'page_id'         => $wp_post_id > 0 ? $wp_post_id : null,
+            'status'          => 'pending',
+            'changes'         => $changes,
+            'draft_url'       => null,
+        );
+
+        $response = wp_remote_post(
+            $this->supabase_url . '/rest/v1/implementation_reviews',
+            array(
+                'headers' => array(
+                    'apikey'        => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                    'Content-Type'  => 'application/json',
+                    'X-API-Key'     => $this->api_key,
+                    'Prefer'        => 'return=representation',
+                ),
+                'body'    => wp_json_encode( $payload ),
+                'timeout' => 15,
+            )
+        );
+
+        if ( is_wp_error( $response ) ) {
+            ciq_log( 'create_impl_review: wp_error — ' . $response->get_error_message() );
+            return false;
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+        if ( ( $code === 201 || $code === 200 ) && ! empty( $body[0]['id'] ) ) {
+            ciq_log( 'create_impl_review: ✅ id=' . $body[0]['id'] . ' changes=' . count( $changes ) . ' url=' . $page_url );
+            return $body[0]['id'];
+        }
+
+        // 409 = review already exists for this audit_token — not an error
+        if ( $code === 409 ) {
+            ciq_log( 'create_impl_review: review already exists for token=' . substr( $report_token, 0, 8 ) . '… (409 conflict, skipping)' );
+            return false;
+        }
+
+        ciq_log( 'create_impl_review: HTTP ' . $code . ' — ' . wp_remote_retrieve_body( $response ) );
+        return false;
+    }
+
+    /**
+     * Convert $rewrites to the changes[] schema.  Handles both shapes:
+     *
+     *   Shape A (new): [{section, original, rewrite, why, score_impact}, …]
+     *   Shape B (legacy flat object): {headline: "…", primary_cta: "…", …}
+     *
+     * Every `after` value is taken verbatim from the audit — no copy is invented here.
+     */
+    private function rewrites_to_changes( $rewrites ): array {
+        if ( empty( $rewrites ) ) return array();
+
+        $changes = array();
+        $used_ids = array();
+
+        // Shape A: sequential array of {section, original, rewrite, why, score_impact}
+        if ( isset( $rewrites[0] ) && is_array( $rewrites[0] ) ) {
+            foreach ( $rewrites as $idx => $item ) {
+                $section = (string) ( $item['section'] ?? $idx );
+                $after   = (string) ( $item['rewrite'] ?? '' );
+                if ( $after === '' ) continue;
+
+                // Prefer the copy-inventory role/selector when present (exact, deterministic);
+                // otherwise derive from the section label as before.
+                $role = strtolower( (string) ( $item['role'] ?? '' ) );
+                $type = $role !== '' ? $this->role_to_change_type( $role ) : $this->section_to_change_type( $section );
+                $target = ( ! empty( $item['target'] ) )
+                    ? (string) $item['target']
+                    : $this->section_to_css_target( $section, $type );
+
+                $changes[] = array(
+                    'id'           => $this->stable_change_id( $section, $idx, $used_ids ),
+                    'type'         => $type,
+                    'category'     => 'copy',
+                    'priority'     => $this->score_impact_to_priority( $item['score_impact'] ?? null ),
+                    'title'        => $this->section_to_title( $section, $type ),
+                    'reason'       => (string) ( $item['why'] ?? '' ),
+                    'before'       => (string) ( $item['original'] ?? '' ),
+                    'after'        => $after,
+                    'target'       => $target,
+                    'decision'     => null,
+                    'apply_status' => null,
+                    'apply_error'  => null,
+                );
+            }
+            return $changes;
+        }
+
+        // Shape B: legacy flat object {slot => text}
+        $slot_order = array(
+            'headline', 'subheadline', 'value_proposition',
+            'primary_cta', 'secondary_cta', 'social_proof_intro',
+            'feature_1', 'feature_2', 'feature_3', 'feature_4', 'feature_5',
+            'faq_answer_1', 'faq_answer_2', 'faq_answer_3',
+            'closing_statement', 'meta_title', 'meta_description',
+        );
+        // Walk known slots in order, then any extra keys not in the known list.
+        $extra_keys = array_diff( array_keys( (array) $rewrites ), $slot_order );
+        foreach ( array_merge( $slot_order, $extra_keys ) as $slot ) {
+            if ( ! isset( $rewrites[ $slot ] ) ) continue;
+            $after = (string) $rewrites[ $slot ];
+            if ( $after === '' ) continue;
+
+            $type = $this->section_to_change_type( $slot );
+            $changes[] = array(
+                'id'           => $this->stable_change_id( $slot, count( $changes ), $used_ids ),
+                'type'         => $type,
+                'category'     => 'copy',
+                'priority'     => 'medium',
+                'title'        => $this->section_to_title( $slot, $type ),
+                'reason'       => '',
+                'before'       => '',
+                'after'        => $after,
+                'target'       => $this->section_to_css_target( $slot, $type ),
+                'decision'     => null,
+                'apply_status' => null,
+                'apply_error'  => null,
+            );
+        }
+        return $changes;
+    }
+
+    /** Stable, unique id from a section label (slug), falling back to the index. */
+    private function stable_change_id( string $section, int $idx, array &$used ): string {
+        $id = sanitize_title( $section );
+        if ( $id === '' ) $id = 'change-' . $idx;
+        if ( isset( $used[ $id ] ) ) $id .= '-' . $idx;
+        $used[ $id ] = true;
+        return $id;
+    }
+
+    /** Map a copy-inventory role to a change type (deterministic when we have the role). */
+    private function role_to_change_type( string $role ): string {
+        if ( strpos( $role, 'heading' ) !== false || strpos( $role, 'subheading' ) !== false ) return 'headline_rewrite';
+        if ( strpos( $role, 'cta' ) !== false )                                                 return 'cta_swap';
+        return 'copy_rewrite';
+    }
+
+    private function section_to_change_type( string $section ): string {
+        $s = strtolower( trim( $section ) );
+
+        // Headlines, subheadlines, value propositions.
+        if ( strpos( $s, 'headline' ) !== false
+             || strpos( $s, 'subheadline' ) !== false
+             || strpos( $s, 'value' ) !== false
+             || preg_match( '/^h[1-6]$/', $s ) ) {
+            return 'headline_rewrite';
+        }
+        // SEO fields only when the audit explicitly provides them.
+        if ( $s === 'meta_title' || $s === 'seo_title' || $s === 'page_title_seo' ) return 'meta_title';
+        if ( $s === 'meta_description' || $s === 'seo_description' )                 return 'meta_description';
+        // Button/CTA labels: an explicit button, or the primary/secondary CTA slot.
+        // A generic "… CTA" section (e.g. "Footer CTA") is body copy, not a button.
+        if ( strpos( $s, 'button' ) !== false
+             || $s === 'primary_cta' || $s === 'secondary_cta'
+             || preg_match( '/\b(primary|secondary)\s+cta\b/', $s ) ) {
+            return 'cta_swap';
+        }
+        return 'copy_rewrite';
+    }
+
+    private function section_to_css_target( string $section, string $type = 'copy_rewrite' ): string {
+        static $map = array(
+            'headline'           => 'h1',
+            'subheadline'        => 'h2',
+            'value_proposition'  => '.value-proposition',
+            'primary_cta'        => 'a.primary-cta',
+            'secondary_cta'      => 'a.secondary-cta',
+            'social_proof_intro' => '.social-proof',
+            'closing_statement'  => '.closing-statement',
+            'meta_title'         => '',
+            'meta_description'   => '',
+        );
+        $s = strtolower( trim( $section ) );
+        if ( isset( $map[ $s ] ) ) return $map[ $s ];
+        if ( preg_match( '/^feature_(\d+)$/', $s, $m ) ) return '.feature-' . $m[1];
+        if ( preg_match( '/^faq_answer_(\d+)$/', $s, $m ) ) return '.faq-answer-' . $m[1];
+        // Type-aware structural hint for arbitrary section labels.
+        if ( $type === 'headline_rewrite' ) return ( strpos( $s, 'hero' ) !== false ) ? 'h1' : 'h2';
+        if ( $type === 'cta_swap' )         return 'a';
+        return '.' . trim( preg_replace( '/[^a-z0-9]+/', '-', $s ), '-' );
+    }
+
+    private function section_to_title( string $section, string $type = 'copy_rewrite' ): string {
+        static $map = array(
+            'headline'           => 'Sharpen the hero headline',
+            'subheadline'        => 'Strengthen the subheadline',
+            'value_proposition'  => 'Clarify the value proposition',
+            'primary_cta'        => 'Improve the primary call-to-action',
+            'secondary_cta'      => 'Improve the secondary call-to-action',
+            'social_proof_intro' => 'Enhance the social proof intro',
+            'closing_statement'  => 'Strengthen the closing statement',
+            'meta_title'         => 'Optimise the meta title',
+            'meta_description'   => 'Optimise the meta description',
+        );
+        $s = strtolower( trim( $section ) );
+        if ( isset( $map[ $s ] ) ) return $map[ $s ];
+        if ( preg_match( '/^feature_(\d+)$/', $s, $m ) ) return 'Update feature ' . $m[1];
+        if ( preg_match( '/^faq_answer_(\d+)$/', $s, $m ) ) return 'Improve FAQ answer ' . $m[1];
+
+        $label = ucwords( str_replace( array( '_', '-' ), ' ', $section ) );
+        switch ( $type ) {
+            case 'headline_rewrite': return 'Sharpen the ' . $label;
+            case 'cta_swap':         return 'Strengthen the ' . $label;
+            default:                 return 'Refresh the ' . $label;
+        }
+    }
+
+    private function score_impact_to_priority( $si ): string {
+        if ( $si === null || $si === '' ) return 'medium';
+        if ( is_numeric( $si ) ) {
+            $n = (int) $si;
+            if ( $n >= 7 ) return 'high';
+            if ( $n >= 4 ) return 'medium';
+            return 'low';
+        }
+        // Non-numeric: a list of impacted dimensions, e.g. "clarity, emotional".
+        $parts = array_filter( array_map( 'trim', preg_split( '/[,;\/|]+/', (string) $si ) ) );
+        return count( $parts ) >= 2 ? 'high' : 'medium';
+    }
+
+    // ── End Implementation Review Pollers ─────────────────────────────────────
+
     /**
      * Sync enrichment data (device/browser sessions, form analytics, above-the-fold
      * snapshots) collected by the tracker JS into the three Supabase tables.
@@ -1943,6 +2462,140 @@ class ConversionIQ_Supabase_Sync {
      * @param array  $data      Fields to PATCH (post_audit_id, score_delta, etc.).
      * @return bool
      */
+    /**
+     * Create a new suggestion sprint row when implementation changes are applied.
+     *
+     * Called by conversioniq_apply_changes() immediately after a successful apply so the
+     * existing sprint measurement loop (fetch_open_sprints → close_sprint on next audit)
+     * can automatically measure the before/after score delta.
+     *
+     * @param string $page_url             Exact page URL.
+     * @param int    $pre_score            Overall score from the audit that generated the changes.
+     * @param array  $suggestions_applied  Array of change titles / descriptions.
+     * @return string|false  UUID of the new sprint row, or false on failure.
+     */
+    /**
+     * Fetch the org's pending implementation reviews from Supabase.
+     *
+     * Powers the "Changes Pending" banner in the WP admin panel — surfaces reviews
+     * generated by the SaaS after each audit so users can jump straight to the
+     * SaaS Implementations page to approve/deny changes.
+     *
+     * RLS on implementation_reviews scopes rows to the org via the X-API-Key header.
+     *
+     * @param int $limit Max rows to return (default 5).
+     * @return array List of rows: [{ id, page_url, page_title, changes_count, created_at }].
+     *               Empty array on any failure — callers must not treat "no reviews" as an error.
+     */
+    public function fetch_pending_implementation_reviews( $limit = 5 ) {
+        if ( ! $this->supabase_anon_key || ! $this->organization_id || ! $this->api_key ) {
+            return array();
+        }
+
+        $limit = max( 1, min( 50, intval( $limit ) ) );
+        $url   = $this->supabase_url
+            . '/rest/v1/implementation_reviews'
+            . '?organization_id=eq.' . urlencode( $this->organization_id )
+            . '&status=eq.pending'
+            . '&order=created_at.desc'
+            . '&limit=' . $limit
+            . '&select=id,page_url,page_title,changes,created_at';
+
+        $response = wp_remote_get( $url, array(
+            'headers' => array(
+                'apikey'        => $this->supabase_anon_key,
+                'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                'X-API-Key'     => $this->api_key,
+                'Content-Type'  => 'application/json',
+            ),
+            'timeout' => 8,
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            ciq_log( 'fetch_pending_implementation_reviews: wp_error — ' . $response->get_error_message() );
+            return array();
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        if ( $code !== 200 ) {
+            ciq_log( 'fetch_pending_implementation_reviews: HTTP ' . $code );
+            return array();
+        }
+
+        $rows = json_decode( wp_remote_retrieve_body( $response ), true );
+        if ( ! is_array( $rows ) ) {
+            return array();
+        }
+
+        $out = array();
+        foreach ( $rows as $row ) {
+            $changes = isset( $row['changes'] ) && is_array( $row['changes'] ) ? $row['changes'] : array();
+            $out[] = array(
+                'id'            => isset( $row['id'] ) ? $row['id'] : '',
+                'page_url'      => isset( $row['page_url'] ) ? $row['page_url'] : '',
+                'page_title'    => isset( $row['page_title'] ) ? $row['page_title'] : '',
+                'changes_count' => count( $changes ),
+                'created_at'    => isset( $row['created_at'] ) ? $row['created_at'] : '',
+            );
+        }
+
+        return $out;
+    }
+
+    /**
+     * Accessor for the current organization_id.
+     * Used by the pending-reviews REST endpoint to build a deep link to the SaaS.
+     */
+    public function get_organization_id() {
+        return $this->organization_id;
+    }
+
+    public function create_sprint_for_implementation( $page_url, $pre_score, $suggestions_applied ) {
+        if ( ! $this->supabase_anon_key || ! $this->organization_id ) {
+            ciq_log( 'create_sprint_for_implementation: skipped — missing credentials' );
+            return false;
+        }
+
+        $payload = array(
+            'organization_id'         => $this->organization_id,
+            'page_url'                => $page_url,
+            'pre_score'               => intval( $pre_score ),
+            'suggestions_implemented' => $suggestions_applied,
+            'marked_done_at'          => gmdate( 'c' ),
+        );
+
+        $response = wp_remote_post(
+            $this->supabase_url . '/rest/v1/suggestion_sprints',
+            array(
+                'headers' => array(
+                    'apikey'        => $this->supabase_anon_key,
+                    'Authorization' => 'Bearer ' . $this->supabase_anon_key,
+                    'Content-Type'  => 'application/json',
+                    'X-API-Key'     => $this->api_key,
+                    'Prefer'        => 'return=representation',
+                ),
+                'body'    => wp_json_encode( $payload ),
+                'timeout' => 10,
+            )
+        );
+
+        if ( is_wp_error( $response ) ) {
+            ciq_log( 'create_sprint_for_implementation: wp_error — ' . $response->get_error_message() );
+            return false;
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+        if ( $code === 201 && ! empty( $body[0]['id'] ) ) {
+            ciq_log( 'create_sprint_for_implementation: ✅ sprint_id=' . $body[0]['id'] . ' page=' . $page_url );
+            return $body[0]['id'];
+        }
+
+        ciq_log( 'create_sprint_for_implementation: HTTP ' . $code . ' — ' . wp_remote_retrieve_body( $response ) );
+        return false;
+    }
+
     public function close_sprint( $sprint_id, $data ) {
         if ( ! $this->supabase_anon_key ) {
             return false;

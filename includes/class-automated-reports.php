@@ -70,9 +70,11 @@ class ConversionIQ_Automated_Reports
                 continue;
             }
 
-            // Get page content — render page-builder blocks via the_content filter.
+            // Get page content — builder-aware (Elementor via its API, else the_content).
             $page_url = get_permalink($post);
-            $rendered_content = apply_filters( 'the_content', $post->post_content );
+            $rendered_content = function_exists( 'conversioniq_render_page_content' )
+                ? conversioniq_render_page_content( $post )
+                : apply_filters( 'the_content', $post->post_content );
             $content          = wp_strip_all_tags( $rendered_content );
             $content = html_entity_decode( $content, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
             $content = trim( preg_replace( '/\s+/', ' ', $content ) );
@@ -97,6 +99,15 @@ class ConversionIQ_Automated_Reports
                 }
             }
 
+            $copy_inventory = array();
+            if ( class_exists( 'ConversionIQ_Copy_Inventory' ) ) {
+                try {
+                    $copy_inventory = ConversionIQ_Copy_Inventory::extract( $post, 6, $rendered_content );
+                } catch ( Throwable $inv_e ) {
+                    ciq_log( 'Copy inventory: extraction error — ' . $inv_e->getMessage() );
+                }
+            }
+
             $payload = array(
                 'business' => $business,
                 'page' => array(
@@ -105,6 +116,7 @@ class ConversionIQ_Automated_Reports
                     'url' => $page_url,
                     'word_count' => str_word_count($content),
                     'html_structure' => $html_structure,
+                    'copy_inventory' => $copy_inventory,
                 ),
             );
 
@@ -131,6 +143,21 @@ class ConversionIQ_Automated_Reports
                     // Sync to Supabase so the public report link is live
                     $sync = new ConversionIQ_Supabase_Sync();
                     $sync->send_audit( $ai );
+
+                    // Create implementation review with exact audit rewrites
+                    if ( ! empty( $ai['rewrites'] ) && ! empty( $ai['report_token'] ) ) {
+                        try {
+                            $sync->create_implementation_review_from_audit(
+                                (string) $ai['report_token'],
+                                $page_url,
+                                $post->post_title,
+                                $ai['rewrites'],
+                                (int) $post->ID
+                            );
+                        } catch ( Exception $review_ex ) {
+                            ciq_log( 'create_impl_review (automated): exception — ' . $review_ex->getMessage() );
+                        }
+                    }
 
 
                 }

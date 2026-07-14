@@ -4,7 +4,7 @@ Tags: conversion optimization, AI audit, copy analysis, website scoring, lead in
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.4.2
+Stable tag: 2.5.0
 License: GPLv2 or later
 
 AI-powered conversion auditing for WordPress. Scores your pages, generates actionable reports, and rewrites copy to convert more visitors.
@@ -57,6 +57,16 @@ Yes. On the Professional and Agency plans you can customize the company name, lo
 Yes. Conversion IQ extracts rendered content from any published page regardless of how it was built (Elementor, Divi, Gutenberg, etc.).
 
 == Changelog ==
+
+= 2.5.0 =
+* Feature: Implementation Reviews — approved copy changes are applied to the existing page IN PLACE; the permalink, post ID, and URL never change (no more cloned "optimized" page).
+* Feature: Elementor support — headline, CTA, and body-copy changes are applied by editing the page's _elementor_data widget tree; Gutenberg and classic editors are supported too.
+* Feature: Shareable draft preview — the apply step stages edits on the same post and returns a tokenised preview link that renders for logged-in admins AND logged-out clients (no WordPress login required), on the live permalink.
+* Feature: Publish in place — publishing writes the approved copy to the live post at the same URL and clears the Elementor cache so the new text renders immediately.
+* Improvement: Exact-match application — a change is applied only when its original text is found exactly; unmatched changes are reported (before_not_found) instead of guessed, and a post-apply QA step verifies the new copy is present.
+* Improvement: Copy audit completeness — audits are built from a deterministic top-of-page inventory (hero + the next 5 sections) so the hero heading, sub-heading, and CTA and the sections directly below them are never skipped.
+* Improvement: Localised rewrites — suggested copy is written in the page's own language.
+* Improvement: Implementation reviews are built 1:1 from the latest audit's suggestions (verbatim), with builder-aware content extraction for Elementor pages.
 
 = 2.4.0 =
 * Feature: Conversion tracking — server-side hooks for Contact Form 7, Gravity Forms, WPForms, Ninja Forms, Formidable Forms, and Fluent Forms record conversions locally and push daily to Supabase via the SaaS proxy (conversioniq-app.com/api/conversions/sync); zero client setup required

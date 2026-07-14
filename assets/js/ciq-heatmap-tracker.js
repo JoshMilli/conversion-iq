@@ -189,7 +189,8 @@
             { type: 'form',        query: 'form' },
             // CRO-checklist-specific element types
             { type: 'nav_cta',     query: 'nav a[class*="btn"],nav a[class*="cta"],nav button,header a[class*="btn"],header button' },
-            { type: 'trust_badge', query: '[class*="trust"] img,[class*="badge"] img,[class*="cert"] img,[class*="award"] img,[class*="accredit"] img' },
+            // Trust badges: certs/awards AND client logos/case studies/portfolio images
+            { type: 'trust_badge', query: '[class*="trust"] img,[class*="badge"] img,[class*="cert"] img,[class*="award"] img,[class*="accredit"] img,[class*="client-logo"] img,[class*="client_logo"] img,[class*="logo-bar"] img,[class*="logo_bar"] img,[class*="logos"] img,[class*="partner-logo"] img,[class*="partner_logo"] img,[class*="case-study"] img,[class*="case_study"] img,[class*="our-work"] img,[class*="our_work"] img,[class*="portfolio"] img,[class*="success-stor"] img,[class*="success_stor"] img' },
             { type: 'testimonial', query: '[class*="testimonial"],[class*="review"],[class*="social-proof"],[class*="feedback"]' },
             { type: 'pricing',     query: '[class*="pricing"],[class*="plan"],[class*="package"],[class*="tier"]' },
             { type: 'progress',    query: '[class*="progress"],[class*="stepper"],[class*="wizard"],[class*="step-indicator"],[class*="breadcrumb"]' }
@@ -210,6 +211,28 @@
                 }
             } catch (e) { /* ignore unsupported selectors */ }
         });
+
+        // ── Computed-style sticky/fixed nav CTA detection ──────────────────
+        // A sticky nav that collapses on load or only appears after scrolling will
+        // not be detected by the viewport check above. Check computed position style
+        // on all nav/header candidates so the AI gets a reliable HTML-level signal.
+        if ( ! elements.some(function(el) { return el.type === 'nav_cta'; }) ) {
+            try {
+                var navCandidates = document.querySelectorAll('nav, header, [role="navigation"], [class*="navbar"], [class*="nav-bar"], [class*="site-header"]');
+                for (var ni = 0; ni < navCandidates.length; ni++) {
+                    var navEl = navCandidates[ni];
+                    var pos = window.getComputedStyle(navEl).position;
+                    if (pos === 'fixed' || pos === 'sticky') {
+                        var ctaInNav = navEl.querySelectorAll('a[class*="btn"],a[class*="cta"],button,[class*="button"]');
+                        if (ctaInNav.length > 0) {
+                            elements.push({ type: 'nav_cta', y_top: 0, above_fold: true });
+                            break;
+                        }
+                    }
+                }
+            } catch (e) { /* ignore */ }
+        }
+
         aboveFoldData = { viewport_height: vh, elements: elements };
     }
     // Defer until after first paint so layout is stable

@@ -2331,26 +2331,30 @@ class ConversionIQ_Reports
 
             // ============ COPY REWRITES PAGE ============
             if (!empty($rewrites) && is_array($rewrites)) {
-                $rewrite_sections = array(
-                    array('key' => 'headline', 'label' => 'Headline', 'color' => '#2563eb', 'bg' => '#eff6ff'),
-                    array('key' => 'subheadline', 'label' => 'Subheadline', 'color' => '#7c3aed', 'bg' => '#faf5ff'),
-                    array('key' => 'value_proposition', 'label' => 'Value Proposition', 'color' => '#0891b2', 'bg' => '#ecfeff'),
-                    array('key' => 'primary_cta', 'label' => 'Primary CTA', 'color' => '#10b981', 'bg' => '#ecfdf5'),
-                    array('key' => 'secondary_cta', 'label' => 'Secondary CTA', 'color' => '#059669', 'bg' => '#f0fdf4'),
-                    array('key' => 'social_proof_intro', 'label' => 'Social Proof Introduction', 'color' => '#f59e0b', 'bg' => '#fffbeb'),
-                    array('key' => 'feature_1', 'label' => 'Key Feature #1', 'color' => '#6366f1', 'bg' => '#eef2ff'),
-                    array('key' => 'feature_2', 'label' => 'Key Feature #2', 'color' => '#6366f1', 'bg' => '#eef2ff'),
-                    array('key' => 'feature_3', 'label' => 'Key Feature #3', 'color' => '#6366f1', 'bg' => '#eef2ff'),
-                    array('key' => 'faq_answer_1', 'label' => 'FAQ Answer', 'color' => '#d97706', 'bg' => '#fef3c7'),
-                    array('key' => 'closing_statement', 'label' => 'Closing Statement', 'color' => '#dc2626', 'bg' => '#fef2f2'),
-                );
 
-                // Only show page if at least one rewrite has content
-                $has_rewrite_content = false;
-                foreach ($rewrite_sections as $rs) {
-                    if (!empty($rewrites[$rs['key']])) {
-                        $has_rewrite_content = true;
-                        break;
+                // ── Detect format: new array-of-objects vs legacy key→value object ──
+                $is_new_format = isset($rewrites[0]) && is_array($rewrites[0]) && isset($rewrites[0]['original']);
+
+                if ($is_new_format) {
+                    $has_rewrite_content = !empty($rewrites);
+                } else {
+                    // Legacy format: static key list
+                    $rewrite_sections = array(
+                        array('key' => 'headline', 'label' => 'Headline', 'color' => '#2563eb', 'bg' => '#eff6ff'),
+                        array('key' => 'subheadline', 'label' => 'Subheadline', 'color' => '#7c3aed', 'bg' => '#faf5ff'),
+                        array('key' => 'value_proposition', 'label' => 'Value Proposition', 'color' => '#0891b2', 'bg' => '#ecfeff'),
+                        array('key' => 'primary_cta', 'label' => 'Primary CTA', 'color' => '#10b981', 'bg' => '#ecfdf5'),
+                        array('key' => 'secondary_cta', 'label' => 'Secondary CTA', 'color' => '#059669', 'bg' => '#f0fdf4'),
+                        array('key' => 'social_proof_intro', 'label' => 'Social Proof Introduction', 'color' => '#f59e0b', 'bg' => '#fffbeb'),
+                        array('key' => 'feature_1', 'label' => 'Key Feature #1', 'color' => '#6366f1', 'bg' => '#eef2ff'),
+                        array('key' => 'feature_2', 'label' => 'Key Feature #2', 'color' => '#6366f1', 'bg' => '#eef2ff'),
+                        array('key' => 'feature_3', 'label' => 'Key Feature #3', 'color' => '#6366f1', 'bg' => '#eef2ff'),
+                        array('key' => 'faq_answer_1', 'label' => 'FAQ Answer', 'color' => '#d97706', 'bg' => '#fef3c7'),
+                        array('key' => 'closing_statement', 'label' => 'Closing Statement', 'color' => '#dc2626', 'bg' => '#fef2f2'),
+                    );
+                    $has_rewrite_content = false;
+                    foreach ($rewrite_sections as $rs) {
+                        if (!empty($rewrites[$rs['key']])) { $has_rewrite_content = true; break; }
                     }
                 }
 
@@ -2388,40 +2392,85 @@ class ConversionIQ_Reports
             </div>
             
             <p style="font-size: 15px; color: #374151; margin-bottom: 24px; line-height: 1.8;">
-                Based on your audit analysis, here are AI-generated copy suggestions designed to improve clarity, emotional impact, and conversion rates. Use these as starting points to strengthen your messaging.
+                Each rewrite below shows the current copy on your page alongside a sharper, conversion-optimised alternative — written specifically for your business, industry, and audience. A/B test any of these against your live copy to measure the impact.
             </p>';
 
-                    // Flowchart-style rendering: each section connected by downward arrows
-                    $rendered_count = 0;
-                    $total_with_content = 0;
-                    foreach ($rewrite_sections as $rs) {
-                        if (!empty($rewrites[$rs['key']])) $total_with_content++;
-                    }
+                    if ($is_new_format) {
+                        // ── New before/after format ──────────────────────────────────
+                        $section_colors = array('#2563eb','#7c3aed','#0891b2','#10b981','#f59e0b','#6366f1','#d97706','#dc2626','#059669','#0e7490');
+                        $color_idx = 0;
+                        foreach ($rewrites as $rw) {
+                            if (empty($rw['rewrite'])) continue;
+                            $section_label = esc_html($rw['section'] ?? 'Copy Section');
+                            $original_text = esc_html($rw['original'] ?? '');
+                            $rewrite_text  = esc_html($rw['rewrite'] ?? '');
+                            $why_text      = esc_html($rw['why'] ?? '');
+                            $impact        = esc_html($rw['score_impact'] ?? '');
+                            $color         = $section_colors[$color_idx % count($section_colors)];
+                            $color_idx++;
 
-                    foreach ($rewrite_sections as $rs) {
-                        $rw_value = isset($rewrites[$rs['key']]) ? trim($rewrites[$rs['key']]) : '';
-                        if (!empty($rw_value)) {
-                            $rendered_count++;
+                            $html .= '<div style="page-break-inside: avoid; break-inside: avoid; margin-bottom: 20px;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                        <span style="display: inline-block; background: ' . $color . '; color: white; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px;">' . $section_label . '</span>';
+                            if ($impact) {
+                                $html .= '<span style="font-size: 11px; color: #6b7280; font-weight: 600;">Improves: ' . $impact . '</span>';
+                            }
+                            $html .= '</div>';
 
-                            $html .= '<div style="page-break-inside: avoid; break-inside: avoid;">
+                            if ($original_text) {
+                                $html .= '
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden;">
+                        <div style="background: #f9fafb; padding: 16px 18px; border-right: 1px solid #e5e7eb;">
+                            <div style="font-size: 10px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px;">Current</div>
+                            <p style="margin: 0; font-size: 13px; color: #6b7280; line-height: 1.6;">' . $original_text . '</p>
+                        </div>
+                        <div style="background: #f0fdf4; padding: 16px 18px;">
+                            <div style="font-size: 10px; font-weight: 700; color: ' . $color . '; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px;">Suggested</div>
+                            <p style="margin: 0; font-size: 13px; color: #111827; line-height: 1.6; font-weight: 500;">' . $rewrite_text . '</p>
+                        </div>
+                    </div>';
+                            } else {
+                                $html .= '
+                    <div style="background: #f0fdf4; padding: 16px 18px; border: 1px solid #bbf7d0; border-radius: 10px;">
+                        <div style="font-size: 10px; font-weight: 700; color: ' . $color . '; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px;">Suggested Copy</div>
+                        <p style="margin: 0; font-size: 13px; color: #111827; line-height: 1.6; font-weight: 500;">' . $rewrite_text . '</p>
+                    </div>';
+                            }
+
+                            if ($why_text) {
+                                $html .= '
+                    <div style="margin-top: 6px; padding: 8px 14px; background: #fffbeb; border-left: 3px solid ' . $color . '; border-radius: 0 6px 6px 0;">
+                        <p style="margin: 0; font-size: 12px; color: #78350f; line-height: 1.5; font-style: italic;">' . $why_text . '</p>
+                    </div>';
+                            }
+
+                            $html .= '</div>';
+                        }
+                    } else {
+                        // ── Legacy key→value format ─────────────────────────────────
+                        $rendered_count = 0;
+                        $total_with_content = 0;
+                        foreach ($rewrite_sections as $rs) {
+                            if (!empty($rewrites[$rs['key']])) $total_with_content++;
+                        }
+                        foreach ($rewrite_sections as $rs) {
+                            $rw_value = isset($rewrites[$rs['key']]) ? trim($rewrites[$rs['key']]) : '';
+                            if (!empty($rw_value)) {
+                                $rendered_count++;
+                                $html .= '<div style="page-break-inside: avoid; break-inside: avoid;">
                     <div style="background: ' . $rs['bg'] . '; padding: 18px 20px; border-radius: 10px; border: 2px solid ' . $rs['color'] . '; position: relative;">
                         <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px;">
                             <span style="display: inline-block; background: ' . $rs['color'] . '; color: white; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px;">' . esc_html($rs['label']) . '</span>
                         </div>
                         <p style="margin: 0; font-size: 14px; color: #1e293b; line-height: 1.7; font-style: italic;">&ldquo;' . esc_html($rw_value) . '&rdquo;</p>
                     </div>';
-
-                            // Downward arrow connector (skip after last item)
-                            if ($rendered_count < $total_with_content) {
-                                $html .= '
-                    <div style="text-align: center; padding: 6px 0;">
-                        <div style="display: inline-block; width: 2px; height: 16px; background: #cbd5e1;"></div>
-                        <div style="color: #94a3b8; font-size: 16px; line-height: 1;">&#9660;</div>
-                    </div>';
+                                if ($rendered_count < $total_with_content) {
+                                    $html .= '<div style="text-align: center; padding: 6px 0;"><div style="display: inline-block; width: 2px; height: 16px; background: #cbd5e1;"></div><div style="color: #94a3b8; font-size: 16px; line-height: 1;">&#9660;</div></div>';
+                                }
+                                $html .= '</div>';
                             }
-                            $html .= '</div>';
                         }
-                    }
+                    } // end format branch
 
                     $html .= '
             <div style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); padding: 18px; border-radius: 10px; margin-top: 16px;">

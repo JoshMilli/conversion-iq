@@ -620,6 +620,83 @@ class ConversionIQ_Google_Analytics {
      * @param int $days
      * @return array
      */
+    /**
+     * Fetch the top search queries driving traffic to a specific page URL.
+     *
+     * Used by the audit pipeline to enrich copy rewrites with real search intent.
+     * Returns null when GSC is not connected — callers must handle gracefully.
+     * Results are cached in a transient for 6 hours to avoid redundant API calls.
+     *
+     * @param string $page_url  Full page URL (e.g. https://example.com/services/).
+     * @param int    $days      Lookback window in days (default 90 for richer signal).
+     * @return array|null  Array of { query, clicks, impressions, ctr, position }
+     *                     sorted by clicks DESC, or null if GSC not connected.
+     */
+    public function fetch_gsc_page_queries( $page_url, $days = 90 ) {
+        if ( ! $this->is_gsc_connected() ) {
+            ciq_log( '[GSC] fetch_gsc_page_queries: not connected — returning null' );
+            return null;
+        }
+
+        // Cache key includes URL hash + day window so refreshes on different windows
+        $cache_key = 'ciq_gsc_page_' . md5( $page_url . '_' . $days );
+        $cached    = get_transient( $cache_key );
+        if ( $cached !== false ) {
+            ciq_log( '[GSC] fetch_gsc_page_queries: served from cache for ' . $page_url );
+            return $cached;
+        }
+
+        $end          = gmdate( 'Y-m-d' );
+        $start        = gmdate( 'Y-m-d', strtotime( "-{$days} days" ) );
+        $property_url = $this->get_gsc_property();
+        $encoded      = rawurlencode( $property_url );
+        $base         = "https://searchconsole.googleapis.com/webmasters/v3/sites/{$encoded}";
+
+        $response = $this->api_request( $base . '/searchAnalytics/query', array(
+            'startDate'  => $start,
+            'endDate'    => $end,
+            'dimensions' => array( 'query' ),
+            'rowLimit'   => 10,
+            'dimensionFilterGroups' => array(
+                array(
+                    'filters' => array(
+                        array(
+                            'dimension'  => 'page',
+                            'operator'   => 'contains',
+                            'expression' => parse_url( $page_url, PHP_URL_PATH ) ?: '/',
+                        ),
+                    ),
+                ),
+            ),
+        ) );
+
+        if ( isset( $response['error'] ) ) {
+            $msg = is_array( $response['error'] ) ? ( $response['error']['message'] ?? wp_json_encode( $response['error'] ) ) : $response['error'];
+            ciq_log( '[GSC] fetch_gsc_page_queries: error — ' . $msg );
+            return null;
+        }
+
+        $queries = array();
+        foreach ( $response['rows'] ?? array() as $row ) {
+            $queries[] = array(
+                'query'       => $row['keys'][0]   ?? '',
+                'clicks'      => (int)   ( $row['clicks']      ?? 0 ),
+                'impressions' => (int)   ( $row['impressions'] ?? 0 ),
+                'ctr'         => round( (float) ( $row['ctr']      ?? 0 ) * 100, 2 ),
+                'position'    => round( (float) ( $row['position'] ?? 0 ), 1 ),
+            );
+        }
+
+        // Sort by clicks descending
+        usort( $queries, fn( $a, $b ) => $b['clicks'] - $a['clicks'] );
+
+        // Cache for 6 hours
+        set_transient( $cache_key, $queries, 6 * HOUR_IN_SECONDS );
+
+        ciq_log( '[GSC] fetch_gsc_page_queries: ' . count( $queries ) . ' queries for ' . $page_url );
+        return $queries;
+    }
+
     public function fetch_gsc_site_summary( $days = 28 ) {
         if ( ! $this->is_gsc_connected() ) {
             ciq_log( '[GSC] fetch_gsc_site_summary: not connected — skipping' );
