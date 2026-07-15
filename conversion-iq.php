@@ -3,7 +3,7 @@
  * Plugin Name: Conversion IQ
  * Plugin URI: https://trywebtec.com
  * Description: AI-powered WordPress plugin that audits and improves website copy and conversion clarity.
- * Version: 2.5.0
+ * Version: 2.5.1
  * Author: Webtec
  * Author URI: https://trywebtec.com
  * Requires at least: 6.0
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'CONVERSION_IQ_VERSION', '2.5.0' );
+define( 'CONVERSION_IQ_VERSION', '2.5.1' );
 define( 'CONVERSION_IQ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONVERSION_IQ_URL', plugin_dir_url( __FILE__ ) );
 define( 'CONVERSION_IQ_FILE', __FILE__ );
@@ -46,23 +46,50 @@ if ( ! defined( 'CIQ_GOOGLE_REDIRECT_URI' ) ) {
     define( 'CIQ_GOOGLE_REDIRECT_URI', 'https://conversioniq-app.com/oauth/google/callback' );
 }
 
-// Initialize Plugin Update Checker
+// ── Plugin Update Checker — self-hosted update channel ────────────────────────
+// Conversion IQ is distributed from our own server (not WordPress.org). The Plugin
+// Update Checker polls a JSON "update info" endpoint for the latest version and, when
+// it is newer than the version in THIS file's header, injects the update into
+// WordPress's standard update transient (pre_set_site_transient_update_plugins) and
+// the "View details" popup (plugins_api). That lets WP core, background auto-updates,
+// and external maintenance tools (e.g. WP Umbrella) detect and install it. The
+// installed version is read dynamically from the plugin header; the remote check is
+// cached for ~12 hours; and unreachable/invalid responses fail quietly.
 require CONVERSION_IQ_DIR . 'lib/plugin-update-checker-5.6/plugin-update-checker.php';
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 
+// Endpoint that returns the update-info JSON. Override in wp-config.php
+// (define CONVERSIONIQ_UPDATE_INFO_URL) or via the conversioniq_update_info_url option.
+if ( ! defined( 'CONVERSIONIQ_UPDATE_INFO_URL' ) ) {
+    define( 'CONVERSIONIQ_UPDATE_INFO_URL', 'https://conversioniq-app.com/api/plugin-info' );
+}
+$ciq_update_info_url = get_option( 'conversioniq_update_info_url', '' );
+if ( empty( $ciq_update_info_url ) ) {
+    $ciq_update_info_url = CONVERSIONIQ_UPDATE_INFO_URL;
+}
+
 $conversionIQUpdateChecker = PucFactory::buildUpdateChecker(
-    'https://github.com/JoshMilli/conversion-iq',
-    __FILE__,
-    'conversion-iq'
+    $ciq_update_info_url, // self-hosted JSON metadata URL (must NOT be a github/gitlab host)
+    __FILE__,             // main plugin file — installed version is read from its header
+    'conversion-iq',      // slug — MUST match the plugin folder and the zip's internal folder
+    12                    // check every ~12 hours; result cached in a WP transient
 );
 
-$conversionIQUpdateChecker->setBranch('main');
-
-// Authentication: prefer wp-config constant, then wp_option, then skip
-if ( defined( 'CONVERSIONIQ_GITHUB_TOKEN' ) ) {
-    $conversionIQUpdateChecker->setAuthentication( CONVERSIONIQ_GITHUB_TOKEN );
-} elseif ( $gh_token = get_option( 'conversioniq_github_token', '' ) ) {
-    $conversionIQUpdateChecker->setAuthentication( $gh_token );
+// Send the site's license key + domain with every update check and download request so
+// the server can authorise the client and serve the correct zip. These are already
+// stored on the site (not new secrets); a fully public endpoint may simply ignore them.
+if ( method_exists( $conversionIQUpdateChecker, 'addQueryArgFilter' ) ) {
+    $conversionIQUpdateChecker->addQueryArgFilter( function ( $query_args ) {
+        $license = get_option( 'conversioniq_license_key', '' );
+        if ( ! empty( $license ) ) {
+            $query_args['license_key'] = $license;
+        }
+        $host = wp_parse_url( home_url(), PHP_URL_HOST );
+        if ( $host ) {
+            $query_args['domain'] = $host;
+        }
+        return $query_args;
+    } );
 }
 
 // Automatically apply updates to this plugin on all client sites.
@@ -91,7 +118,15 @@ add_action('upgrader_process_complete', function($upgrader_object, $options) {
                     
                     // Clear transients
                     delete_transient('conversioniq_cache');
-                    
+
+                    // Clear the update checker's cached remote metadata so the next
+                    // check re-reads the endpoint fresh (requirement: clear on update).
+                    global $conversionIQUpdateChecker;
+                    if ( isset( $conversionIQUpdateChecker ) && is_object( $conversionIQUpdateChecker )
+                         && method_exists( $conversionIQUpdateChecker, 'resetUpdateState' ) ) {
+                        $conversionIQUpdateChecker->resetUpdateState();
+                    }
+
                     // Force browser cache refresh by updating version option
                     update_option('conversioniq_last_updated', time());
                     

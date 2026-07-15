@@ -4,7 +4,7 @@ Tags: conversion optimization, AI audit, copy analysis, website scoring, lead in
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.5.0
+Stable tag: 2.5.1
 License: GPLv2 or later
 
 AI-powered conversion auditing for WordPress. Scores your pages, generates actionable reports, and rewrites copy to convert more visitors.
@@ -57,6 +57,10 @@ Yes. On the Professional and Agency plans you can customize the company name, lo
 Yes. Conversion IQ extracts rendered content from any published page regardless of how it was built (Elementor, Divi, Gutenberg, etc.).
 
 == Changelog ==
+
+= 2.5.1 =
+* Improvement: Self-hosted update channel — the plugin now checks a JSON update-info endpoint on our own server (instead of GitHub) and reports available versions through WordPress's standard update system, so WP core and tools like WP Umbrella can detect and auto-install new versions.
+* Improvement: Update checks are cached for ~12 hours, read the installed version dynamically from the plugin header, send the site's license key + domain for authorisation, and fail silently if the endpoint is unreachable.
 
 = 2.5.0 =
 * Feature: Implementation Reviews — approved copy changes are applied to the existing page IN PLACE; the permalink, post ID, and URL never change (no more cloned "optimized" page).
