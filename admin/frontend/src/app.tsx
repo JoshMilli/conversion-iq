@@ -735,15 +735,39 @@ export default function App() {
       }
       let errorMessage = 'Audit failed - check browser console for details';
 
-      // Extract specific error message if available
-      if (err.response?.data?.message) {
+      // When WordPress masks a fatal as a generic "critical error" 500, the real PHP
+      // error message/file:line isn't in this response — the plugin's shutdown handler
+      // recorded it. Fetch it so the true cause is visible without the WP debug.log.
+      const looksLikeWpFatal =
+        err.response?.status === 500 ||
+        err.response?.data?.code === 'internal_server_error';
+      if (looksLikeWpFatal) {
+        try {
+          const le = await axios.get(api('audit-last-error'), { headers: { 'X-WP-Nonce': nonce } });
+          const fatal = le.data?.fatal;
+          if (fatal) {
+            console.error('🔥 CIQ recorded PHP fatal:', `${fatal.message} (at ${fatal.where})`);
+            console.error('🔥 CIQ fatal detail:', fatal);
+            errorMessage = `Audit failed — PHP fatal: ${fatal.message} (at ${fatal.where})`;
+          } else {
+            console.error('CIQ audit-last-error: no fatal recorded (fatal may be non-recordable, or occurred before the handler was registered).');
+          }
+        } catch (leErr) {
+          console.error('CIQ audit-last-error fetch failed:', leErr);
+        }
+      }
+
+      // Extract specific error message if available (unless we already have the fatal)
+      if (errorMessage.startsWith('Audit failed — PHP fatal:')) {
+        // keep the fatal message
+      } else if (err.response?.data?.message) {
         errorMessage = `Audit failed: ${err.response.data.message}`;
       } else if (err.response?.data?.error) {
         errorMessage = `Audit failed: ${err.response.data.error}`;
       } else if (err.message) {
         errorMessage = `Audit failed: ${err.message}`;
       }
-      
+
       setNotice(errorMessage);
       setAuditProgress(prev => ({
         ...prev,

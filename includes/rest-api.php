@@ -748,6 +748,23 @@ add_action('rest_api_init', function () {
             return current_user_can('manage_options'); }
         ));
 
+        // Returns the last fatal recorded by the audit shutdown handler, so the
+        // dashboard can show the real cause of a "critical error" 500 without
+        // access to the WordPress debug.log.
+        register_rest_route('conversioniq/v1', '/audit-last-error', array(
+            'methods'             => 'GET',
+            'callback'            => function () {
+                $fatal = get_option('ciq_last_audit_fatal', null);
+                return new WP_REST_Response(array(
+                    'success' => true,
+                    'fatal'   => $fatal ?: null,
+                ), 200);
+            },
+            'permission_callback' => function () {
+                return current_user_can('manage_options');
+            },
+        ));
+
         register_rest_route('conversioniq/v1', '/audits/supabase', array(
             'methods'             => 'GET',
             'callback'            => 'conversioniq_list_audits_supabase',
@@ -1705,6 +1722,32 @@ function conversioniq_get_behavioral_metrics( $page_url, $from_date, $to_date ) 
 
 function conversioniq_run_audit(WP_REST_Request $request)
 {
+    // ── Fatal-error safety net ─────────────────────────────────────────────
+    // A NON-catchable fatal (memory exhaustion, max_execution_time timeout, a
+    // fatal outside our try/catch) is masked by WordPress's shutdown handler as
+    // a generic "critical error" 500 — try/catch can't see it. Register a
+    // shutdown function that records the fatal to an option the dashboard can
+    // read via the /audit-last-error endpoint, so the real cause is visible even
+    // when WP_DEBUG is off and the site log is unavailable.
+    delete_option( 'ciq_last_audit_fatal' ); // clear any stale record from a prior run
+    if ( ! defined( 'CIQ_AUDIT_FATAL_GUARD' ) ) {
+        define( 'CIQ_AUDIT_FATAL_GUARD', 1 );
+        register_shutdown_function( function () {
+            $err = error_get_last();
+            $fatal_types = array( E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR, E_RECOVERABLE_ERROR );
+            if ( $err && in_array( $err['type'], $fatal_types, true ) ) {
+                update_option( 'ciq_last_audit_fatal', array(
+                    'message' => $err['message'],
+                    'file'    => $err['file'],
+                    'line'    => $err['line'],
+                    'where'   => basename( $err['file'] ) . ':' . $err['line'],
+                    'type'    => $err['type'],
+                    'time'    => current_time( 'mysql' ),
+                ), false );
+            }
+        } );
+    }
+
     // Rate limiting: one audit request per 30 seconds per user
     $user_id = get_current_user_id();
     $transient_key = 'ciq_audit_lock_' . $user_id;
@@ -1773,6 +1816,17 @@ $results = array();
         $post = get_post(intval($page_id));
         if (!$post)
             continue;
+
+        // Guard the ENTIRE per-page body — render, HTML-structure extraction, screenshot,
+        // sprint/GSC fetch, copy inventory, payload build, AI call and sync — with a
+        // \Throwable catch (closes at the matching `catch` after the AI block below).
+        // A fatal PHP Error (class/method not found, TypeError, null-method call) in any
+        // of the pre-AI steps would otherwise escape to WordPress's shutdown handler and
+        // return an opaque "critical error" 500 that our old narrow try never saw.
+        // NOTE: the body below keeps its original indentation to minimise diff size.
+        $page_url    = get_permalink( $post ) ?: '';
+        $audit_start = microtime( true );
+        try {
 
         // Get clean page content. conversioniq_render_page_content() is builder-aware:
         // it renders Elementor via its own API (post_content is empty for Elementor) and
@@ -2022,8 +2076,7 @@ $results = array();
             }
         }
 
-        $audit_start = microtime(true);
-        try {
+        // (try {} opened at the top of the loop body; $audit_start set there too.)
             $ai = ConversionIQ_AI::analyze($payload);
             $audit_time = round((microtime(true) - $audit_start), 2);
 
