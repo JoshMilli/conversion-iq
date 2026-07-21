@@ -2223,22 +2223,26 @@ $results = array();
                 }
                 // ── End sprint close ──────────────────────────────────────────
             }
-            catch (Exception $e) {
-                ciq_log('Supabase sync exception - ' . $e->getMessage());
+            catch (\Throwable $e) {
+                // \Throwable (not just Exception) so a fatal Error is caught too.
+                ciq_log('Supabase sync exception - ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
             }
 
             ciq_log('Audit completed for: ' . $post->post_title . ' in ' . $audit_time . 's');
         }
-        catch (Exception $e) {
+        catch (\Throwable $e) {
+            // Catch \Throwable, not just Exception — a fatal PHP Error (class not found,
+            // TypeError, null method call) is an \Error and would otherwise escape as an
+            // opaque HTTP 500. Log the exact location and surface it so it's diagnosable.
             $audit_time = round((microtime(true) - $audit_start), 2);
-            ciq_log('Audit EXCEPTION for ' . $post->post_title . ': ' . $e->getMessage());
-            // AI analysis failed — do not save a report of any kind
+            ciq_log('Audit EXCEPTION for ' . $post->post_title . ': ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
             $results[] = array(
                 'page_id'    => $post->ID,
                 'page_title' => $post->post_title,
                 'page_url'   => $page_url,
                 'failed'     => true,
-                'error'      => 'AI analysis unavailable — audit could not be completed.',
+                'error'      => 'Audit could not be completed: ' . $e->getMessage(),
+                'error_where' => basename($e->getFile()) . ':' . $e->getLine(),
                 'created_at' => current_time('mysql'),
             );
         }
