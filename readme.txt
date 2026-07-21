@@ -4,7 +4,7 @@ Tags: conversion optimization, AI audit, copy analysis, website scoring, lead in
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.5.7
+Stable tag: 2.5.8
 License: GPLv2 or later
 
 AI-powered conversion auditing for WordPress. Scores your pages, generates actionable reports, and rewrites copy to convert more visitors.
@@ -57,6 +57,9 @@ Yes. On the Professional and Agency plans you can customize the company name, lo
 Yes. Conversion IQ extracts rendered content from any published page regardless of how it was built (Elementor, Divi, Gutenberg, etc.).
 
 == Changelog ==
+
+= 2.5.8 =
+* Fix: Audits failed with a critical error on Business and Agency plans. Because those plans have unlimited weekly audits, the code path that made the database handle ($wpdb) available was skipped, causing a fatal "Call to a member function get_var() on null" at the first content-hash lookup. The database handle is now initialised for every plan, so audits run correctly on all plans. (Surfaced by the 2.5.7 diagnostics.)
 
 = 2.5.7 =
 * Fix: The audit "critical error" (HTTP 500) is now caught and diagnosed. The per-page guard was widened to wrap the ENTIRE page-processing body — page rendering, HTML-structure extraction, screenshot capture, and the AI call — so a fatal PHP error in any pre-AI step is returned as a clear, per-page failure instead of escaping to WordPress's generic "critical error" page.

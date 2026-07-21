@@ -1722,6 +1722,13 @@ function conversioniq_get_behavioral_metrics( $page_url, $from_date, $to_date ) 
 
 function conversioniq_run_audit(WP_REST_Request $request)
 {
+    // $wpdb is used throughout this function (content-hash lookups in the per-page
+    // loop, the weekly-limit count). It MUST be brought into scope here for EVERY
+    // plan. Previously `global $wpdb;` lived only inside the `audits_per_week > 0`
+    // block, so unlimited plans (Business/Agency, audits_per_week = 0) skipped it and
+    // hit "Call to a member function get_var() on null" at the first content-hash query.
+    global $wpdb;
+
     // ── Fatal-error safety net ─────────────────────────────────────────────
     // A NON-catchable fatal (memory exhaustion, max_execution_time timeout, a
     // fatal outside our try/catch) is masked by WordPress's shutdown handler as
@@ -1763,7 +1770,7 @@ function conversioniq_run_audit(WP_REST_Request $request)
     $flags = ConversionIQ_Config_Manager::get_feature_flags();
     $audits_per_week = isset($flags['audits_per_week']) ? intval($flags['audits_per_week']) : 3;
     if ($audits_per_week > 0) {
-        global $wpdb;
+        // $wpdb already globalised at the top of the function.
         $table = $wpdb->prefix . 'conversioniq_audits';
         $seven_days_ago = date('Y-m-d H:i:s', strtotime('-7 days'));
         $recent_count = (int) $wpdb->get_var(
