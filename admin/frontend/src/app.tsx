@@ -604,10 +604,14 @@ export default function App() {
       
       // Call backend audit endpoint - AI is handled on the server
       const response = await axios.post(
-        api('audit'), 
-        { pages: selectedPages }, 
+        api('audit'),
+        { pages: selectedPages },
         { headers: { 'X-WP-Nonce': nonce } }
       );
+
+      // Always dump the raw audit response so any server-side error is visible in the
+      // browser console (surfaces per-page error/error_where without needing the WP log).
+      console.log('CIQ audit raw response:', response.status, response.data);
 
       if (response.status === 429 || (response.data && response.data.error_code === 'weekly_limit_reached')) {
         setNotice(`⚠️ Weekly audit limit reached. Your plan allows 3 audits per week. Upgrade your plan for more, or wait for your limit to reset.`);
@@ -639,9 +643,13 @@ export default function App() {
           console.groupEnd();
         });
 
-        // Log failed audits
+        // Log failed audits WITH the real server-side error + location (2.5.5+ returns
+        // result.error / result.error_where), so the cause is visible in the console.
         failedResults.forEach((result: any) => {
-          console.warn(`❌ Audit failed for "${result.page_title}": AI analysis unavailable`);
+          console.error(
+            `❌ Audit failed for "${result.page_title}": ${result.error || 'AI analysis unavailable'}`
+            + (result.error_where ? ` (at ${result.error_where})` : '')
+          );
         });
         
         setProgress(75);
@@ -659,7 +667,8 @@ export default function App() {
         if (failedResults.length > 0 && successfulResults.length === 0) {
           // All pages failed
           const failedNames = failedResults.map((r: any) => r.page_title).join(', ');
-          setNotice(`❌ Audit failed — AI analysis is currently unavailable. No report was created for: ${failedNames}. Check WordPress debug.log for details.`);
+          const firstErr = failedResults.find((r: any) => r.error)?.error;
+          setNotice(`❌ Audit failed for ${failedNames}${firstErr ? ': ' + firstErr : ' — AI analysis unavailable.'} (full detail in the browser console)`);
           setAuditProgress(prev => ({
             ...prev,
             currentIndex: prev.totalPages,
@@ -718,11 +727,19 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('❌ Audit failed:', err);
+      // Dump the raw HTTP response so a server-side 500 (uncaught fatal) is visible
+      // in the browser console even when it never reaches the success branch.
+      if (err?.response) {
+        console.error('CIQ audit HTTP status:', err.response.status);
+        console.error('CIQ audit response body:', err.response.data);
+      }
       let errorMessage = 'Audit failed - check browser console for details';
-      
+
       // Extract specific error message if available
       if (err.response?.data?.message) {
         errorMessage = `Audit failed: ${err.response.data.message}`;
+      } else if (err.response?.data?.error) {
+        errorMessage = `Audit failed: ${err.response.data.error}`;
       } else if (err.message) {
         errorMessage = `Audit failed: ${err.message}`;
       }
@@ -1494,19 +1511,32 @@ export default function App() {
                             { headers: { 'X-WP-Nonce': nonce } }
                           );
                           
-                          if (response.data.success && response.data.results) {
-                            const newAudit = response.data.results[0];
+                          console.log('CIQ retry raw response:', response.status, response.data);
+
+                          const retried = response.data?.results?.[0];
+                          if (response.data.success && retried && !retried.failed) {
                             // Replace the failed audit with the new one
-                            setAudits(audits => audits.map(audit => 
-                              audit.insert_id === a.insert_id ? newAudit : audit
+                            setAudits(audits => audits.map(audit =>
+                              audit.insert_id === a.insert_id ? retried : audit
                             ));
                             setNotice('✅ Audit completed successfully!');
+                          } else if (retried?.failed) {
+                            console.error(
+                              `❌ Retry failed for "${retried.page_title}": ${retried.error || 'AI analysis unavailable'}`
+                              + (retried.error_where ? ` (at ${retried.error_where})` : '')
+                            );
+                            setNotice(`❌ Retry failed${retried.error ? ': ' + retried.error : ''} (full detail in the browser console)`);
                           } else {
                             throw new Error('Retry failed');
                           }
                         } catch (err: any) {
                           console.error('❌ Retry failed:', err);
-                          setNotice('Retry failed - please try again later.');
+                          if (err?.response) {
+                            console.error('CIQ retry HTTP status:', err.response.status);
+                            console.error('CIQ retry response body:', err.response.data);
+                          }
+                          const detail = err.response?.data?.message || err.response?.data?.error || err.message;
+                          setNotice(`Retry failed${detail ? ': ' + detail : ' - please try again later.'}`);
                         } finally {
                           setLoading(false);
                         }
