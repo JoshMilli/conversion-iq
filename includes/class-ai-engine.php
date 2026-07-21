@@ -1578,7 +1578,12 @@ section appears in the user prompt. If no such section is present, omit both key
         // Only query KnockKnock data when the feature is enabled on this plan
         // AND an API key is actually configured — avoids unnecessary DB hits and
         // ensures audience_fit_analysis is never requested without real data.
-        $kk_enabled    = ConversionIQ_Config_Manager::can('knockknock')
+        // NOTE: class_exists() MUST come first. The KnockKnock class is only require()'d
+        // at plugin load when can('knockknock') was true then (conversion-iq.php). A mid-request
+        // config sync can flip the flag on AFTER that, so the class may not be loaded even
+        // though can('knockknock') is now true — referencing its ::OPT_KEY constant would fatal.
+        $kk_enabled    = class_exists( 'ConversionIQ_KnockKnock_API' )
+                         && ConversionIQ_Config_Manager::can('knockknock')
                          && ! empty( get_option( ConversionIQ_KnockKnock_API::OPT_KEY, '' ) );
         $webhook_stats = $kk_enabled ? self::get_webhook_statistics($url) : null;
         $leads_context = '';
