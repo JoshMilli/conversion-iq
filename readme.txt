@@ -4,7 +4,7 @@ Tags: conversion optimization, AI audit, copy analysis, website scoring, lead in
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.5.2
+Stable tag: 2.5.3
 License: GPLv2 or later
 
 AI-powered conversion auditing for WordPress. Scores your pages, generates actionable reports, and rewrites copy to convert more visitors.
@@ -57,6 +57,10 @@ Yes. On the Professional and Agency plans you can customize the company name, lo
 Yes. Conversion IQ extracts rendered content from any published page regardless of how it was built (Elementor, Divi, Gutenberg, etc.).
 
 == Changelog ==
+
+= 2.5.3 =
+* Fix: The weekly audit limit was capped at 3/week for every plan — including Business and Agency. Per-plan limits are now graduated: Free 3, Starter 10, Professional 25, Business and Agency unlimited.
+* Fix: Corrected the limit message to describe the rolling 7-day window accurately (it no longer implies a fixed reset date).
 
 = 2.5.2 =
 * Fix: GA4 property list now paginates through all Google Analytics accounts/properties, so newly created or additional properties are no longer missed in Traffic Intelligence setup.

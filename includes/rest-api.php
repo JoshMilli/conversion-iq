@@ -1729,7 +1729,7 @@ function conversioniq_run_audit(WP_REST_Request $request)
         if ($recent_count >= $audits_per_week) {
             return new WP_REST_Response(array(
                 'success'       => false,
-                'message'       => sprintf(__('Weekly audit limit reached. Your plan allows %d audits per week. Limit resets 7 days after your first audit this period.', 'conversion-iq'), $audits_per_week),
+                'message'       => sprintf(__('Weekly audit limit reached. Your plan allows %d audits in any rolling 7-day period; you can run another once one of your recent audits is more than 7 days old.', 'conversion-iq'), $audits_per_week),
                 'error_code'    => 'weekly_limit_reached',
                 'audits_used'   => $recent_count,
                 'audits_allowed' => $audits_per_week,

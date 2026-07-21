@@ -106,7 +106,7 @@ class ConversionIQ_Config_Manager
             'starter' => array(
                 'max_sites'              => 1,
                 'max_pages_per_audit'    => 2,
-                'audits_per_week'        => 3,
+                'audits_per_week'        => 10,
                 'conversion_scores'      => 6,
                 'ai_copy_suggestions'    => true,
                 'priority_quick_wins'    => true,
@@ -130,7 +130,7 @@ class ConversionIQ_Config_Manager
             'professional' => array(
                 'max_sites'              => 1,
                 'max_pages_per_audit'    => 4,
-                'audits_per_week'        => 3,
+                'audits_per_week'        => 25,
                 'conversion_scores'      => 6,
                 'ai_copy_suggestions'    => true,
                 'priority_quick_wins'    => true,
@@ -154,7 +154,7 @@ class ConversionIQ_Config_Manager
             'business' => array(
                 'max_sites'              => 1,
                 'max_pages_per_audit'    => 6,
-                'audits_per_week'        => 3,
+                'audits_per_week'        => 0, // unlimited
                 'conversion_scores'      => 6,
                 'ai_copy_suggestions'    => true,
                 'priority_quick_wins'    => true,
@@ -178,7 +178,7 @@ class ConversionIQ_Config_Manager
             'agency' => array(
                 'max_sites'              => 100,
                 'max_pages_per_audit'    => 15,
-                'audits_per_week'        => 3,
+                'audits_per_week'        => 0, // unlimited
                 'conversion_scores'      => 6,
                 'ai_copy_suggestions'    => true,
                 'priority_quick_wins'    => true,
