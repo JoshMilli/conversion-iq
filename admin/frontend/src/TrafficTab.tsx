@@ -200,7 +200,9 @@ export default function TrafficTab({ nonce, apiBase, features }: TrafficTabProps
 
   // Auto-launch property wizard when OAuth just completed (tokens exist but no property chosen yet)
   useEffect(() => {
-    if (status && status.has_tokens && !status.ga4_connected && setupStep === 'idle') {
+    // Only auto-launch when NEITHER property is connected. Either GSC or GA4 alone
+    // counts as "set up" — otherwise a GSC-only user would be stuck re-launching the wizard.
+    if (status && status.has_tokens && !status.ga4_connected && !status.gsc_connected && setupStep === 'idle') {
       startSetup();
     }
   }, [status]);
@@ -221,40 +223,47 @@ export default function TrafficTab({ nonce, apiBase, features }: TrafficTabProps
     }
   }, []);
 
-  // Start property setup after OAuth is complete
-  const startSetup = useCallback(async () => {
-    setSetupStep('select-gsc');
+  // Fetch (or re-fetch) the user's GSC sites + GA4 properties. Surfaces errors from
+  // BOTH APIs — previously only GSC errors were shown, so a failed GA4 fetch looked
+  // like an empty list. Does not change the wizard step, so it also powers "Refresh".
+  const refreshProperties = useCallback(async () => {
     setSetupLoading(true);
     try {
       const [gscR, ga4R] = await Promise.all([
         axios.get(api('traffic-gsc-sites'), { headers }),
         axios.get(api('traffic-ga4-properties'), { headers }),
       ]);
-      if (gscR.data.error) {
-        showNotice('error', 'Google Search Console: ' + gscR.data.error);
-      }
+      const errs: string[] = [];
+      if (gscR.data.error) errs.push('Search Console: ' + gscR.data.error);
+      if (ga4R.data.error) errs.push('Analytics: ' + ga4R.data.error);
+      if (errs.length) showNotice('error', errs.join(' · '));
       setGscSites(gscR.data.sites || []);
       setGa4Props(ga4R.data.properties || []);
     } catch {
       showNotice('error', 'Failed to load your Google properties. Please try reconnecting.');
-      setSetupStep('idle');
     } finally {
       setSetupLoading(false);
     }
   }, []);
 
-  // Save selected properties
-  const saveProperties = useCallback(async () => {
-    if (!selectedGsc && !selectedGa4) {
-      showNotice('error', 'Please select at least one property.');
+  // Start property setup after OAuth is complete.
+  const startSetup = useCallback(async () => {
+    setSetupStep('select-gsc');
+    await refreshProperties();
+  }, [refreshProperties]);
+
+  // Save selected properties — either/or: GSC only, GA4 only, or both.
+  const saveWith = useCallback(async (gsc: string, ga4: string, ga4Name: string) => {
+    if (!gsc && !ga4) {
+      showNotice('error', 'Please select at least one property (Search Console or GA4).');
       return;
     }
     setSetupStep('saving');
     try {
       await axios.post(api('traffic-save-property'), {
-        gsc_site_url: selectedGsc,
-        ga4_property_id: selectedGa4,
-        ga4_property_name: selectedGa4Name,
+        gsc_site_url: gsc,
+        ga4_property_id: ga4,
+        ga4_property_name: ga4Name,
       }, { headers });
 
       // Reload status then fetch fresh data
@@ -268,7 +277,12 @@ export default function TrafficTab({ nonce, apiBase, features }: TrafficTabProps
       showNotice('error', 'Failed to save properties.');
       setSetupStep('idle');
     }
-  }, [selectedGsc, selectedGa4, selectedGa4Name]);
+  }, []);
+
+  const saveProperties = useCallback(
+    () => saveWith(selectedGsc, selectedGa4, selectedGa4Name),
+    [saveWith, selectedGsc, selectedGa4, selectedGa4Name]
+  );
 
   // Disconnect
   const handleDisconnect = useCallback(async () => {
@@ -316,8 +330,8 @@ export default function TrafficTab({ nonce, apiBase, features }: TrafficTabProps
     );
   }
 
-  // Has tokens but property wizard not launched yet — show loading
-  if (status?.has_tokens && !status?.ga4_connected && setupStep === 'idle') {
+  // Has tokens but NEITHER property connected yet — show loading (wizard about to launch).
+  if (status?.has_tokens && !status?.ga4_connected && !status?.gsc_connected && setupStep === 'idle') {
     return (
       <div style={{ padding: 48, textAlign: 'center', color: T.textMuted }}>
         Loading your Google properties…
@@ -342,6 +356,8 @@ export default function TrafficTab({ nonce, apiBase, features }: TrafficTabProps
           onNextStep={() => setSetupStep('select-ga4')}
           onSkipGsc={() => { setSelectedGsc(''); setSetupStep('select-ga4'); }}
           onSave={saveProperties}
+          onSkipGa4Save={() => { setSelectedGa4(''); setSelectedGa4Name(''); saveWith(selectedGsc, '', ''); }}
+          onRefresh={refreshProperties}
           onBack={() => setSetupStep('select-gsc')}
           onDisconnect={handleDisconnect}
         />
@@ -832,7 +848,7 @@ function PropertySetupPrompt({ onStart }: { onStart: () => void }) {
   );
 }
 
-function PropertyWizard({ step, loading, gscSites, ga4Props, selectedGsc, selectedGa4, onSelectGsc, onSelectGa4, onNextStep, onSkipGsc, onSave, onBack, onDisconnect }: {
+function PropertyWizard({ step, loading, gscSites, ga4Props, selectedGsc, selectedGa4, onSelectGsc, onSelectGa4, onNextStep, onSkipGsc, onSave, onSkipGa4Save, onRefresh, onBack, onDisconnect }: {
   step: string;
   loading: boolean;
   gscSites: GscSite[];
@@ -844,6 +860,8 @@ function PropertyWizard({ step, loading, gscSites, ga4Props, selectedGsc, select
   onNextStep: () => void;
   onSkipGsc: () => void;
   onSave: () => void;
+  onSkipGa4Save: () => void;
+  onRefresh: () => void;
   onBack: () => void;
   onDisconnect: () => void;
 }) {
@@ -897,13 +915,18 @@ function PropertyWizard({ step, loading, gscSites, ga4Props, selectedGsc, select
             )}
           </>
         )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-          <button onClick={onSkipGsc} style={{ padding: '10px 20px', background: 'none', color: T.textMuted, border: `1px solid ${T.border}`, borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
-            Skip GSC
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+          <button onClick={onRefresh} title="Re-fetch the latest properties from Google" style={{ padding: '10px 14px', background: 'none', color: T.textMuted, border: `1px solid ${T.border}`, borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
+            ↻ Refresh list
           </button>
-          <button onClick={onNextStep} disabled={!selectedGsc} style={{ padding: '10px 24px', background: T.accent, color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, cursor: selectedGsc ? 'pointer' : 'not-allowed', opacity: selectedGsc ? 1 : 0.5 }}>
-            Next: GA4 Property →
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onSkipGsc} style={{ padding: '10px 20px', background: 'none', color: T.textMuted, border: `1px solid ${T.border}`, borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
+              Skip GSC
+            </button>
+            <button onClick={onNextStep} disabled={!selectedGsc} style={{ padding: '10px 24px', background: T.accent, color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, cursor: selectedGsc ? 'pointer' : 'not-allowed', opacity: selectedGsc ? 1 : 0.5 }}>
+              Next: GA4 Property →
+            </button>
+          </div>
         </div>
         <div style={{ marginTop: 20, textAlign: 'center' }}>
           <button onClick={onDisconnect} style={{ background: 'none', border: 'none', color: T.textMuted, fontSize: 12, cursor: 'pointer', textDecoration: 'underline' }}>
@@ -960,13 +983,23 @@ function PropertyWizard({ step, loading, gscSites, ga4Props, selectedGsc, select
             )}
           </>
         )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-          <button onClick={onBack} style={{ padding: '10px 20px', background: T.bgSubtle, color: T.textSecondary, border: `1px solid ${T.border}`, borderRadius: 8, cursor: 'pointer' }}>
-            ← Back
-          </button>
-          <button onClick={onSave} style={{ padding: '10px 24px', background: T.accent, color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer' }}>
-            Save & Load Data
-          </button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onBack} style={{ padding: '10px 20px', background: T.bgSubtle, color: T.textSecondary, border: `1px solid ${T.border}`, borderRadius: 8, cursor: 'pointer' }}>
+              ← Back
+            </button>
+            <button onClick={onRefresh} title="Re-fetch the latest properties from Google" style={{ padding: '10px 14px', background: 'none', color: T.textMuted, border: `1px solid ${T.border}`, borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
+              ↻ Refresh list
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onSkipGa4Save} title="Finish with Search Console only" style={{ padding: '10px 20px', background: 'none', color: T.textMuted, border: `1px solid ${T.border}`, borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
+              Skip GA4 &amp; Save
+            </button>
+            <button onClick={onSave} disabled={!selectedGsc && !selectedGa4} style={{ padding: '10px 24px', background: T.accent, color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, cursor: (!selectedGsc && !selectedGa4) ? 'not-allowed' : 'pointer', opacity: (!selectedGsc && !selectedGa4) ? 0.5 : 1 }}>
+              Save &amp; Load Data
+            </button>
+          </div>
         </div>
         <div style={{ marginTop: 20, textAlign: 'center' }}>
           <button onClick={onDisconnect} style={{ background: 'none', border: 'none', color: T.textMuted, fontSize: 12, cursor: 'pointer', textDecoration: 'underline' }}>

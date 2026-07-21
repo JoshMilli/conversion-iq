@@ -4,7 +4,7 @@ Tags: conversion optimization, AI audit, copy analysis, website scoring, lead in
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.5.1
+Stable tag: 2.5.2
 License: GPLv2 or later
 
 AI-powered conversion auditing for WordPress. Scores your pages, generates actionable reports, and rewrites copy to convert more visitors.
@@ -57,6 +57,11 @@ Yes. On the Professional and Agency plans you can customize the company name, lo
 Yes. Conversion IQ extracts rendered content from any published page regardless of how it was built (Elementor, Divi, Gutenberg, etc.).
 
 == Changelog ==
+
+= 2.5.2 =
+* Fix: GA4 property list now paginates through all Google Analytics accounts/properties, so newly created or additional properties are no longer missed in Traffic Intelligence setup.
+* Fix: Google Analytics fetch errors are now surfaced during setup (previously only Search Console errors showed), plus a "Refresh list" button re-pulls the latest properties without reconnecting.
+* Improvement: Connect either Search Console OR GA4 — both are no longer required. Step 2 (GA4) can be skipped and setup still saves, and a Search-Console-only setup no longer re-launches the wizard.
 
 = 2.5.1 =
 * Improvement: Self-hosted update channel — the plugin now checks a JSON update-info endpoint on our own server (instead of GitHub) and reports available versions through WordPress's standard update system, so WP core and tools like WP Umbrella can detect and auto-install new versions.

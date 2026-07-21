@@ -237,28 +237,54 @@ class ConversionIQ_Google_Analytics {
      * Get list of available GA4 properties
      */
     public function get_properties() {
-        $response = $this->api_request('https://analyticsadmin.googleapis.com/v1beta/accountSummaries');
-        
-        if (isset($response['error'])) {
-            return array('success' => false, 'error' => $response['error']);
-        }
-        
+        // accountSummaries is paginated (default page size 50). Without following
+        // nextPageToken, accounts/properties beyond the first page — often the newest —
+        // never appear, which is why "the latest properties" were sometimes missing.
+        // Loop every page (pageSize=200) and merge, with a safety cap.
         $properties = array();
-        if (isset($response['accountSummaries'])) {
-            foreach ($response['accountSummaries'] as $account) {
-                if (isset($account['propertySummaries'])) {
-                    foreach ($account['propertySummaries'] as $property) {
+        $page_token = '';
+        $pages      = 0;
+
+        do {
+            $url = 'https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=200';
+            if ( $page_token !== '' ) {
+                $url .= '&pageToken=' . rawurlencode( $page_token );
+            }
+
+            $response = $this->api_request( $url );
+
+            if ( isset( $response['error'] ) ) {
+                // If earlier pages already succeeded, return what we have rather than
+                // losing everything; otherwise surface the error to the UI.
+                if ( ! empty( $properties ) ) {
+                    ciq_log( '[GA4] get_properties: partial list — error on page ' . ( $pages + 1 ) . ': ' . ( is_string( $response['error'] ) ? $response['error'] : wp_json_encode( $response['error'] ) ) );
+                    break;
+                }
+                return array( 'success' => false, 'error' => $response['error'] );
+            }
+
+            if ( ! empty( $response['accountSummaries'] ) && is_array( $response['accountSummaries'] ) ) {
+                foreach ( $response['accountSummaries'] as $account ) {
+                    if ( empty( $account['propertySummaries'] ) || ! is_array( $account['propertySummaries'] ) ) {
+                        continue;
+                    }
+                    foreach ( $account['propertySummaries'] as $property ) {
+                        if ( empty( $property['property'] ) ) continue;
                         $properties[] = array(
-                            'id' => $property['property'],
-                            'name' => $property['displayName'],
-                            'account' => $account['displayName']
+                            'id'      => $property['property'],
+                            'name'    => $property['displayName'] ?? '(unnamed property)',
+                            'account' => $account['displayName'] ?? '',
                         );
                     }
                 }
             }
-        }
-        
-        return array('success' => true, 'properties' => $properties);
+
+            $page_token = $response['nextPageToken'] ?? '';
+            $pages++;
+        } while ( $page_token !== '' && $pages < 20 ); // 20 × 200 = 4000 accounts max
+
+        ciq_log( '[GA4] get_properties: ' . count( $properties ) . ' propertie(s) across ' . $pages . ' page(s)' );
+        return array( 'success' => true, 'properties' => $properties );
     }
     
     /**
