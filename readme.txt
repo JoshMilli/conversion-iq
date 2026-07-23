@@ -4,7 +4,7 @@ Tags: conversion optimization, AI audit, copy analysis, website scoring, lead in
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.5.8
+Stable tag: 2.5.9
 License: GPLv2 or later
 
 AI-powered conversion auditing for WordPress. Scores your pages, generates actionable reports, and rewrites copy to convert more visitors.
@@ -57,6 +57,10 @@ Yes. On the Professional and Agency plans you can customize the company name, lo
 Yes. Conversion IQ extracts rendered content from any published page regardless of how it was built (Elementor, Divi, Gutenberg, etc.).
 
 == Changelog ==
+
+= 2.5.9 =
+* Fix: Audit accuracy — the analyzer previously judged navigation, header-CTA and footer checks against the page BODY only, which never contains the site header/nav. That produced false findings such as "the navigation is missing a persistent action button" even when a visible header button exists. The audit now captures the real site header/nav and footer (via the Elementor Theme Builder header/footer templates, or the primary nav menu as a fallback) and grounds those checks in the actual chrome markup.
+* Improvement: Added strict anti-hallucination rules to the analysis prompt — the audit must not claim an element is missing (or recommend adding it) without positive evidence from the screenshot or page/HTML signals, must not flag a "missing free/no-cost" reassurance when the CTA already says so, and every suggestion must reference a real element on the page.
 
 = 2.5.8 =
 * Fix: Audits failed with a critical error on Business and Agency plans. Because those plans have unlimited weekly audits, the code path that made the database handle ($wpdb) available was skipped, causing a fatal "Call to a member function get_var() on null" at the first content-hash lookup. The database handle is now initialised for every plan, so audits run correctly on all plans. (Surfaced by the 2.5.7 diagnostics.)

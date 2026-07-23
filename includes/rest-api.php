@@ -247,8 +247,22 @@ function conversioniq_extract_html_structure( $html, $page_url = '' )
     }
 
     // 5. Sticky CTA in Nav — nav element containing a button or CTA-style link
+    // Grounded pass (authoritative): our injected REAL site header (ciq-site-header),
+    // captured from the theme/Elementor header. If it contains any link/button with a
+    // CTA class (incl. elementor-button) or CTA-action text, the nav CTA definitively
+    // exists — regardless of what the screenshot shows.
+    $ciq_header_cta = false;
+    if ( preg_match('/<header[^>]*ciq-site-header[^>]*>([\s\S]*?)<\/header>/i', $html, $ciq_hdr_m) ) {
+        $ciq_hdr = $ciq_hdr_m[1];
+        if ( preg_match('/<(?:button|a)\b[^>]*(?:\bbtn\b|button|cta|elementor-button)[^>]*>/i', $ciq_hdr)
+          || preg_match('/<(?:button|a)\b[\s\S]{0,240}?\b(?:estimate|quote|contact|call|book|get\s+started|request|consult|schedule|free|sign\s*up|buy|shop|apply)\b/i', $ciq_hdr) ) {
+            $ciq_header_cta = true;
+        }
+    }
     // First pass: CTA-class button/link in nav/header
-    if (preg_match('/<(?:nav|header)[^>]*>[\s\S]{0,3000}?<(?:button|a)[^>]*(?:btn|button|cta|get-started|start|try|buy|book|request|sign-up|signup)[^>]*>/i', $html)) {
+    if ( $ciq_header_cta ) {
+        $cro_signals[] = 'Sticky CTA in Nav: YES — CTA button/link found in the site header/nav (captured from the real theme/Elementor header markup)';
+    } elseif (preg_match('/<(?:nav|header)[^>]*>[\s\S]{0,3000}?<(?:button|a)[^>]*(?:btn|button|cta|get-started|start|try|buy|book|request|sign-up|signup)[^>]*>/i', $html)) {
         $cro_signals[] = 'Sticky CTA in Nav: YES — CTA button/link detected inside nav or header element';
     // Second pass: any button/link with CTA-action text inside nav/header (catches custom themes)
     } elseif (preg_match('/<(?:nav|header)[^>]*>([\s\S]{0,5000}?)<\/(?:nav|header)>/i', $html, $nav_block_m) &&
@@ -486,6 +500,101 @@ function conversioniq_render_page_content( $post ) {
     }
 
     return apply_filters( 'the_content', $post->post_content );
+}
+
+/**
+ * Return the site's header/nav and footer markup so the audit can ground
+ * navigation, header-CTA and footer checks in REAL page chrome.
+ *
+ * conversioniq_render_page_content() returns the page BODY only (the_content /
+ * Elementor page content) — it never includes the theme header/nav or footer.
+ * That blind spot made the "Sticky CTA in Nav" check scan HTML that structurally
+ * could not contain a <nav>/<header>, so it always reported the nav CTA absent
+ * even when a visible header button exists. This helper closes that gap without
+ * any loopback HTTP (which is blocked on this hosting), using:
+ *   1. Elementor Theme Builder header/footer templates (this site uses Elementor), or
+ *   2. wp_nav_menu() for the primary menu location as a cross-theme fallback.
+ *
+ * Result is memoised per-request (site chrome is identical for every page).
+ *
+ * @return array{header:string, footer:string}
+ */
+function conversioniq_get_site_chrome() {
+    static $cached = null;
+    if ( $cached !== null ) {
+        return $cached;
+    }
+
+    $header_html = '';
+    $footer_html = '';
+
+    // Strategy 1 — Elementor Theme Builder header/footer templates.
+    if ( class_exists( '\\Elementor\\Plugin' ) ) {
+        foreach ( array( 'header', 'footer' ) as $type ) {
+            $tpl_ids = get_posts( array(
+                'post_type'        => 'elementor_library',
+                'post_status'      => 'publish',
+                'posts_per_page'   => 1,
+                'orderby'          => 'date',
+                'order'            => 'DESC',
+                'fields'           => 'ids',
+                'no_found_rows'    => true,
+                'suppress_filters' => true,
+                'meta_query'       => array( array(
+                    'key'   => '_elementor_template_type',
+                    'value' => $type,
+                ) ),
+            ) );
+            if ( empty( $tpl_ids ) ) {
+                continue;
+            }
+            try {
+                $frontend = isset( \Elementor\Plugin::$instance->frontend ) ? \Elementor\Plugin::$instance->frontend : null;
+                if ( $frontend && method_exists( $frontend, 'get_builder_content_for_display' ) ) {
+                    $rendered = (string) $frontend->get_builder_content_for_display( (int) $tpl_ids[0], false );
+                    if ( trim( wp_strip_all_tags( $rendered ) ) !== '' || preg_match( '/<(?:a|button)\b/i', $rendered ) ) {
+                        if ( $type === 'header' ) {
+                            // Wrap in <header> so the extractor's nav/header regexes have an anchor.
+                            $header_html = '<header class="ciq-site-header">' . $rendered . '</header>';
+                        } else {
+                            $footer_html = '<footer class="ciq-site-footer">' . $rendered . '</footer>';
+                        }
+                    }
+                }
+            } catch ( \Throwable $e ) {
+                ciq_log( 'Chrome: Elementor ' . $type . ' template render failed — ' . $e->getMessage() );
+            }
+        }
+    }
+
+    // Strategy 2 — wp_nav_menu() fallback for the primary menu (non-Elementor headers,
+    // or Elementor header that yielded nothing). Wrapped in <nav> for the extractor.
+    if ( trim( wp_strip_all_tags( $header_html ) ) === '' && ! preg_match( '/<(?:a|button)\b/i', $header_html ) ) {
+        $locations = get_nav_menu_locations();
+        if ( ! empty( $locations ) && is_array( $locations ) ) {
+            $loc = null;
+            foreach ( array( 'primary', 'main', 'header', 'primary-menu', 'main-menu', 'top', 'menu-1' ) as $cand ) {
+                if ( ! empty( $locations[ $cand ] ) ) { $loc = $cand; break; }
+            }
+            if ( $loc === null ) {
+                $loc = array_key_first( $locations );
+            }
+            $menu = wp_nav_menu( array(
+                'theme_location' => $loc,
+                'echo'           => false,
+                'fallback_cb'    => false,
+                'container'      => 'nav',
+                'container_class'=> 'ciq-site-nav',
+            ) );
+            if ( is_string( $menu ) && trim( $menu ) !== '' ) {
+                $header_html = '<header class="ciq-site-header">' . $menu . '</header>';
+            }
+        }
+    }
+
+    $cached = array( 'header' => $header_html, 'footer' => $footer_html );
+    ciq_log( 'Chrome: header ' . strlen( $header_html ) . ' chars, footer ' . strlen( $footer_html ) . ' chars captured for nav/footer grounding' );
+    return $cached;
 }
 
 /**
@@ -1855,7 +1964,12 @@ $results = array();
         $html_structure = '';
         $html = $rendered_content; // reuse rendered output as our "html" source
 
-        $html_structure = conversioniq_extract_html_structure( $rendered_content, $page_url );
+        // Ground nav/header/footer checks: prepend the real site header and append the
+        // footer so "Sticky CTA in Nav" and footer signals read actual chrome markup
+        // instead of a structural blind spot. Copy text ($content) stays body-only.
+        $chrome           = conversioniq_get_site_chrome();
+        $structure_source = $chrome['header'] . "\n" . $rendered_content . "\n" . $chrome['footer'];
+        $html_structure   = conversioniq_extract_html_structure( $structure_source, $page_url );
         ciq_log( 'HTML structure extracted from rendered content (' . strlen( $html_structure ) . ' chars)' );
 
         // Fallback for page builders that store content in meta (not post_content):
@@ -3667,9 +3781,12 @@ function conversioniq_send_manual_report(WP_REST_Request $request)
             $content = trim( preg_replace( '/\s+/', ' ', $content ) );
 
             // Build HTML structure directly from the page-builder rendered content.
+            // Ground nav/header/footer checks with the real site chrome (see main audit).
             $html_structure = '';
             $html_body = $rendered_content;
-            $html_structure = conversioniq_extract_html_structure( $rendered_content, $page_url );
+            $bulk_chrome      = conversioniq_get_site_chrome();
+            $bulk_structure   = $bulk_chrome['header'] . "\n" . $rendered_content . "\n" . $bulk_chrome['footer'];
+            $html_structure = conversioniq_extract_html_structure( $bulk_structure, $page_url );
 
             if ( strlen( trim( $content ) ) < 300 ) {
                 $fallback_text = conversioniq_extract_body_text( $rendered_content );
