@@ -40,11 +40,13 @@ function conversioniq_extract_html_structure( $html, $page_url = '' )
         'Hero' => 'hero|banner|jumbotron|intro|header-content',
         'Features' => 'feature|benefit|service|offer',
         'About' => 'about|story|mission|who-we-are',
-        'Testimonials' => 'testimonial|review|feedback|social-proof',
+        // "test[ei]monial" catches the common addon misspelling "testemonial"
+        // (e.g. Unlimited Elements uc_clean_testemonial_carousel).
+        'Testimonials' => 'test[ei]monial|review|feedback|social-proof',
         'Pricing' => 'pricing|plan|package|tier',
         'FAQ' => 'faq|question|accordion',
         'CTA' => 'cta|call-to-action|conversion|booking|contact-form',
-        'Trust' => 'trust|guarantee|security|badge|certification',
+        'Trust' => 'trust|guarantee|security|badge|certification|logo[-_]?marquee|logo[-_]?carousel',
     );
 
     $detected_sections = array();
@@ -206,9 +208,17 @@ function conversioniq_extract_html_structure( $html, $page_url = '' )
     }
     $has_trust_section   = preg_match('/(?:class|id)=[\x22\x27][^\x22\x27]*(?:trust|badge|cert|award|accredit|guarantee)[^\x22\x27]*[\x22\x27]/i', $html);
     $has_trust_text      = preg_match('/\b(?:certified|accredited|award[- ]winning|ISO[- ]\d+|BBB|google\s+partner|microsoft\s+partner|as\s+seen\s+in)\b/i', $html);
-    // Client logo bars and "featured in" sections
-    $has_logo_bar        = preg_match('/(?:class|id)=[\x22\x27][^\x22\x27]*(?:featured[-_]?in|as[-_]?seen|client[-_]?logo|logo[-_]?bar|media[-_]?logo|brand[-_]?logo|partner[-_]?logo|press[-_]?logo|featured[-_]?clients|client[-_]?strip|logo[-_]?strip|logos[-_]?section|client[-_]?grid)[^\x22\x27]*[\x22\x27]/i', $html);
+    // Client logo bars, marquees and "featured in" sections. Includes logo marquee/
+    // carousel widgets (e.g. Unlimited Elements uc_logo_marquee) which scroll a strip
+    // of client/partner logos — these are strong trust signals but their <img> tags
+    // often carry no useful alt text (lazy-loaded SVG placeholders), so the class name
+    // is the reliable signal.
+    $has_logo_bar        = preg_match('/(?:class|id)=[\x22\x27][^\x22\x27]*(?:featured[-_]?in|as[-_]?seen|client[-_]?logo|logo[-_]?bar|media[-_]?logo|brand[-_]?logo|partner[-_]?logo|press[-_]?logo|featured[-_]?clients|client[-_]?strip|logo[-_]?strip|logos[-_]?section|client[-_]?grid|logo[-_]?marquee|logo[-_]?carousel|logo[-_]?slider|brand[-_]?marquee|client[-_]?marquee|logo[-_]?loop)[^\x22\x27]*[\x22\x27]/i', $html);
     $has_featured_text   = preg_match('/\b(?:featured\s+(?:in|clients?)|as\s+seen\s+in|our\s+clients?|clients?\s+include|trusted\s+by|worked\s+with|in\s+the\s+press|press\s+coverage|media\s+coverage)\b/i', $html);
+    // Track-record / authority statement, e.g. "supported over 30 life science companies
+    // and 35 brands", "trusted by 500+ clients", "1,000+ projects delivered". This is a
+    // credibility proof point even when there are no badge images.
+    $has_track_record    = preg_match('/\b(?:(?:supported|helped|served|trusted\s+by|worked\s+with|partnered\s+with|delivered\s+for)\s+(?:over\s+|more\s+than\s+)?\d[\d,]*\+?\s+(?:[a-z]+\s+){0,3}(?:companies|clients|customers|brands|businesses|organi[sz]ations|partners|projects)|(?:over\s+|more\s+than\s+)?\d[\d,]*\+\s+(?:[a-z]+\s+){0,2}(?:clients|customers|projects|brands|companies|businesses))\b/i', $html);
     // Case studies and previous work / portfolio — strong trust signals even without cert badges
     $has_case_study_cls  = preg_match('/(?:class|id)=[\x22\x27][^\x22\x27]*(?:case[-_]?stud|success[-_]?stor|client[-_]?result|project[-_]?result|work[-_]?(?:showcase|example|sample|highlight)|our[-_]?work|previous[-_]?work|portfolio[-_]?(?:item|card|grid|section))[^\x22\x27]*[\x22\x27]/i', $html);
     $has_case_study_text = preg_match('/\b(?:case\s+stud(?:y|ies)|success\s+stor(?:y|ies)|client\s+results?|project\s+results?|previous\s+work|our\s+work|work\s+we[\x27\x22]?ve\s+done|portfolio)\b/i', $html);
@@ -216,8 +226,12 @@ function conversioniq_extract_html_structure( $html, $page_url = '' )
         $cro_signals[] = 'Trust Signals (Certs/Awards): YES — trust image(s) with alt: "' . implode('", "', array_slice($trust_imgs, 0, 3)) . '"';
     } elseif ( $has_trust_section || $has_trust_text ) {
         $cro_signals[] = 'Trust Signals (Certs/Awards): YES — trust-related class/text detected on page';
-    } elseif ( $has_logo_bar || $has_featured_text ) {
-        $cro_signals[] = 'Trust Signals (Certs/Awards): LIKELY — client/partner logo section or "featured in" text detected (logos are image-only; verify against screenshot)';
+    } elseif ( $has_logo_bar ) {
+        $cro_signals[] = 'Trust Signals (Certs/Awards): YES — a client/partner logo strip or logo marquee/carousel is present in the page markup. This is authoritative from HTML: the logo section exists on the page. It commonly sits below the hero and, on a long page, is illegible in the downsampled full-page screenshot — do NOT mark this absent just because the screenshot does not clearly show it.';
+    } elseif ( $has_track_record ) {
+        $cro_signals[] = 'Trust Signals (Certs/Awards): YES — a track-record / authority statement is present in the page copy (e.g. "supported over N companies / N+ clients"). This is a credibility proof point grounded in the page text.';
+    } elseif ( $has_featured_text ) {
+        $cro_signals[] = 'Trust Signals (Certs/Awards): LIKELY — "featured in" / "trusted by" / "our clients" text detected (verify against screenshot)';
     } elseif ( $has_case_study_cls || $has_case_study_text ) {
         $cro_signals[] = 'Trust Signals (Certs/Awards): LIKELY — case study / previous work / portfolio section detected; client work examples are strong trust signals — verify visuals against screenshot';
     } elseif ( ! empty( $client_logo_imgs ) ) {
@@ -229,12 +243,20 @@ function conversioniq_extract_html_structure( $html, $page_url = '' )
     // 3. Inline Social Proof â€” testimonials (already handled above), star ratings, review counts
     $has_rating = preg_match('/(?:\d\.\d\s*(?:out of|\/)\s*5|\d+\s*(?:star|review|rating)s?|\b5\s*stars?\b|â˜…)/i', $html);
     $has_review_count = preg_match('/\d+\s*(?:\+\s*)?\s*(?:review|client|customer|testimonial)s?/i', $html);
+    // Testimonial section HEADING — the most reliable, builder-agnostic signal. Catches
+    // "What our clients say", "Testimonials", "Client stories", "Success stories", etc.
+    $has_testimonial_heading = preg_match('/\b(?:what\s+(?:our\s+)?(?:clients?|customers?|patients?|people)\s+say|(?:client|customer|patient)\s+(?:testimonials?|stories|reviews?|feedback)|testimonials?|success\s+stor(?:y|ies)|client\s+success|kind\s+words|hear\s+from\s+our\s+(?:clients?|customers?|patients?)|what\s+they\s+say|in\s+their\s+words)\b/i', $html);
+    // Testimonial/review WIDGET class. "test[ei]monial" catches the addon misspelling
+    // "testemonial" (e.g. uc_clean_testemonial_carousel).
+    $has_testimonial_widget  = preg_match('/(?:class|id)=[\x22\x27][^\x22\x27]*(?:test[ei]monial|social[-_]?proof)[^\x22\x27]*[\x22\x27]/i', $html);
     if (!empty($testimonial_names)) {
         $cro_signals[] = 'Inline Social Proof: YES â€” attributed testimonials found (see above)';
+    } elseif ($has_testimonial_widget || $has_testimonial_heading) {
+        $cro_signals[] = 'Inline Social Proof: YES — a testimonials/reviews section is present in the page content (heading or testimonial widget detected). This is authoritative from HTML: the section exists even when it is a carousel below the fold that is not legible in the downsampled full-page screenshot. Do NOT mark this absent based on the screenshot alone.';
     } elseif ($has_rating || $has_review_count) {
         $cro_signals[] = 'Inline Social Proof: YES â€” star ratings or review counts detected in page content';
-    } elseif (preg_match('/(?:class|id)=["\'][^"\']*(?:testimonial|review|social-proof|feedback)[^"\']*["\']/i', $html)) {
-        $cro_signals[] = 'Inline Social Proof: POSSIBLE â€” testimonial/review section found but no attributed names extracted';
+    } elseif (preg_match('/(?:class|id)=["\'][^"\']*(?:review|feedback)[^"\']*["\']/i', $html)) {
+        $cro_signals[] = 'Inline Social Proof: POSSIBLE â€” review/feedback section found but no attributed names extracted';
     } else {
         $cro_signals[] = 'Inline Social Proof: NOT DETECTED';
     }

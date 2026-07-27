@@ -4,7 +4,7 @@ Tags: conversion optimization, AI audit, copy analysis, website scoring, lead in
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.5.9
+Stable tag: 2.5.10
 License: GPLv2 or later
 
 AI-powered conversion auditing for WordPress. Scores your pages, generates actionable reports, and rewrites copy to convert more visitors.
@@ -57,6 +57,10 @@ Yes. On the Professional and Agency plans you can customize the company name, lo
 Yes. Conversion IQ extracts rendered content from any published page regardless of how it was built (Elementor, Divi, Gutenberg, etc.).
 
 == Changelog ==
+
+= 2.5.10 =
+* Fix: Audit accuracy for trust and social-proof — the audit was reporting "no testimonials" and "missing trust proof" on pages that clearly have them, when those sections were built with page-builder addon widgets (e.g. Unlimited Elements testimonial carousels and logo marquees) whose class names our detector didn't recognise. Testimonial detection now also matches testimonial section headings ("What our clients say", "Testimonials", etc.), carousel/slider widgets, and the common misspelled "testemonial" class; trust detection now recognises logo marquees/carousels and track-record statements ("supported over 30 companies", "1,000+ projects").
+* Fix: These trust and social-proof sections typically sit below the hero, where a full-page screenshot of a long page is downsampled too far to read. The analysis now treats a positive HTML/content signal as authoritative for whether these sections EXIST, so a real testimonials carousel or logo strip is no longer reported as missing just because it isn't legible in the screenshot.
 
 = 2.5.9 =
 * Fix: Audit accuracy — the analyzer previously judged navigation, header-CTA and footer checks against the page BODY only, which never contains the site header/nav. That produced false findings such as "the navigation is missing a persistent action button" even when a visible header button exists. The audit now captures the real site header/nav and footer (via the Elementor Theme Builder header/footer templates, or the primary nav menu as a fallback) and grounds those checks in the actual chrome markup.
